@@ -108,21 +108,21 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid request body")
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	// Validate request
 	if req.Email == "" {
-		writeError(w, http.StatusBadRequest, "Email is required")
+		h.writeError(w, http.StatusBadRequest, "Email is required", nil)
 		return
 	}
 	if req.Password == "" {
-		writeError(w, http.StatusBadRequest, "Password is required")
+		h.writeError(w, http.StatusBadRequest, "Password is required", nil)
 		return
 	}
 	if len(req.Password) < 8 {
-		writeError(w, http.StatusBadRequest, "Password must be at least 8 characters")
+		h.writeError(w, http.StatusBadRequest, "Password must be at least 8 characters", nil)
 		return
 	}
 
@@ -135,9 +135,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case auth.ErrUserExists:
-			writeError(w, http.StatusConflict, "User with this email already exists")
+			h.writeError(w, http.StatusConflict, "User with this email already exists", err)
 		default:
-			writeError(w, http.StatusInternalServerError, "Registration failed")
+			h.writeError(w, http.StatusInternalServerError, "Registration failed", err)
 		}
 		return
 	}
