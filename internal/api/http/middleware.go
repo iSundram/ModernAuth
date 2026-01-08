@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 // RateLimit middleware limits the number of requests from a single IP.
