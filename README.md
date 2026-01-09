@@ -12,11 +12,15 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 
 ## Features
 
-- **Go-Native**: Built with Go 1.23+ and minimal dependencies.
+- **Go-Native**: Built with Go 1.23+ following Clean Architecture.
+- **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
+- **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords.
+- **Observability**: 
+    - **Prometheus Metrics**: Request latency, counts, and authentication success/failure rates.
+    - **Structured Logging**: Production-ready JSON logging using `slog`.
 - **Secure Token Management**: Stateless JWT access tokens and stateful opaque refresh tokens.
 - **Session Security**: Built-in token reuse detection to prevent token theft.
 - **Rate Limiting**: Redis-backed rate limiting on sensitive endpoints.
-- **Structured Logging**: Production-ready JSON logging using `slog`.
 - **Audit Trails**: Comprehensive database-backed audit logging for all auth events.
 - **Docker Ready**: Easy deployment with Docker and Docker Compose.
 
@@ -24,39 +28,31 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.23+
 - Docker & Docker Compose
-- Make (optional)
+- Make
 
-### Running with Docker Compose
+### Using the Makefile
 
-```bash
-# Start all services (Postgres, Redis, Auth server)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f auth-server
-
-# Stop all services
-docker-compose down
-```
-
-### Running Locally
+The project includes a `Makefile` for common development tasks:
 
 ```bash
-# Install dependencies
-go mod download
+# Setup environment (manual step)
+cp .env.example .env
 
-# Set environment variables
-export DATABASE_URL="postgres://modernauth:modernauth@localhost:5432/modernauth?sslmode=disable"
-export REDIS_URL="redis://localhost:6379"
-export JWT_SECRET="your-secret-key-at-least-32-chars"
+# Start database and redis
+make docker-up
 
-# Run the server
-go run ./cmd/auth-server
+# Build and run the server
+make run
 
-# Server starts on http://localhost:8080
+# Run tests
+make test
 ```
+
+### Metrics
+
+Metrics are exposed at `/metrics` in Prometheus format.
 
 ### Running Tests
 

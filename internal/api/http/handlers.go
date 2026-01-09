@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -40,20 +41,32 @@ func (h *Handler) Router() *chi.Mux {
 	// Middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(h.Metrics)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.SetHeader("Content-Type", "application/json"))
 
 	// Health check
 	r.Get("/health", h.HealthCheck)
+	
+	// Metrics
+	r.Handle("/metrics", promhttp.Handler())
 
 	// API v1 routes
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.With(h.RateLimit(5, time.Hour)).Post("/register", h.Register)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login", h.Login)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa", h.LoginMFA)
 			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
-			r.With(h.RateLimit(100, 15*time.Minute)).Post("/logout", h.Logout)
+			r.With(h.Auth).Post("/logout", h.Logout)
+
+			// MFA Management (Protected)
+			r.Group(func(r chi.Router) {
+				r.Use(h.Auth)
+				r.Post("/mfa/setup", h.SetupMFA)
+				r.Post("/mfa/enable", h.EnableMFA)
+			})
 		})
 	})
 
@@ -212,6 +225,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if result.MFARequired {
+		authSuccessTotal.WithLabelValues("login_partial").Inc()
+		writeJSON(w, http.StatusAccepted, map[string]interface{}{
+			"mfa_required": true,
+			"user_id":      result.User.ID.String(),
+		})
+		return
+	}
+
+	authSuccessTotal.WithLabelValues("login").Inc()
 	response := LoginResponse{
 		User: UserResponse{
 			ID:              result.User.ID.String(),
@@ -229,6 +252,123 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+// LoginMFARequest represents the login MFA request body.
+type LoginMFARequest struct {
+	UserID      string `json:"user_id"`
+	Code        string `json:"code"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+}
+
+// LoginMFA handles MFA verification during login.
+func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
+	var req LoginMFARequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid user ID", err)
+		return
+	}
+
+	result, err := h.authService.LoginWithMFA(r.Context(), &auth.LoginWithMFARequest{
+		UserID:      userID,
+		Code:        req.Code,
+		Fingerprint: req.Fingerprint,
+		IP:          r.RemoteAddr,
+		UserAgent:   r.UserAgent(),
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrInvalidMFACode:
+			authFailureTotal.WithLabelValues("login_mfa", "invalid_code").Inc()
+			h.writeError(w, http.StatusUnauthorized, "Invalid MFA code", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "MFA verification failed", err)
+		}
+		return
+	}
+
+	authSuccessTotal.WithLabelValues("login_mfa").Inc()
+	response := LoginResponse{
+		User: UserResponse{
+			ID:              result.User.ID.String(),
+			Email:           result.User.Email,
+			Username:        result.User.Username,
+			IsEmailVerified: result.User.IsEmailVerified,
+			CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		},
+		Tokens: TokensResponse{
+			AccessToken:  result.TokenPair.AccessToken,
+			RefreshToken: result.TokenPair.RefreshToken,
+			TokenType:    result.TokenPair.TokenType,
+			ExpiresIn:    result.TokenPair.ExpiresIn,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// SetupMFAResponse represents the MFA setup response.
+type SetupMFAResponse struct {
+	Secret string `json:"secret"`
+	URL    string `json:"url"`
+}
+
+// SetupMFA handles the initiation of MFA setup.
+func (h *Handler) SetupMFA(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.Context().Value(userIDKey).(string)
+	userID, _ := uuid.Parse(userIDStr)
+
+	result, err := h.authService.SetupTOTP(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to setup MFA", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SetupMFAResponse{
+		Secret: result.Secret,
+		URL:    result.URL,
+	})
+}
+
+// EnableMFARequest represents the enable MFA request body.
+type EnableMFARequest struct {
+	Code string `json:"code"`
+}
+
+// EnableMFA handles enabling MFA for a user.
+func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.Context().Value(userIDKey).(string)
+	userID, _ := uuid.Parse(userIDStr)
+
+	var req EnableMFARequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	err := h.authService.EnableTOTP(r.Context(), &auth.EnableTOTPRequest{
+		UserID: userID,
+		Code:   req.Code,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrInvalidMFACode:
+			h.writeError(w, http.StatusUnauthorized, "Invalid verification code", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "Failed to enable MFA", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled successfully"})
 }
 
 // RefreshRequest represents the refresh request body.

@@ -309,3 +309,46 @@ func (s *PostgresStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, l
 
 	return logs, rows.Err()
 }
+
+// GetMFASettings retrieves MFA settings for a user.
+func (s *PostgresStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {
+	query := `
+		SELECT user_id, totp_secret, is_totp_enabled, backup_codes, updated_at
+		FROM user_mfa_settings
+		WHERE user_id = $1
+	`
+	settings := &storage.MFASettings{}
+	err := s.pool.QueryRow(ctx, query, userID).Scan(
+		&settings.UserID,
+		&settings.TOTPSecret,
+		&settings.IsTOTPEnabled,
+		&settings.BackupCodes,
+		&settings.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return settings, nil
+}
+
+// UpdateMFASettings updates or creates MFA settings for a user.
+func (s *PostgresStorage) UpdateMFASettings(ctx context.Context, settings *storage.MFASettings) error {
+	query := `
+		INSERT INTO user_mfa_settings (user_id, totp_secret, is_totp_enabled, backup_codes, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id) DO UPDATE
+		SET totp_secret = $2, is_totp_enabled = $3, backup_codes = $4, updated_at = $5
+	`
+	settings.UpdatedAt = time.Now()
+	_, err := s.pool.Exec(ctx, query,
+		settings.UserID,
+		settings.TOTPSecret,
+		settings.IsTOTPEnabled,
+		settings.BackupCodes,
+		settings.UpdatedAt,
+	)
+	return err
+}

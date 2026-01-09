@@ -1,10 +1,47 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
+
+type contextKey string
+
+const (
+	userIDKey    contextKey = "user_id"
+	sessionIDKey contextKey = "session_id"
+)
+
+// Auth middleware validates the JWT access token and adds user information to the context.
+func (h *Handler) Auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			h.writeError(w, http.StatusUnauthorized, "Authorization header required", nil)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			h.writeError(w, http.StatusUnauthorized, "Bearer token required", nil)
+			return
+		}
+
+		claims, err := h.tokenService.ValidateAccessToken(tokenString)
+		if err != nil {
+			h.writeError(w, http.StatusUnauthorized, "Invalid or expired token", err)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, sessionIDKey, claims.SessionID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // RateLimit middleware limits the number of requests from a single IP.
 func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) http.Handler {
@@ -44,4 +81,33 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// responseWriter is a wrapper for http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Metrics middleware tracks request counts and durations.
+func (h *Handler) Metrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		rw := &responseWriter{w, http.StatusOK}
+		next.ServeHTTP(rw, r)
+		
+		duration := time.Since(start).Seconds()
+		path := r.URL.Path
+		method := r.Method
+		status := fmt.Sprintf("%d", rw.statusCode)
+
+		httpRequestsTotal.WithLabelValues(path, method, status).Inc()
+		httpRequestDuration.WithLabelValues(path, method).Observe(duration)
+	})
 }

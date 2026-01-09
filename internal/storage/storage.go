@@ -54,12 +54,22 @@ type AuditLog struct {
 	CreatedAt time.Time              `json:"created_at"`
 }
 
+// MFASettings represents a user's MFA settings.
+type MFASettings struct {
+	UserID         uuid.UUID `json:"user_id"`
+	TOTPSecret     *string   `json:"-"`
+	IsTOTPEnabled  bool      `json:"is_totp_enabled"`
+	BackupCodes    []string  `json:"-"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 // Storage defines the interface for data persistence.
 type Storage interface {
 	UserStorage
 	SessionStorage
 	RefreshTokenStorage
 	AuditLogStorage
+	MFAStorage
 }
 
 // UserStorage defines user-related storage operations.
@@ -91,4 +101,10 @@ type RefreshTokenStorage interface {
 type AuditLogStorage interface {
 	CreateAuditLog(ctx context.Context, log *AuditLog) error
 	GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*AuditLog, error)
+}
+
+// MFAStorage defines MFA-related storage operations.
+type MFAStorage interface {
+	GetMFASettings(ctx context.Context, userID uuid.UUID) (*MFASettings, error)
+	UpdateMFASettings(ctx context.Context, settings *MFASettings) error
 }

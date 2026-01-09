@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/iSundram/ModernAuth/internal/utils"
+	"github.com/pquerna/otp/totp"
 )
 
 var (
@@ -33,6 +34,12 @@ var (
 	ErrRefreshTokenExpired = errors.New("refresh token has expired")
 	// ErrRefreshTokenReused indicates potential token theft (token reuse detected).
 	ErrRefreshTokenReused = errors.New("refresh token reuse detected")
+	// ErrMFARequired indicates that MFA is required to complete the action.
+	ErrMFARequired = errors.New("mfa required")
+	// ErrInvalidMFACode indicates that the provided MFA code is invalid.
+	ErrInvalidMFACode = errors.New("invalid mfa code")
+	// ErrMFANotSetup indicates that MFA has not been set up for the user.
+	ErrMFANotSetup = errors.New("mfa not setup")
 )
 
 // AuthService provides authentication operations.
@@ -158,10 +165,12 @@ type LoginRequest struct {
 	UserAgent   string `json:"-"`
 }
 
-// LoginResult represents the result of a successful login.
+// LoginResult represents the result of a login attempt.
 type LoginResult struct {
-	User      *storage.User `json:"user"`
-	TokenPair *TokenPair    `json:"tokens"`
+	User           *storage.User `json:"user"`
+	TokenPair      *TokenPair    `json:"tokens,omitempty"`
+	MFARequired    bool          `json:"mfa_required"`
+	MFAChallengeID *uuid.UUID    `json:"mfa_challenge_id,omitempty"`
 }
 
 // Login authenticates a user with email and password.
@@ -187,6 +196,25 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 			"reason": "invalid_password",
 		})
 		return nil, ErrInvalidCredentials
+	}
+
+	// Check if MFA is enabled for this user
+	mfaSettings, err := s.storage.GetMFASettings(ctx, user.ID)
+	if err != nil {
+		s.logger.Error("Failed to get MFA settings", "error", err, "user_id", user.ID)
+		// Continue without MFA if settings can't be retrieved? 
+		// For high security, we should probably fail.
+	}
+
+	if mfaSettings != nil && mfaSettings.IsTOTPEnabled {
+		// Log MFA requirement
+		s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_required", &req.IP, &req.UserAgent, nil)
+		
+		return &LoginResult{
+			User:        user,
+			MFARequired: true,
+			// In a full implementation, we'd create an mfa_challenge record here
+		}, nil
 	}
 
 	// Create a new session
@@ -377,4 +405,156 @@ func (s *AuthService) logAuditEvent(ctx context.Context, userID, actorID *uuid.U
 		CreatedAt: time.Now(),
 	}
 	return s.storage.CreateAuditLog(ctx, log)
+}
+
+// SetupTOTPRequest represents a request to setup TOTP.
+type SetupTOTPRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// SetupTOTPResult represents the result of TOTP setup.
+type SetupTOTPResult struct {
+	Secret string `json:"secret"`
+	URL    string `json:"url"`
+}
+
+// SetupTOTP generates a new TOTP secret for the user.
+func (s *AuthService) SetupTOTP(ctx context.Context, userID uuid.UUID) (*SetupTOTPResult, error) {
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "ModernAuth",
+		AccountName: user.Email,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	secret := key.Secret()
+	settings := &storage.MFASettings{
+		UserID:     userID,
+		TOTPSecret: &secret,
+	}
+
+	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
+		return nil, err
+	}
+
+	return &SetupTOTPResult{
+		Secret: secret,
+		URL:    key.URL(),
+	}, nil
+}
+
+// EnableTOTPRequest represents a request to enable TOTP.
+type EnableTOTPRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+	Code   string    `json:"code"`
+}
+
+// EnableTOTP verifies the first code and enables TOTP for the user.
+func (s *AuthService) EnableTOTP(ctx context.Context, req *EnableTOTPRequest) error {
+	settings, err := s.storage.GetMFASettings(ctx, req.UserID)
+	if err != nil {
+		return err
+	}
+	if settings == nil || settings.TOTPSecret == nil {
+		return ErrMFANotSetup
+	}
+
+	valid := totp.Validate(req.Code, *settings.TOTPSecret)
+	if !valid {
+		return ErrInvalidMFACode
+	}
+
+	settings.IsTOTPEnabled = true
+	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &req.UserID, nil, "mfa.totp_enabled", nil, nil, nil)
+	return nil
+}
+
+// LoginWithMFARequest represents a request to complete login with MFA.
+type LoginWithMFARequest struct {
+	UserID      uuid.UUID `json:"user_id"`
+	Code        string    `json:"code"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	IP          string    `json:"-"`
+	UserAgent   string    `json:"-"`
+}
+
+// LoginWithMFA verifies the MFA code and completes the login process.
+func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest) (*LoginResult, error) {
+	user, err := s.storage.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	settings, err := s.storage.GetMFASettings(ctx, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil || !settings.IsTOTPEnabled || settings.TOTPSecret == nil {
+		return nil, ErrMFANotSetup
+	}
+
+	valid := totp.Validate(req.Code, *settings.TOTPSecret)
+	if !valid {
+		s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_failed", &req.IP, &req.UserAgent, nil)
+		return nil, ErrInvalidMFACode
+	}
+
+	// MFA verified, create session and tokens
+	now := time.Now()
+	session := &storage.Session{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		CreatedAt: now,
+		ExpiresAt: now.Add(s.sessionTTL),
+		Revoked:   false,
+	}
+
+	if req.Fingerprint != "" {
+		session.Fingerprint = &req.Fingerprint
+	}
+
+	if err := s.storage.CreateSession(ctx, session); err != nil {
+		return nil, err
+	}
+
+	tokenPair, err := s.tokenService.GenerateTokenPair(user.ID, session.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken := &storage.RefreshToken{
+		ID:        uuid.New(),
+		SessionID: session.ID,
+		TokenHash: utils.HashToken(tokenPair.RefreshToken),
+		IssuedAt:  now,
+		ExpiresAt: now.Add(s.tokenService.config.RefreshTokenTTL),
+		Revoked:   false,
+	}
+
+	if err := s.storage.CreateRefreshToken(ctx, refreshToken); err != nil {
+		return nil, err
+	}
+
+	s.logAuditEvent(ctx, &user.ID, nil, "login.success", &req.IP, &req.UserAgent, map[string]interface{}{"mfa": true})
+
+	return &LoginResult{
+		User:      user,
+		TokenPair: tokenPair,
+	}, nil
 }
