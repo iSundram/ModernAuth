@@ -13,10 +13,11 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 ## Features
 
 - **Go-Native**: Built with Go 1.23+ following Clean Architecture.
+- **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
 - **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords.
 - **Email Verification**: Token-based email verification flow.
-- **Password Reset**: Secure password reset with time-limited tokens.
+- **Password Management**: Secure password reset and change flows.
 - **Account Lockout**: Protection against brute-force attacks with configurable lockout policies.
 - **Token Blacklisting**: Redis-backed JWT access token blacklisting for immediate revocation.
 - **Observability**: 
@@ -83,6 +84,7 @@ go test -bench=. ./internal/auth/...
 | `/v1/auth/login/mfa` | POST | Complete MFA verification |
 | `/v1/auth/refresh` | POST | Refresh access token |
 | `/v1/auth/logout` | POST | Logout (requires auth) |
+| `/v1/auth/me` | GET | Get current user profile (requires auth) |
 
 ### Email & Password
 | Endpoint | Method | Description |
@@ -91,6 +93,7 @@ go test -bench=. ./internal/auth/...
 | `/v1/auth/verify-email` | POST | Verify email with token |
 | `/v1/auth/forgot-password` | POST | Request password reset |
 | `/v1/auth/reset-password` | POST | Reset password with token |
+| `/v1/auth/change-password` | POST | Change password (requires auth) |
 
 ### Session Management
 | Endpoint | Method | Description |
@@ -103,11 +106,54 @@ go test -bench=. ./internal/auth/...
 | `/v1/auth/mfa/setup` | POST | Setup TOTP MFA (requires auth) |
 | `/v1/auth/mfa/enable` | POST | Enable TOTP MFA (requires auth) |
 
+### User Management (requires `users:*` permissions)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/users` | GET | List all users |
+| `/v1/users` | POST | Create a new user |
+| `/v1/users/{id}` | GET | Get user by ID |
+| `/v1/users/{id}` | PUT | Update user |
+| `/v1/users/{id}` | DELETE | Delete user |
+
+### Audit Logs (requires `audit:read` permission)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/audit/logs` | GET | List audit logs (supports pagination) |
+
+### Admin (requires `admin` role)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/admin/stats` | GET | Get system statistics |
+| `/v1/admin/services` | GET | Get service health status |
+| `/v1/admin/roles` | GET | List all roles |
+| `/v1/admin/users/{id}/roles` | POST | Assign role to user |
+| `/v1/admin/users/{id}/roles/{roleId}` | DELETE | Remove role from user |
+
 ### Health & Metrics
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check with service status |
 | `/metrics` | GET | Prometheus metrics |
+
+## Role-Based Access Control (RBAC)
+
+ModernAuth includes a built-in RBAC system with:
+
+### Default Roles
+| Role | Description |
+|------|-------------|
+| `admin` | Full system access with all permissions |
+| `user` | Standard user with basic read permissions |
+
+### Default Permissions
+| Permission | Description |
+|------------|-------------|
+| `users:read` | View user information |
+| `users:write` | Create and update users |
+| `users:delete` | Delete users |
+| `audit:read` | View audit logs |
+| `admin:access` | Access admin endpoints |
+| `roles:manage` | Manage roles and permissions |
 
 ## Configuration
 

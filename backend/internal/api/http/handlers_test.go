@@ -75,6 +75,16 @@ func (m *mockStorage) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (m *mockStorage) ListUsers(ctx context.Context) ([]*storage.User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	users := make([]*storage.User, 0, len(m.users))
+	for _, user := range m.users {
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 func (m *mockStorage) CreateSession(ctx context.Context, session *storage.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -192,6 +202,47 @@ func (m *mockStorage) MarkVerificationTokenUsed(ctx context.Context, id uuid.UUI
 
 func (m *mockStorage) DeleteExpiredVerificationTokens(ctx context.Context) error {
 	return nil
+}
+
+// RBAC mock implementations
+func (m *mockStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*storage.Role, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) GetRoleByName(ctx context.Context, name string) (*storage.Role, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
+func (m *mockStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
+func (m *mockStorage) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) RemoveRoleFromUser(ctx context.Context, userID, roleID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStorage) GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*storage.Permission, error) {
+	return []*storage.Permission{}, nil
+}
+
+func (m *mockStorage) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*storage.Permission, error) {
+	return []*storage.Permission{}, nil
+}
+
+func (m *mockStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
+	return false, nil
 }
 
 func setupTestHandler() *Handler {

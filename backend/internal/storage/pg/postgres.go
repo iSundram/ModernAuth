@@ -96,6 +96,41 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 	return user, nil
 }
 
+// ListUsers retrieves all users from the database.
+func (s *PostgresStorage) ListUsers(ctx context.Context) ([]*storage.User, error) {
+	query := `
+		SELECT id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at
+		FROM users
+		ORDER BY created_at DESC
+	`
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*storage.User
+	for rows.Next() {
+		user := &storage.User{}
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Phone,
+			&user.Username,
+			&user.HashedPassword,
+			&user.IsEmailVerified,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}
+
 // UpdateUser updates an existing user.
 func (s *PostgresStorage) UpdateUser(ctx context.Context, user *storage.User) error {
 	query := `
@@ -408,4 +443,178 @@ func (s *PostgresStorage) DeleteExpiredVerificationTokens(ctx context.Context) e
 	query := `DELETE FROM verification_tokens WHERE expires_at < $1`
 	_, err := s.pool.Exec(ctx, query, time.Now())
 	return err
+}
+
+// GetRoleByID retrieves a role by its ID.
+func (s *PostgresStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*storage.Role, error) {
+	query := `SELECT id, name, description, created_at FROM roles WHERE id = $1`
+	role := &storage.Role{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return role, nil
+}
+
+// GetRoleByName retrieves a role by its name.
+func (s *PostgresStorage) GetRoleByName(ctx context.Context, name string) (*storage.Role, error) {
+	query := `SELECT id, name, description, created_at FROM roles WHERE name = $1`
+	role := &storage.Role{}
+	err := s.pool.QueryRow(ctx, query, name).Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return role, nil
+}
+
+// ListRoles retrieves all roles.
+func (s *PostgresStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
+	query := `SELECT id, name, description, created_at FROM roles ORDER BY name`
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []*storage.Role
+	for rows.Next() {
+		role := &storage.Role{}
+		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+// GetUserRoles retrieves all roles assigned to a user.
+func (s *PostgresStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*storage.Role, error) {
+	query := `
+		SELECT r.id, r.name, r.description, r.created_at
+		FROM roles r
+		INNER JOIN user_roles ur ON r.id = ur.role_id
+		WHERE ur.user_id = $1
+		ORDER BY r.name
+	`
+	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []*storage.Role
+	for rows.Next() {
+		role := &storage.Role{}
+		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+// AssignRoleToUser assigns a role to a user.
+func (s *PostgresStorage) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
+	query := `
+		INSERT INTO user_roles (user_id, role_id, assigned_at, assigned_by)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, role_id) DO NOTHING
+	`
+	_, err := s.pool.Exec(ctx, query, userID, roleID, time.Now(), assignedBy)
+	return err
+}
+
+// RemoveRoleFromUser removes a role from a user.
+func (s *PostgresStorage) RemoveRoleFromUser(ctx context.Context, userID, roleID uuid.UUID) error {
+	query := `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2`
+	_, err := s.pool.Exec(ctx, query, userID, roleID)
+	return err
+}
+
+// UserHasRole checks if a user has a specific role.
+func (s *PostgresStorage) UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM user_roles ur
+			INNER JOIN roles r ON ur.role_id = r.id
+			WHERE ur.user_id = $1 AND r.name = $2
+		)
+	`
+	var exists bool
+	err := s.pool.QueryRow(ctx, query, userID, roleName).Scan(&exists)
+	return exists, err
+}
+
+// GetRolePermissions retrieves all permissions for a role.
+func (s *PostgresStorage) GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*storage.Permission, error) {
+	query := `
+		SELECT p.id, p.name, p.description, p.created_at
+		FROM permissions p
+		INNER JOIN role_permissions rp ON p.id = rp.permission_id
+		WHERE rp.role_id = $1
+		ORDER BY p.name
+	`
+	rows, err := s.pool.Query(ctx, query, roleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var perms []*storage.Permission
+	for rows.Next() {
+		perm := &storage.Permission{}
+		if err := rows.Scan(&perm.ID, &perm.Name, &perm.Description, &perm.CreatedAt); err != nil {
+			return nil, err
+		}
+		perms = append(perms, perm)
+	}
+	return perms, rows.Err()
+}
+
+// GetUserPermissions retrieves all permissions for a user (through their roles).
+func (s *PostgresStorage) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*storage.Permission, error) {
+	query := `
+		SELECT DISTINCT p.id, p.name, p.description, p.created_at
+		FROM permissions p
+		INNER JOIN role_permissions rp ON p.id = rp.permission_id
+		INNER JOIN user_roles ur ON rp.role_id = ur.role_id
+		WHERE ur.user_id = $1
+		ORDER BY p.name
+	`
+	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var perms []*storage.Permission
+	for rows.Next() {
+		perm := &storage.Permission{}
+		if err := rows.Scan(&perm.ID, &perm.Name, &perm.Description, &perm.CreatedAt); err != nil {
+			return nil, err
+		}
+		perms = append(perms, perm)
+	}
+	return perms, rows.Err()
+}
+
+// UserHasPermission checks if a user has a specific permission.
+func (s *PostgresStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM permissions p
+			INNER JOIN role_permissions rp ON p.id = rp.permission_id
+			INNER JOIN user_roles ur ON rp.role_id = ur.role_id
+			WHERE ur.user_id = $1 AND p.name = $2
+		)
+	`
+	var exists bool
+	err := s.pool.QueryRow(ctx, query, userID, permissionName).Scan(&exists)
+	return exists, err
 }

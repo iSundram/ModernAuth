@@ -65,13 +65,37 @@ type MFASettings struct {
 
 // VerificationToken represents an email verification or password reset token.
 type VerificationToken struct {
-	ID        uuid.UUID `json:"id"`
-	UserID    uuid.UUID `json:"user_id"`
-	TokenHash string    `json:"-"`
-	TokenType string    `json:"token_type"` // "email_verification" or "password_reset"
-	ExpiresAt time.Time `json:"expires_at"`
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	TokenHash string     `json:"-"`
+	TokenType string     `json:"token_type"` // "email_verification" or "password_reset"
+	ExpiresAt time.Time  `json:"expires_at"`
 	UsedAt    *time.Time `json:"used_at,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// Role represents a role in the RBAC system.
+type Role struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Permission represents a permission in the RBAC system.
+type Permission struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// UserRole represents a user-role assignment.
+type UserRole struct {
+	UserID     uuid.UUID  `json:"user_id"`
+	RoleID     uuid.UUID  `json:"role_id"`
+	AssignedAt time.Time  `json:"assigned_at"`
+	AssignedBy *uuid.UUID `json:"assigned_by,omitempty"`
 }
 
 // Storage defines the interface for data persistence.
@@ -82,6 +106,7 @@ type Storage interface {
 	AuditLogStorage
 	MFAStorage
 	VerificationTokenStorage
+	RBACStorage
 }
 
 // UserStorage defines user-related storage operations.
@@ -89,6 +114,7 @@ type UserStorage interface {
 	CreateUser(ctx context.Context, user *User) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	ListUsers(ctx context.Context) ([]*User, error)
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
@@ -127,4 +153,23 @@ type VerificationTokenStorage interface {
 	GetVerificationTokenByHash(ctx context.Context, tokenHash string, tokenType string) (*VerificationToken, error)
 	MarkVerificationTokenUsed(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredVerificationTokens(ctx context.Context) error
+}
+
+// RBACStorage defines role-based access control storage operations.
+type RBACStorage interface {
+	// Role operations
+	GetRoleByID(ctx context.Context, id uuid.UUID) (*Role, error)
+	GetRoleByName(ctx context.Context, name string) (*Role, error)
+	ListRoles(ctx context.Context) ([]*Role, error)
+
+	// User role operations
+	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*Role, error)
+	AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error
+	RemoveRoleFromUser(ctx context.Context, userID, roleID uuid.UUID) error
+	UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error)
+
+	// Permission operations
+	GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*Permission, error)
+	GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*Permission, error)
+	UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error)
 }

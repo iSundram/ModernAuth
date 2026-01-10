@@ -407,6 +407,16 @@ func (s *AuthService) logAuditEvent(ctx context.Context, userID, actorID *uuid.U
 	return s.storage.CreateAuditLog(ctx, log)
 }
 
+// GetUserByID retrieves a user by their ID.
+func (s *AuthService) GetUserByID(ctx context.Context, id uuid.UUID) (*storage.User, error) {
+	return s.storage.GetUserByID(ctx, id)
+}
+
+// ListUsers retrieves all users.
+func (s *AuthService) ListUsers(ctx context.Context) ([]*storage.User, error) {
+	return s.storage.ListUsers(ctx)
+}
+
 // SetupTOTPRequest represents a request to setup TOTP.
 type SetupTOTPRequest struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -808,4 +818,179 @@ func (s *AuthService) RevokeAllSessions(ctx context.Context, req *RevokeAllSessi
 	s.logAuditEvent(ctx, &req.UserID, nil, "sessions.revoke_all", &req.IP, &req.UserAgent, nil)
 
 	return nil
+}
+
+// ChangePasswordRequest represents a request to change password.
+type ChangePasswordRequest struct {
+	UserID          uuid.UUID `json:"user_id"`
+	CurrentPassword string    `json:"current_password"`
+	NewPassword     string    `json:"new_password"`
+	IP              string    `json:"-"`
+	UserAgent       string    `json:"-"`
+}
+
+// ChangePassword changes a user's password after verifying the current one.
+func (s *AuthService) ChangePassword(ctx context.Context, req *ChangePasswordRequest) error {
+	user, err := s.storage.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Verify current password
+	match, err := utils.VerifyPassword(req.CurrentPassword, user.HashedPassword)
+	if err != nil {
+		return err
+	}
+	if !match {
+		s.logAuditEvent(ctx, &req.UserID, nil, "password_change.failed", &req.IP, &req.UserAgent, map[string]interface{}{
+			"reason": "invalid_current_password",
+		})
+		return ErrInvalidCredentials
+	}
+
+	// Hash new password
+	hashedPassword, err := utils.HashPassword(req.NewPassword, nil)
+	if err != nil {
+		return err
+	}
+
+	user.HashedPassword = hashedPassword
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &req.UserID, nil, "password_change.success", &req.IP, &req.UserAgent, nil)
+
+	return nil
+}
+
+// UpdateUserRequest represents a request to update user details.
+type UpdateUserRequest struct {
+	UserID   uuid.UUID `json:"user_id"`
+	Email    *string   `json:"email,omitempty"`
+	Username *string   `json:"username,omitempty"`
+	Phone    *string   `json:"phone,omitempty"`
+}
+
+// UpdateUser updates a user's profile information.
+func (s *AuthService) UpdateUser(ctx context.Context, req *UpdateUserRequest) (*storage.User, error) {
+	user, err := s.storage.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	if req.Email != nil && *req.Email != user.Email {
+		// Check if email is already taken
+		existing, err := s.storage.GetUserByEmail(ctx, *req.Email)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return nil, ErrUserExists
+		}
+		user.Email = *req.Email
+		user.IsEmailVerified = false // Reset verification on email change
+	}
+
+	if req.Username != nil {
+		user.Username = req.Username
+	}
+
+	if req.Phone != nil {
+		user.Phone = req.Phone
+	}
+
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return nil, err
+	}
+
+	s.logAuditEvent(ctx, &req.UserID, nil, "user.updated", nil, nil, nil)
+
+	return user, nil
+}
+
+// DeleteUser deletes a user and all associated data.
+func (s *AuthService) DeleteUser(ctx context.Context, userID uuid.UUID, actorID *uuid.UUID) error {
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Revoke all sessions first
+	if err := s.storage.RevokeUserSessions(ctx, userID); err != nil {
+		s.logger.Error("Failed to revoke sessions during user deletion", "error", err, "user_id", userID)
+	}
+
+	if err := s.storage.DeleteUser(ctx, userID); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &userID, actorID, "user.deleted", nil, nil, nil)
+
+	return nil
+}
+
+// GetAuditLogs retrieves audit logs with pagination.
+func (s *AuthService) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.storage.GetAuditLogs(ctx, userID, limit, offset)
+}
+
+// GetUserRoles retrieves all roles assigned to a user.
+func (s *AuthService) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*storage.Role, error) {
+	return s.storage.GetUserRoles(ctx, userID)
+}
+
+// AssignRole assigns a role to a user.
+func (s *AuthService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
+	if err := s.storage.AssignRoleToUser(ctx, userID, roleID, assignedBy); err != nil {
+		return err
+	}
+	s.logAuditEvent(ctx, &userID, assignedBy, "role.assigned", nil, nil, map[string]interface{}{
+		"role_id": roleID.String(),
+	})
+	return nil
+}
+
+// RemoveRole removes a role from a user.
+func (s *AuthService) RemoveRole(ctx context.Context, userID, roleID uuid.UUID, actorID *uuid.UUID) error {
+	if err := s.storage.RemoveRoleFromUser(ctx, userID, roleID); err != nil {
+		return err
+	}
+	s.logAuditEvent(ctx, &userID, actorID, "role.removed", nil, nil, map[string]interface{}{
+		"role_id": roleID.String(),
+	})
+	return nil
+}
+
+// UserHasRole checks if a user has a specific role.
+func (s *AuthService) UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {
+	return s.storage.UserHasRole(ctx, userID, roleName)
+}
+
+// UserHasPermission checks if a user has a specific permission.
+func (s *AuthService) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
+	return s.storage.UserHasPermission(ctx, userID, permissionName)
+}
+
+// ListRoles retrieves all available roles.
+func (s *AuthService) ListRoles(ctx context.Context) ([]*storage.Role, error) {
+	return s.storage.ListRoles(ctx)
 }

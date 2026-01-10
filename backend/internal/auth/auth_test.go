@@ -70,6 +70,16 @@ func (m *MockStorage) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (m *MockStorage) ListUsers(ctx context.Context) ([]*storage.User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	users := make([]*storage.User, 0, len(m.users))
+	for _, user := range m.users {
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 func (m *MockStorage) CreateSession(ctx context.Context, session *storage.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -188,6 +198,47 @@ func (m *MockStorage) MarkVerificationTokenUsed(ctx context.Context, id uuid.UUI
 
 func (m *MockStorage) DeleteExpiredVerificationTokens(ctx context.Context) error {
 	return nil
+}
+
+// RBAC mock implementations
+func (m *MockStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*storage.Role, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) GetRoleByName(ctx context.Context, name string) (*storage.Role, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
+func (m *MockStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
+func (m *MockStorage) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
+	return nil
+}
+
+func (m *MockStorage) RemoveRoleFromUser(ctx context.Context, userID, roleID uuid.UUID) error {
+	return nil
+}
+
+func (m *MockStorage) UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {
+	return false, nil
+}
+
+func (m *MockStorage) GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*storage.Permission, error) {
+	return []*storage.Permission{}, nil
+}
+
+func (m *MockStorage) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*storage.Permission, error) {
+	return []*storage.Permission{}, nil
+}
+
+func (m *MockStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
+	return false, nil
 }
 
 func setupTestAuthService() (*AuthService, *MockStorage) {

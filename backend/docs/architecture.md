@@ -8,7 +8,7 @@
                                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                   Stateless Auth API Servers (Go)                │
-│        (Business logic, token issuance, validation, admin)       │
+│        (Business logic, token issuance, validation, RBAC)        │
 └─────────────────────────────────────────────────────────────────┘
                     │                           │
                     ▼                           ▼
@@ -24,18 +24,19 @@
 
 ### API Layer (`/internal/api/http`)
 - **Handlers**: REST endpoints for auth operations
-- **Middleware**: Authentication, rate limiting, metrics
+- **Middleware**: Authentication, authorization (RBAC), rate limiting, metrics
 - **Validation**: Request validation using go-playground/validator
 
 ### Auth Service (`/internal/auth`)
-- **AuthService**: Core authentication logic (register, login, logout, MFA)
+- **AuthService**: Core authentication logic (register, login, logout, MFA, password management)
 - **TokenService**: JWT access token and refresh token generation/validation
 - **AccountLockout**: Brute-force protection with configurable policies
 - **TokenBlacklist**: Immediate token revocation via Redis
+- **RBAC**: Role and permission management
 
 ### Storage Layer (`/internal/storage`)
 - **Interfaces**: Clean separation between business logic and data access
-- **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens
+- **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens, roles, permissions
 - **Redis**: Rate limiting, session blacklist, token blacklist, account lockout
 
 ### Security Features
@@ -45,3 +46,4 @@
 - TOTP-based MFA
 - Email verification and password reset flows
 - Account lockout after failed attempts
+- Role-Based Access Control (RBAC)

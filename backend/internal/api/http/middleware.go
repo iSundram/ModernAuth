@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type contextKey string
@@ -116,4 +118,68 @@ func (h *Handler) Metrics(next http.Handler) http.Handler {
 		httpRequestsTotal.WithLabelValues(path, method, status).Inc()
 		httpRequestDuration.WithLabelValues(path, method).Observe(duration)
 	})
+}
+
+// RequireRole middleware checks if the authenticated user has a specific role.
+func (h *Handler) RequireRole(roleName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userIDStr, ok := r.Context().Value(userIDKey).(string)
+			if !ok || userIDStr == "" {
+				h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+				return
+			}
+
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				h.writeError(w, http.StatusUnauthorized, "Invalid user ID", err)
+				return
+			}
+
+			hasRole, err := h.authService.UserHasRole(r.Context(), userID, roleName)
+			if err != nil {
+				h.writeError(w, http.StatusInternalServerError, "Failed to check role", err)
+				return
+			}
+
+			if !hasRole {
+				h.writeError(w, http.StatusForbidden, "Insufficient permissions", nil)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequirePermission middleware checks if the authenticated user has a specific permission.
+func (h *Handler) RequirePermission(permissionName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userIDStr, ok := r.Context().Value(userIDKey).(string)
+			if !ok || userIDStr == "" {
+				h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+				return
+			}
+
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				h.writeError(w, http.StatusUnauthorized, "Invalid user ID", err)
+				return
+			}
+
+			hasPermission, err := h.authService.UserHasPermission(r.Context(), userID, permissionName)
+			if err != nil {
+				h.writeError(w, http.StatusInternalServerError, "Failed to check permission", err)
+				return
+			}
+
+			if !hasPermission {
+				h.writeError(w, http.StatusForbidden, "Insufficient permissions", nil)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
