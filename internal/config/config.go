@@ -12,6 +12,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Redis    RedisConfig    `yaml:"redis"`
 	Auth     AuthConfig     `yaml:"auth"`
+	Lockout  LockoutConfig  `yaml:"lockout"`
 }
 
 type AppConfig struct {
@@ -32,6 +33,15 @@ type AuthConfig struct {
 	JWTSecret       string        `yaml:"jwt_secret" env:"JWT_SECRET" env-required:"true"`
 	AccessTokenTTL  time.Duration `yaml:"access_token_ttl" env:"ACCESS_TOKEN_TTL" env-default:"15m"`
 	RefreshTokenTTL time.Duration `yaml:"refresh_token_ttl" env:"REFRESH_TOKEN_TTL" env-default:"168h"`
+	SessionTTL      time.Duration `yaml:"session_ttl" env:"SESSION_TTL" env-default:"168h"`
+	Issuer          string        `yaml:"issuer" env:"JWT_ISSUER" env-default:"modernauth"`
+}
+
+// LockoutConfig holds account lockout configuration.
+type LockoutConfig struct {
+	MaxAttempts     int           `yaml:"max_attempts" env:"LOCKOUT_MAX_ATTEMPTS" env-default:"5"`
+	LockoutWindow   time.Duration `yaml:"lockout_window" env:"LOCKOUT_WINDOW" env-default:"15m"`
+	LockoutDuration time.Duration `yaml:"lockout_duration" env:"LOCKOUT_DURATION" env-default:"30m"`
 }
 
 func Load() (*Config, error) {

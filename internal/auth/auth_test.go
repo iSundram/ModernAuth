@@ -166,6 +166,30 @@ func (m *MockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit
 	return result[start:end], nil
 }
 
+func (m *MockStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) UpdateMFASettings(ctx context.Context, settings *storage.MFASettings) error {
+	return nil
+}
+
+func (m *MockStorage) CreateVerificationToken(ctx context.Context, token *storage.VerificationToken) error {
+	return nil
+}
+
+func (m *MockStorage) GetVerificationTokenByHash(ctx context.Context, tokenHash string, tokenType string) (*storage.VerificationToken, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) MarkVerificationTokenUsed(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *MockStorage) DeleteExpiredVerificationTokens(ctx context.Context) error {
+	return nil
+}
+
 func setupTestAuthService() (*AuthService, *MockStorage) {
 	mockStorage := NewMockStorage()
 	tokenConfig := &TokenConfig{

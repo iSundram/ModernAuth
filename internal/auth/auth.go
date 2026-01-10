@@ -558,3 +558,254 @@ func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest
 		TokenPair: tokenPair,
 	}, nil
 }
+
+// Email Verification Constants
+const (
+	TokenTypeEmailVerification = "email_verification"
+	TokenTypePasswordReset     = "password_reset"
+	VerificationTokenTTL       = 24 * time.Hour
+	PasswordResetTokenTTL      = 1 * time.Hour
+)
+
+var (
+	// ErrTokenNotFound indicates the verification token was not found.
+	ErrTokenNotFound = errors.New("token not found")
+	// ErrTokenExpired indicates the verification token has expired.
+	ErrTokenExpired = errors.New("token has expired")
+	// ErrTokenUsed indicates the verification token has already been used.
+	ErrTokenUsed = errors.New("token has already been used")
+)
+
+// SendEmailVerificationRequest represents a request to send email verification.
+type SendEmailVerificationRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// SendEmailVerificationResult contains the verification token (for testing/development).
+type SendEmailVerificationResult struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// SendEmailVerification creates a verification token for email verification.
+// In production, this would send an email. Here we return the token for the caller to handle.
+func (s *AuthService) SendEmailVerification(ctx context.Context, userID uuid.UUID) (*SendEmailVerificationResult, error) {
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	// Generate a secure token
+	token, err := utils.GenerateRandomString(32)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(VerificationTokenTTL)
+
+	verificationToken := &storage.VerificationToken{
+		ID:        uuid.New(),
+		UserID:    userID,
+		TokenHash: utils.HashToken(token),
+		TokenType: TokenTypeEmailVerification,
+		ExpiresAt: expiresAt,
+		CreatedAt: now,
+	}
+
+	if err := s.storage.CreateVerificationToken(ctx, verificationToken); err != nil {
+		return nil, err
+	}
+
+	s.logAuditEvent(ctx, &userID, nil, "email_verification.sent", nil, nil, nil)
+
+	return &SendEmailVerificationResult{
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}, nil
+}
+
+// VerifyEmailRequest represents a request to verify an email.
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// VerifyEmail verifies a user's email using the verification token.
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+	tokenHash := utils.HashToken(token)
+
+	verificationToken, err := s.storage.GetVerificationTokenByHash(ctx, tokenHash, TokenTypeEmailVerification)
+	if err != nil {
+		return err
+	}
+	if verificationToken == nil {
+		return ErrTokenNotFound
+	}
+
+	if verificationToken.UsedAt != nil {
+		return ErrTokenUsed
+	}
+
+	if time.Now().After(verificationToken.ExpiresAt) {
+		return ErrTokenExpired
+	}
+
+	// Mark email as verified
+	user, err := s.storage.GetUserByID(ctx, verificationToken.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	user.IsEmailVerified = true
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	// Mark token as used
+	if err := s.storage.MarkVerificationTokenUsed(ctx, verificationToken.ID); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &user.ID, nil, "email_verification.verified", nil, nil, nil)
+
+	return nil
+}
+
+// RequestPasswordResetRequest represents a request to reset password.
+type RequestPasswordResetRequest struct {
+	Email string `json:"email"`
+}
+
+// RequestPasswordResetResult contains the reset token (for testing/development).
+type RequestPasswordResetResult struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// RequestPasswordReset creates a password reset token.
+// In production, this would send an email. Here we return the token for the caller to handle.
+func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) (*RequestPasswordResetResult, error) {
+	user, err := s.storage.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		// Don't reveal if user exists - return success anyway
+		s.logger.Info("Password reset requested for non-existent user", "email", email)
+		return nil, nil
+	}
+
+	// Generate a secure token
+	token, err := utils.GenerateRandomString(32)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(PasswordResetTokenTTL)
+
+	verificationToken := &storage.VerificationToken{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		TokenHash: utils.HashToken(token),
+		TokenType: TokenTypePasswordReset,
+		ExpiresAt: expiresAt,
+		CreatedAt: now,
+	}
+
+	if err := s.storage.CreateVerificationToken(ctx, verificationToken); err != nil {
+		return nil, err
+	}
+
+	s.logAuditEvent(ctx, &user.ID, nil, "password_reset.requested", nil, nil, nil)
+
+	return &RequestPasswordResetResult{
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}, nil
+}
+
+// ResetPasswordRequest represents a request to reset password with token.
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// ResetPassword resets a user's password using a reset token.
+func (s *AuthService) ResetPassword(ctx context.Context, req *ResetPasswordRequest) error {
+	tokenHash := utils.HashToken(req.Token)
+
+	verificationToken, err := s.storage.GetVerificationTokenByHash(ctx, tokenHash, TokenTypePasswordReset)
+	if err != nil {
+		return err
+	}
+	if verificationToken == nil {
+		return ErrTokenNotFound
+	}
+
+	if verificationToken.UsedAt != nil {
+		return ErrTokenUsed
+	}
+
+	if time.Now().After(verificationToken.ExpiresAt) {
+		return ErrTokenExpired
+	}
+
+	// Get the user
+	user, err := s.storage.GetUserByID(ctx, verificationToken.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Hash the new password
+	hashedPassword, err := utils.HashPassword(req.NewPassword, nil)
+	if err != nil {
+		return err
+	}
+
+	user.HashedPassword = hashedPassword
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	// Mark token as used
+	if err := s.storage.MarkVerificationTokenUsed(ctx, verificationToken.ID); err != nil {
+		return err
+	}
+
+	// Revoke all existing sessions for security
+	if err := s.storage.RevokeUserSessions(ctx, user.ID); err != nil {
+		s.logger.Error("Failed to revoke user sessions after password reset", "error", err, "user_id", user.ID)
+	}
+
+	s.logAuditEvent(ctx, &user.ID, nil, "password_reset.completed", nil, nil, nil)
+
+	return nil
+}
+
+// RevokeAllSessionsRequest represents a request to revoke all user sessions.
+type RevokeAllSessionsRequest struct {
+	UserID    uuid.UUID `json:"user_id"`
+	IP        string    `json:"-"`
+	UserAgent string    `json:"-"`
+}
+
+// RevokeAllSessions revokes all sessions for a user.
+func (s *AuthService) RevokeAllSessions(ctx context.Context, req *RevokeAllSessionsRequest) error {
+	if err := s.storage.RevokeUserSessions(ctx, req.UserID); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &req.UserID, nil, "sessions.revoke_all", &req.IP, &req.UserAgent, nil)
+
+	return nil
+}

@@ -68,7 +68,7 @@ func main() {
 
 	// Initialize token service
 	tokenConfig := &auth.TokenConfig{
-		Issuer:          "modernauth",
+		Issuer:          cfg.Auth.Issuer,
 		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
 		RefreshTokenTTL: cfg.Auth.RefreshTokenTTL,
 		SigningKey:      []byte(cfg.Auth.JWTSecret),
@@ -76,11 +76,22 @@ func main() {
 	}
 	tokenService := auth.NewTokenService(tokenConfig)
 
+	// Initialize account lockout
+	lockoutConfig := &auth.LockoutConfig{
+		MaxAttempts:     cfg.Lockout.MaxAttempts,
+		LockoutWindow:   cfg.Lockout.LockoutWindow,
+		LockoutDuration: cfg.Lockout.LockoutDuration,
+	}
+	accountLockout := auth.NewAccountLockout(rdb, lockoutConfig)
+
+	// Initialize token blacklist
+	tokenBlacklist := auth.NewTokenBlacklist(rdb)
+
 	// Initialize auth service
-	authService := auth.NewAuthService(storage, tokenService, 7*24*time.Hour)
+	authService := auth.NewAuthService(storage, tokenService, cfg.Auth.SessionTTL)
 
 	// Initialize HTTP handler
-	handler := httpapi.NewHandler(authService, tokenService, rdb)
+	handler := httpapi.NewHandler(authService, tokenService, rdb, accountLockout, tokenBlacklist)
 	router := handler.Router()
 
 	// Create HTTP server

@@ -47,6 +47,12 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip rate limiting if Redis is not configured
+			if h.rdb == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ip := r.RemoteAddr
 			// Handle cases where RemoteAddr includes port
 			if lastColon := len(ip) - 1; lastColon >= 0 {

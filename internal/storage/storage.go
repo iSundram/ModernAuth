@@ -63,6 +63,17 @@ type MFASettings struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+// VerificationToken represents an email verification or password reset token.
+type VerificationToken struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	TokenHash string    `json:"-"`
+	TokenType string    `json:"token_type"` // "email_verification" or "password_reset"
+	ExpiresAt time.Time `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Storage defines the interface for data persistence.
 type Storage interface {
 	UserStorage
@@ -70,6 +81,7 @@ type Storage interface {
 	RefreshTokenStorage
 	AuditLogStorage
 	MFAStorage
+	VerificationTokenStorage
 }
 
 // UserStorage defines user-related storage operations.
@@ -107,4 +119,12 @@ type AuditLogStorage interface {
 type MFAStorage interface {
 	GetMFASettings(ctx context.Context, userID uuid.UUID) (*MFASettings, error)
 	UpdateMFASettings(ctx context.Context, settings *MFASettings) error
+}
+
+// VerificationTokenStorage defines verification token storage operations.
+type VerificationTokenStorage interface {
+	CreateVerificationToken(ctx context.Context, token *VerificationToken) error
+	GetVerificationTokenByHash(ctx context.Context, tokenHash string, tokenType string) (*VerificationToken, error)
+	MarkVerificationTokenUsed(ctx context.Context, id uuid.UUID) error
+	DeleteExpiredVerificationTokens(ctx context.Context) error
 }

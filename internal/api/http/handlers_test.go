@@ -170,6 +170,30 @@ func (m *mockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit
 	return result[start:end], nil
 }
 
+func (m *mockStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) UpdateMFASettings(ctx context.Context, settings *storage.MFASettings) error {
+	return nil
+}
+
+func (m *mockStorage) CreateVerificationToken(ctx context.Context, token *storage.VerificationToken) error {
+	return nil
+}
+
+func (m *mockStorage) GetVerificationTokenByHash(ctx context.Context, tokenHash string, tokenType string) (*storage.VerificationToken, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) MarkVerificationTokenUsed(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) DeleteExpiredVerificationTokens(ctx context.Context) error {
+	return nil
+}
+
 func setupTestHandler() *Handler {
 	ms := newMockStorage()
 	tokenConfig := &auth.TokenConfig{
@@ -181,7 +205,7 @@ func setupTestHandler() *Handler {
 	}
 	tokenService := auth.NewTokenService(tokenConfig)
 	authService := auth.NewAuthService(ms, tokenService, 24*time.Hour)
-	return NewHandler(authService, tokenService)
+	return NewHandler(authService, tokenService, nil, nil, nil)
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -197,7 +221,7 @@ func TestHealthCheck(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var response map[string]string
+	var response map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}

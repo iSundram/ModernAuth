@@ -18,19 +18,23 @@ import (
 
 // Handler provides HTTP handlers for the authentication API.
 type Handler struct {
-	authService  *auth.AuthService
-	tokenService *auth.TokenService
-	rdb          *redis.Client
-	logger       *slog.Logger
+	authService    *auth.AuthService
+	tokenService   *auth.TokenService
+	rdb            *redis.Client
+	accountLockout *auth.AccountLockout
+	tokenBlacklist *auth.TokenBlacklist
+	logger         *slog.Logger
 }
 
 // NewHandler creates a new HTTP handler.
-func NewHandler(authService *auth.AuthService, tokenService *auth.TokenService, rdb *redis.Client) *Handler {
+func NewHandler(authService *auth.AuthService, tokenService *auth.TokenService, rdb *redis.Client, accountLockout *auth.AccountLockout, tokenBlacklist *auth.TokenBlacklist) *Handler {
 	return &Handler{
-		authService:  authService,
-		tokenService: tokenService,
-		rdb:          rdb,
-		logger:       slog.Default().With("component", "http_handler"),
+		authService:    authService,
+		tokenService:   tokenService,
+		rdb:            rdb,
+		accountLockout: accountLockout,
+		tokenBlacklist: tokenBlacklist,
+		logger:         slog.Default().With("component", "http_handler"),
 	}
 }
 
@@ -61,6 +65,17 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
 			r.With(h.Auth).Post("/logout", h.Logout)
 
+			// Email Verification
+			r.With(h.RateLimit(5, time.Hour)).Post("/verify-email", h.VerifyEmail)
+			r.With(h.Auth).Post("/send-verification", h.SendVerificationEmail)
+
+			// Password Reset
+			r.With(h.RateLimit(5, time.Hour)).Post("/forgot-password", h.ForgotPassword)
+			r.With(h.RateLimit(5, time.Hour)).Post("/reset-password", h.ResetPassword)
+
+			// Session Management (Protected)
+			r.With(h.Auth).Post("/revoke-all-sessions", h.RevokeAllSessions)
+
 			// MFA Management (Protected)
 			r.Group(func(r chi.Router) {
 				r.Use(h.Auth)
@@ -81,9 +96,9 @@ type ErrorResponse struct {
 
 // RegisterRequest represents the register request body.
 type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Username string `json:"username,omitempty"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8,max=128"`
+	Username string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
 }
 
 // RegisterResponse represents the register response.
@@ -111,10 +126,33 @@ type TokensResponse struct {
 
 // HealthCheck handles health check requests.
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	response := map[string]string{
-		"status": "healthy",
+	ctx := r.Context()
+	
+	// Check Redis connectivity
+	redisStatus := "healthy"
+	if h.rdb != nil {
+		if err := h.rdb.Ping(ctx).Err(); err != nil {
+			redisStatus = "unhealthy"
+			h.logger.Warn("Redis health check failed", "error", err)
+		}
+	} else {
+		redisStatus = "not_configured"
 	}
-	writeJSON(w, http.StatusOK, response)
+
+	status := "healthy"
+	statusCode := http.StatusOK
+	if redisStatus == "unhealthy" {
+		status = "degraded"
+		statusCode = http.StatusServiceUnavailable
+	}
+
+	response := map[string]interface{}{
+		"status": status,
+		"services": map[string]string{
+			"redis": redisStatus,
+		},
+	}
+	writeJSON(w, statusCode, response)
 }
 
 // Register handles user registration.
@@ -125,17 +163,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
-	if req.Email == "" {
-		h.writeError(w, http.StatusBadRequest, "Email is required", nil)
-		return
-	}
-	if req.Password == "" {
-		h.writeError(w, http.StatusBadRequest, "Password is required", nil)
-		return
-	}
-	if len(req.Password) < 8 {
-		h.writeError(w, http.StatusBadRequest, "Password must be at least 8 characters", nil)
+	// Validate request using validator
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
 		return
 	}
 
@@ -176,8 +209,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 // LoginRequest represents the login request body.
 type LoginRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
+	Email       string `json:"email" validate:"required,email"`
+	Password    string `json:"password" validate:"required"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
@@ -195,14 +228,29 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
-	if req.Email == "" {
-		h.writeError(w, http.StatusBadRequest, "Email is required", nil)
+	// Validate request using validator
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
 		return
 	}
-	if req.Password == "" {
-		h.writeError(w, http.StatusBadRequest, "Password is required", nil)
-		return
+
+	// Check account lockout
+	if h.accountLockout != nil {
+		locked, remaining, err := h.accountLockout.IsLocked(r.Context(), req.Email)
+		if err != nil {
+			h.logger.Error("Failed to check account lockout", "error", err)
+		} else if locked {
+			authFailureTotal.WithLabelValues("login", "account_locked").Inc()
+			writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+				"error":          "Account temporarily locked",
+				"message":        "Too many failed login attempts. Please try again later.",
+				"retry_after_seconds": int(remaining.Seconds()),
+			})
+			return
+		}
 	}
 
 	result, err := h.authService.Login(r.Context(), &auth.LoginRequest{
@@ -214,15 +262,40 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		// Record failed attempt for lockout
+		if h.accountLockout != nil && (err == auth.ErrInvalidCredentials || err == auth.ErrUserNotFound) {
+			locked, lockErr := h.accountLockout.RecordFailedAttempt(r.Context(), req.Email)
+			if lockErr != nil {
+				h.logger.Error("Failed to record failed attempt", "error", lockErr)
+			}
+			if locked {
+				authFailureTotal.WithLabelValues("login", "account_locked").Inc()
+				writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+					"error":   "Account temporarily locked",
+					"message": "Too many failed login attempts. Please try again later.",
+				})
+				return
+			}
+		}
+
 		switch err {
 		case auth.ErrInvalidCredentials:
+			authFailureTotal.WithLabelValues("login", "invalid_credentials").Inc()
 			h.writeError(w, http.StatusUnauthorized, "Invalid email or password", err)
 		case auth.ErrUserNotFound:
+			authFailureTotal.WithLabelValues("login", "invalid_credentials").Inc()
 			h.writeError(w, http.StatusUnauthorized, "Invalid email or password", err)
 		default:
 			h.writeError(w, http.StatusInternalServerError, "Login failed", err)
 		}
 		return
+	}
+
+	// Clear failed attempts on successful login
+	if h.accountLockout != nil {
+		if err := h.accountLockout.ClearFailedAttempts(r.Context(), req.Email); err != nil {
+			h.logger.Error("Failed to clear failed attempts", "error", err)
+		}
 	}
 
 	if result.MFARequired {
@@ -256,8 +329,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // LoginMFARequest represents the login MFA request body.
 type LoginMFARequest struct {
-	UserID      string `json:"user_id"`
-	Code        string `json:"code"`
+	UserID      string `json:"user_id" validate:"required,uuid"`
+	Code        string `json:"code" validate:"required,len=6"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
@@ -266,6 +339,15 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	var req LoginMFARequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	// Validate request using validator
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
 		return
 	}
 
@@ -339,7 +421,7 @@ func (h *Handler) SetupMFA(w http.ResponseWriter, r *http.Request) {
 
 // EnableMFARequest represents the enable MFA request body.
 type EnableMFARequest struct {
-	Code string `json:"code"`
+	Code string `json:"code" validate:"required,len=6"`
 }
 
 // EnableMFA handles enabling MFA for a user.
@@ -350,6 +432,15 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 	var req EnableMFARequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	// Validate request using validator
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
 		return
 	}
 
@@ -373,7 +464,7 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 
 // RefreshRequest represents the refresh request body.
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // RefreshResponse represents the refresh response.
@@ -392,8 +483,12 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.RefreshToken == "" {
-		h.writeError(w, http.StatusBadRequest, "Refresh token is required", nil)
+	// Validate request using validator
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
 		return
 	}
 
@@ -512,4 +607,170 @@ func (h *Handler) writeError(w http.ResponseWriter, status int, message string, 
 		Error:   http.StatusText(status),
 		Message: message,
 	})
+}
+
+// VerifyEmailRequest represents the verify email request body.
+type VerifyEmailHTTPRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
+// VerifyEmail handles email verification.
+func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req VerifyEmailHTTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	err := h.authService.VerifyEmail(r.Context(), req.Token)
+	if err != nil {
+		switch err {
+		case auth.ErrTokenNotFound:
+			h.writeError(w, http.StatusNotFound, "Invalid verification token", err)
+		case auth.ErrTokenExpired:
+			h.writeError(w, http.StatusGone, "Verification token has expired", err)
+		case auth.ErrTokenUsed:
+			h.writeError(w, http.StatusConflict, "Verification token has already been used", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "Email verification failed", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Email verified successfully"})
+}
+
+// SendVerificationEmail handles sending verification emails.
+func (h *Handler) SendVerificationEmail(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.Context().Value(userIDKey).(string)
+	userID, _ := uuid.Parse(userIDStr)
+
+	result, err := h.authService.SendEmailVerification(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to send verification email", err)
+		return
+	}
+
+	// In production, you would send an email here and not return the token
+	// For development/testing, we return the token
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message":    "Verification email sent",
+		"expires_at": result.ExpiresAt.Format(time.RFC3339),
+		// Remove this in production:
+		"token": result.Token,
+	})
+}
+
+// ForgotPasswordRequest represents the forgot password request body.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ForgotPassword handles password reset requests.
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req ForgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	result, err := h.authService.RequestPasswordReset(r.Context(), req.Email)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to process password reset request", err)
+		return
+	}
+
+	// Always return success to prevent email enumeration
+	response := map[string]interface{}{
+		"message": "If an account exists with that email, a password reset link has been sent",
+	}
+	
+	// In production, you would send an email here and not return the token
+	// For development/testing, we return the token if user exists
+	if result != nil {
+		response["expires_at"] = result.ExpiresAt.Format(time.RFC3339)
+		// Remove this in production:
+		response["token"] = result.Token
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// ResetPasswordHTTPRequest represents the reset password request body.
+type ResetPasswordHTTPRequest struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8,max=128"`
+}
+
+// ResetPassword handles password reset.
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordHTTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	err := h.authService.ResetPassword(r.Context(), &auth.ResetPasswordRequest{
+		Token:       req.Token,
+		NewPassword: req.NewPassword,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrTokenNotFound:
+			h.writeError(w, http.StatusNotFound, "Invalid reset token", err)
+		case auth.ErrTokenExpired:
+			h.writeError(w, http.StatusGone, "Reset token has expired", err)
+		case auth.ErrTokenUsed:
+			h.writeError(w, http.StatusConflict, "Reset token has already been used", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "Password reset failed", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Password reset successfully"})
+}
+
+// RevokeAllSessions handles revoking all user sessions.
+func (h *Handler) RevokeAllSessions(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.Context().Value(userIDKey).(string)
+	userID, _ := uuid.Parse(userIDStr)
+
+	err := h.authService.RevokeAllSessions(r.Context(), &auth.RevokeAllSessionsRequest{
+		UserID:    userID,
+		IP:        r.RemoteAddr,
+		UserAgent: r.UserAgent(),
+	})
+
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to revoke sessions", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "All sessions revoked successfully"})
 }
