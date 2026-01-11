@@ -13,6 +13,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 ## Features
 
 - **Go-Native**: Built with Go 1.23+ following Clean Architecture.
+- **Multi-tenancy**: Built-in support for isolated tenants (organizations) with custom settings and domains.
 - **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
 - **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords.
@@ -38,6 +39,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - Go 1.23+
 - Docker & Docker Compose
 - Make
+- PostgreSQL client (psql) for migrations
 
 ### Using the Makefile
 
@@ -50,12 +52,54 @@ cp .env.example .env
 # Start database and redis
 make docker-up
 
+# Run migrations
+./scripts/migrate.sh up
+
+# Create admin account (interactive)
+./scripts/seed_admin.sh
+
 # Build and run the server
 make run
 
 # Run tests
 make test
 ```
+
+### Database Migrations
+
+The `migrate.sh` script manages database schema migrations:
+
+```bash
+# Apply all pending migrations
+./scripts/migrate.sh up
+
+# Rollback last migration
+./scripts/migrate.sh down
+
+# Check migration status
+./scripts/migrate.sh status
+
+# Reset database (rollback all migrations)
+./scripts/migrate.sh reset
+```
+
+The script automatically reads database credentials from:
+1. `.env` file (if exists)
+2. `docker-compose.yml` (fallback)
+
+### Creating Admin Account
+
+Use the interactive seed script to create your first admin user:
+
+```bash
+./scripts/seed_admin.sh
+```
+
+This will:
+- Read database credentials from `.env` or `docker-compose.yml`
+- Prompt for admin email and password
+- Hash the password using Argon2id
+- Create the user with admin role assigned
 
 ### Metrics
 

@@ -3,20 +3,27 @@
 /cmd/auth-server              # Main application entrypoint
 /internal
   /api/http                   # HTTP handlers and middleware
-    handlers.go               # REST endpoint handlers
+    handlers_auth.go          # Auth (login, register, MFA)
+    handlers_users.go         # User management
+    handlers_tenant.go        # Multi-tenancy
+    handlers_admin.go         # Admin & roles
+    router.go                 # Chi router configuration
     middleware.go             # Auth, RBAC, rate limiting middleware
     metrics.go                # Prometheus metrics
+    types.go                  # API request/response types
     validator.go              # Request validation
   /auth                       # Core authentication logic
     auth.go                   # AuthService (register, login, RBAC, etc.)
     tokens.go                 # TokenService (JWT generation/validation)
     blacklist.go              # Token blacklisting via Redis
     lockout.go                # Account lockout logic
+  /tenant                     # Multi-tenancy logic
+    tenant.go                 # Tenant service
   /config                     # Configuration loading
   /storage                    # Storage interfaces
-    storage.go                # Interface definitions (incl. RBAC)
+    storage.go                # Interface definitions
     /pg                       # PostgreSQL implementation
-      postgres.go             # User, session, token, RBAC storage
+      postgres.go             # Storage implementation
   /utils                      # Utilities
     crypto.go                 # Password hashing, token generation
 /docs                         # Documentation
@@ -24,7 +31,8 @@
   000001_init.up.sql          # Initial schema
   000002_add_mfa.up.sql       # MFA tables
   000003_add_verification_tokens.up.sql  # Verification tokens
-  000004_add_rbac.up.sql      # RBAC tables (roles, permissions)
+  000004_add_rbac.up.sql      # RBAC tables
+  000005_add_tenants.up.sql    # Multi-tenancy tables
 ```
 
 ## Key Files

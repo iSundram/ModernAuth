@@ -14,9 +14,15 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	httpapi "github.com/iSundram/ModernAuth/internal/api/http"
+	"github.com/iSundram/ModernAuth/internal/apikey"
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/config"
+	"github.com/iSundram/ModernAuth/internal/device"
+	"github.com/iSundram/ModernAuth/internal/email"
+	"github.com/iSundram/ModernAuth/internal/invitation"
 	"github.com/iSundram/ModernAuth/internal/storage/pg"
+	"github.com/iSundram/ModernAuth/internal/tenant"
+	"github.com/iSundram/ModernAuth/internal/webhook"
 )
 
 func main() {
@@ -90,17 +96,61 @@ func main() {
 	// Initialize auth service
 	authService := auth.NewAuthService(storage, tokenService, cfg.Auth.SessionTTL)
 
+	// Initialize email service
+	emailService := email.NewConsoleService()
+
+	// Initialize tenant service
+	tenantService := tenant.NewService(storage)
+
+	// Initialize device service
+	deviceService := device.NewService(storage, storage, emailService)
+
+	// Initialize API key service
+	apiKeyService := apikey.NewService(storage)
+
+	// Initialize webhook service
+	webhookService := webhook.NewService(storage)
+
+	// Initialize invitation service
+	invitationService := invitation.NewService(storage, storage, emailService, &invitation.Config{
+		BaseURL: cfg.App.BaseURL, // Use config value, defaults handled in service
+	})
+
 	// Initialize HTTP handler
 	handler := httpapi.NewHandler(authService, tokenService, rdb, accountLockout, tokenBlacklist)
+	
+	// Set database pool for health checks
+	handler.SetDBPool(pool)
+	
+	// Configure CORS
+	if len(cfg.App.CORSOrigins) > 0 {
+		handler.SetCORSOrigins(cfg.App.CORSOrigins)
+	}
+
+	// Initialize specialized handlers
+	tenantHandler := httpapi.NewTenantHandler(tenantService)
+	deviceHandler := httpapi.NewDeviceHandler(deviceService)
+	apiKeyHandler := httpapi.NewAPIKeyHandler(apiKeyService)
+	webhookHandler := httpapi.NewWebhookHandler(webhookService)
+	invitationHandler := httpapi.NewInvitationHandler(invitationService)
+
+	// Set handlers on main handler
+	handler.SetTenantHandler(tenantHandler)
+	handler.SetDeviceHandler(deviceHandler)
+	handler.SetAPIKeyHandler(apiKeyHandler)
+	handler.SetWebhookHandler(webhookHandler)
+	handler.SetInvitationHandler(invitationHandler)
+
 	router := handler.Router()
 
 	// Create HTTP server
 	server := &http.Server{
-		Addr:         ":" + cfg.App.Port,
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:           ":" + cfg.App.Port,
+		Handler:        router,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:  15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
 	// Start server in a goroutine

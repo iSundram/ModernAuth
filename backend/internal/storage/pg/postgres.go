@@ -96,14 +96,15 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 	return user, nil
 }
 
-// ListUsers retrieves all users from the database.
-func (s *PostgresStorage) ListUsers(ctx context.Context) ([]*storage.User, error) {
+// ListUsers retrieves users with pagination from the database.
+func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*storage.User, error) {
 	query := `
 		SELECT id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at
 		FROM users
 		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
 	`
-	rows, err := s.pool.Query(ctx, query)
+	rows, err := s.pool.Query(ctx, query, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +130,14 @@ func (s *PostgresStorage) ListUsers(ctx context.Context) ([]*storage.User, error
 	}
 
 	return users, rows.Err()
+}
+
+// CountUsers returns the total count of users.
+func (s *PostgresStorage) CountUsers(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM users`
+	var count int
+	err := s.pool.QueryRow(ctx, query).Scan(&count)
+	return count, err
 }
 
 // UpdateUser updates an existing user.
@@ -617,4 +626,857 @@ func (s *PostgresStorage) UserHasPermission(ctx context.Context, userID uuid.UUI
 	var exists bool
 	err := s.pool.QueryRow(ctx, query, userID, permissionName).Scan(&exists)
 	return exists, err
+}
+
+// ============================================================================
+// TenantStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) CreateTenant(ctx context.Context, tenant *storage.Tenant) error {
+	query := `
+		INSERT INTO tenants (id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		tenant.ID, tenant.Name, tenant.Slug, tenant.Domain, tenant.LogoURL,
+		tenant.Settings, tenant.Plan, tenant.IsActive, tenant.CreatedAt, tenant.UpdatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetTenantByID(ctx context.Context, id uuid.UUID) (*storage.Tenant, error) {
+	query := `
+		SELECT id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at
+		FROM tenants WHERE id = $1
+	`
+	tenant := &storage.Tenant{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.LogoURL,
+		&tenant.Settings, &tenant.Plan, &tenant.IsActive, &tenant.CreatedAt, &tenant.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return tenant, nil
+}
+
+func (s *PostgresStorage) GetTenantBySlug(ctx context.Context, slug string) (*storage.Tenant, error) {
+	query := `
+		SELECT id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at
+		FROM tenants WHERE slug = $1
+	`
+	tenant := &storage.Tenant{}
+	err := s.pool.QueryRow(ctx, query, slug).Scan(
+		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.LogoURL,
+		&tenant.Settings, &tenant.Plan, &tenant.IsActive, &tenant.CreatedAt, &tenant.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return tenant, nil
+}
+
+func (s *PostgresStorage) GetTenantByDomain(ctx context.Context, domain string) (*storage.Tenant, error) {
+	query := `
+		SELECT id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at
+		FROM tenants WHERE domain = $1
+	`
+	tenant := &storage.Tenant{}
+	err := s.pool.QueryRow(ctx, query, domain).Scan(
+		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.LogoURL,
+		&tenant.Settings, &tenant.Plan, &tenant.IsActive, &tenant.CreatedAt, &tenant.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return tenant, nil
+}
+
+func (s *PostgresStorage) ListTenants(ctx context.Context, limit, offset int) ([]*storage.Tenant, error) {
+	query := `
+		SELECT id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at
+		FROM tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2
+	`
+	rows, err := s.pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenants []*storage.Tenant
+	for rows.Next() {
+		tenant := &storage.Tenant{}
+		err := rows.Scan(
+			&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Domain, &tenant.LogoURL,
+			&tenant.Settings, &tenant.Plan, &tenant.IsActive, &tenant.CreatedAt, &tenant.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tenants = append(tenants, tenant)
+	}
+	return tenants, rows.Err()
+}
+
+func (s *PostgresStorage) UpdateTenant(ctx context.Context, tenant *storage.Tenant) error {
+	query := `
+		UPDATE tenants
+		SET name = $2, slug = $3, domain = $4, logo_url = $5, settings = $6, plan = $7, is_active = $8, updated_at = $9
+		WHERE id = $1
+	`
+	tenant.UpdatedAt = time.Now()
+	_, err := s.pool.Exec(ctx, query,
+		tenant.ID, tenant.Name, tenant.Slug, tenant.Domain, tenant.LogoURL,
+		tenant.Settings, tenant.Plan, tenant.IsActive, tenant.UpdatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) DeleteTenant(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM tenants WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (s *PostgresStorage) ListTenantUsers(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
+	query := `
+		SELECT id, tenant_id, email, phone, username, first_name, last_name, avatar_url, hashed_password,
+		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, password_changed_at,
+		       created_at, updated_at
+		FROM users WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*storage.User
+	for rows.Next() {
+		user := &storage.User{}
+		err := rows.Scan(
+			&user.ID, &user.TenantID, &user.Email, &user.Phone, &user.Username,
+			&user.FirstName, &user.LastName, &user.AvatarURL, &user.HashedPassword,
+			&user.IsEmailVerified, &user.IsActive, &user.Timezone, &user.Locale, &user.Metadata,
+			&user.LastLoginAt, &user.PasswordChangedAt, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (s *PostgresStorage) CountTenantUsers(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE tenant_id = $1`
+	var count int
+	err := s.pool.QueryRow(ctx, query, tenantID).Scan(&count)
+	return count, err
+}
+
+// ============================================================================
+// DeviceStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) CreateDevice(ctx context.Context, device *storage.UserDevice) error {
+	query := `
+		INSERT INTO user_devices (id, user_id, device_fingerprint, device_name, device_type, browser, browser_version,
+		                          os, os_version, ip_address, location_country, location_city, is_trusted, is_current,
+		                          last_seen_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		device.ID, device.UserID, device.DeviceFingerprint, device.DeviceName, device.DeviceType,
+		device.Browser, device.BrowserVersion, device.OS, device.OSVersion, device.IPAddress,
+		device.LocationCountry, device.LocationCity, device.IsTrusted, device.IsCurrent,
+		device.LastSeenAt, device.CreatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetDeviceByID(ctx context.Context, id uuid.UUID) (*storage.UserDevice, error) {
+	query := `
+		SELECT id, user_id, device_fingerprint, device_name, device_type, browser, browser_version,
+		       os, os_version, ip_address, location_country, location_city, is_trusted, is_current,
+		       last_seen_at, created_at
+		FROM user_devices WHERE id = $1
+	`
+	device := &storage.UserDevice{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&device.ID, &device.UserID, &device.DeviceFingerprint, &device.DeviceName, &device.DeviceType,
+		&device.Browser, &device.BrowserVersion, &device.OS, &device.OSVersion, &device.IPAddress,
+		&device.LocationCountry, &device.LocationCity, &device.IsTrusted, &device.IsCurrent,
+		&device.LastSeenAt, &device.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return device, nil
+}
+
+func (s *PostgresStorage) GetDeviceByFingerprint(ctx context.Context, userID uuid.UUID, fingerprint string) (*storage.UserDevice, error) {
+	query := `
+		SELECT id, user_id, device_fingerprint, device_name, device_type, browser, browser_version,
+		       os, os_version, ip_address, location_country, location_city, is_trusted, is_current,
+		       last_seen_at, created_at
+		FROM user_devices WHERE user_id = $1 AND device_fingerprint = $2
+	`
+	device := &storage.UserDevice{}
+	err := s.pool.QueryRow(ctx, query, userID, fingerprint).Scan(
+		&device.ID, &device.UserID, &device.DeviceFingerprint, &device.DeviceName, &device.DeviceType,
+		&device.Browser, &device.BrowserVersion, &device.OS, &device.OSVersion, &device.IPAddress,
+		&device.LocationCountry, &device.LocationCity, &device.IsTrusted, &device.IsCurrent,
+		&device.LastSeenAt, &device.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return device, nil
+}
+
+func (s *PostgresStorage) ListUserDevices(ctx context.Context, userID uuid.UUID) ([]*storage.UserDevice, error) {
+	query := `
+		SELECT id, user_id, device_fingerprint, device_name, device_type, browser, browser_version,
+		       os, os_version, ip_address, location_country, location_city, is_trusted, is_current,
+		       last_seen_at, created_at
+		FROM user_devices WHERE user_id = $1 ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+	`
+	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []*storage.UserDevice
+	for rows.Next() {
+		device := &storage.UserDevice{}
+		err := rows.Scan(
+			&device.ID, &device.UserID, &device.DeviceFingerprint, &device.DeviceName, &device.DeviceType,
+			&device.Browser, &device.BrowserVersion, &device.OS, &device.OSVersion, &device.IPAddress,
+			&device.LocationCountry, &device.LocationCity, &device.IsTrusted, &device.IsCurrent,
+			&device.LastSeenAt, &device.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		devices = append(devices, device)
+	}
+	return devices, rows.Err()
+}
+
+func (s *PostgresStorage) UpdateDevice(ctx context.Context, device *storage.UserDevice) error {
+	query := `
+		UPDATE user_devices
+		SET device_name = $2, device_type = $3, browser = $4, browser_version = $5, os = $6, os_version = $7,
+		    ip_address = $8, location_country = $9, location_city = $10, is_trusted = $11, is_current = $12,
+		    last_seen_at = $13
+		WHERE id = $1
+	`
+	_, err := s.pool.Exec(ctx, query,
+		device.ID, device.DeviceName, device.DeviceType, device.Browser, device.BrowserVersion,
+		device.OS, device.OSVersion, device.IPAddress, device.LocationCountry, device.LocationCity,
+		device.IsTrusted, device.IsCurrent, device.LastSeenAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) DeleteDevice(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM user_devices WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (s *PostgresStorage) TrustDevice(ctx context.Context, id uuid.UUID, trusted bool) error {
+	query := `UPDATE user_devices SET is_trusted = $2 WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id, trusted)
+	return err
+}
+
+func (s *PostgresStorage) CreateLoginHistory(ctx context.Context, history *storage.LoginHistory) error {
+	query := `
+		INSERT INTO login_history (id, user_id, tenant_id, session_id, device_id, ip_address, user_agent,
+		                          location_country, location_city, login_method, status, failure_reason, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		history.ID, history.UserID, history.TenantID, history.SessionID, history.DeviceID,
+		history.IPAddress, history.UserAgent, history.LocationCountry, history.LocationCity,
+		history.LoginMethod, history.Status, history.FailureReason, history.CreatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetLoginHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*storage.LoginHistory, error) {
+	query := `
+		SELECT id, user_id, tenant_id, session_id, device_id, ip_address, user_agent,
+		       location_country, location_city, login_method, status, failure_reason, created_at
+		FROM login_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []*storage.LoginHistory
+	for rows.Next() {
+		h := &storage.LoginHistory{}
+		err := rows.Scan(
+			&h.ID, &h.UserID, &h.TenantID, &h.SessionID, &h.DeviceID,
+			&h.IPAddress, &h.UserAgent, &h.LocationCountry, &h.LocationCity,
+			&h.LoginMethod, &h.Status, &h.FailureReason, &h.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		history = append(history, h)
+	}
+	return history, rows.Err()
+}
+
+// ============================================================================
+// APIKeyStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) CreateAPIKey(ctx context.Context, key *storage.APIKey) error {
+	query := `
+		INSERT INTO api_keys (id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes,
+		                      rate_limit, allowed_ips, expires_at, last_used_at, last_used_ip, is_active,
+		                      created_at, revoked_at, revoked_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		key.ID, key.TenantID, key.UserID, key.Name, key.Description, key.KeyPrefix, key.KeyHash,
+		key.Scopes, key.RateLimit, key.AllowedIPs, key.ExpiresAt, key.LastUsedAt, key.LastUsedIP,
+		key.IsActive, key.CreatedAt, key.RevokedAt, key.RevokedBy,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetAPIKeyByID(ctx context.Context, id uuid.UUID) (*storage.APIKey, error) {
+	query := `
+		SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+		       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+		FROM api_keys WHERE id = $1
+	`
+	key := &storage.APIKey{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&key.ID, &key.TenantID, &key.UserID, &key.Name, &key.Description, &key.KeyPrefix, &key.KeyHash,
+		&key.Scopes, &key.RateLimit, &key.AllowedIPs, &key.ExpiresAt, &key.LastUsedAt, &key.LastUsedIP,
+		&key.IsActive, &key.CreatedAt, &key.RevokedAt, &key.RevokedBy,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return key, nil
+}
+
+func (s *PostgresStorage) GetAPIKeyByHash(ctx context.Context, keyHash string) (*storage.APIKey, error) {
+	query := `
+		SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+		       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+		FROM api_keys WHERE key_hash = $1
+	`
+	key := &storage.APIKey{}
+	err := s.pool.QueryRow(ctx, query, keyHash).Scan(
+		&key.ID, &key.TenantID, &key.UserID, &key.Name, &key.Description, &key.KeyPrefix, &key.KeyHash,
+		&key.Scopes, &key.RateLimit, &key.AllowedIPs, &key.ExpiresAt, &key.LastUsedAt, &key.LastUsedIP,
+		&key.IsActive, &key.CreatedAt, &key.RevokedAt, &key.RevokedBy,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return key, nil
+}
+
+func (s *PostgresStorage) ListAPIKeys(ctx context.Context, userID *uuid.UUID, tenantID *uuid.UUID, limit, offset int) ([]*storage.APIKey, error) {
+	var query string
+	var args []interface{}
+	
+	if userID != nil && tenantID != nil {
+		query = `
+			SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+			       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+			FROM api_keys WHERE user_id = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4
+		`
+		args = []interface{}{*userID, *tenantID, limit, offset}
+	} else if userID != nil {
+		query = `
+			SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+			       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+			FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+		`
+		args = []interface{}{*userID, limit, offset}
+	} else if tenantID != nil {
+		query = `
+			SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+			       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+			FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+		`
+		args = []interface{}{*tenantID, limit, offset}
+	} else {
+		query = `
+			SELECT id, tenant_id, user_id, name, description, key_prefix, key_hash, scopes, rate_limit,
+			       allowed_ips, expires_at, last_used_at, last_used_ip, is_active, created_at, revoked_at, revoked_by
+			FROM api_keys ORDER BY created_at DESC LIMIT $1 OFFSET $2
+		`
+		args = []interface{}{limit, offset}
+	}
+	
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []*storage.APIKey
+	for rows.Next() {
+		key := &storage.APIKey{}
+		err := rows.Scan(
+			&key.ID, &key.TenantID, &key.UserID, &key.Name, &key.Description, &key.KeyPrefix, &key.KeyHash,
+			&key.Scopes, &key.RateLimit, &key.AllowedIPs, &key.ExpiresAt, &key.LastUsedAt, &key.LastUsedIP,
+			&key.IsActive, &key.CreatedAt, &key.RevokedAt, &key.RevokedBy,
+		)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func (s *PostgresStorage) UpdateAPIKey(ctx context.Context, key *storage.APIKey) error {
+	query := `
+		UPDATE api_keys
+		SET name = $2, description = $3, scopes = $4, rate_limit = $5, allowed_ips = $6, expires_at = $7,
+		    is_active = $8
+		WHERE id = $1
+	`
+	_, err := s.pool.Exec(ctx, query,
+		key.ID, key.Name, key.Description, key.Scopes, key.RateLimit, key.AllowedIPs,
+		key.ExpiresAt, key.IsActive,
+	)
+	return err
+}
+
+func (s *PostgresStorage) RevokeAPIKey(ctx context.Context, id uuid.UUID, revokedBy *uuid.UUID) error {
+	query := `UPDATE api_keys SET is_active = false, revoked_at = now(), revoked_by = $2 WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id, revokedBy)
+	return err
+}
+
+func (s *PostgresStorage) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID, ip string) error {
+	query := `UPDATE api_keys SET last_used_at = now(), last_used_ip = $2 WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id, ip)
+	return err
+}
+
+// ============================================================================
+// WebhookStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) CreateWebhook(ctx context.Context, webhook *storage.Webhook) error {
+	query := `
+		INSERT INTO webhooks (id, tenant_id, name, description, url, secret, events, headers, is_active,
+		                      retry_count, timeout_seconds, created_by, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		webhook.ID, webhook.TenantID, webhook.Name, webhook.Description, webhook.URL, webhook.Secret,
+		webhook.Events, webhook.Headers, webhook.IsActive, webhook.RetryCount, webhook.TimeoutSeconds,
+		webhook.CreatedBy, webhook.CreatedAt, webhook.UpdatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetWebhookByID(ctx context.Context, id uuid.UUID) (*storage.Webhook, error) {
+	query := `
+		SELECT id, tenant_id, name, description, url, secret, events, headers, is_active, retry_count,
+		       timeout_seconds, created_by, created_at, updated_at
+		FROM webhooks WHERE id = $1
+	`
+	webhook := &storage.Webhook{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&webhook.ID, &webhook.TenantID, &webhook.Name, &webhook.Description, &webhook.URL, &webhook.Secret,
+		&webhook.Events, &webhook.Headers, &webhook.IsActive, &webhook.RetryCount, &webhook.TimeoutSeconds,
+		&webhook.CreatedBy, &webhook.CreatedAt, &webhook.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return webhook, nil
+}
+
+func (s *PostgresStorage) ListWebhooks(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.Webhook, error) {
+	var query string
+	var args []interface{}
+	
+	if tenantID != nil {
+		query = `
+			SELECT id, tenant_id, name, description, url, secret, events, headers, is_active, retry_count,
+			       timeout_seconds, created_by, created_at, updated_at
+			FROM webhooks WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+		`
+		args = []interface{}{*tenantID, limit, offset}
+	} else {
+		query = `
+			SELECT id, tenant_id, name, description, url, secret, events, headers, is_active, retry_count,
+			       timeout_seconds, created_by, created_at, updated_at
+			FROM webhooks ORDER BY created_at DESC LIMIT $1 OFFSET $2
+		`
+		args = []interface{}{limit, offset}
+	}
+	
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var webhooks []*storage.Webhook
+	for rows.Next() {
+		webhook := &storage.Webhook{}
+		err := rows.Scan(
+			&webhook.ID, &webhook.TenantID, &webhook.Name, &webhook.Description, &webhook.URL, &webhook.Secret,
+			&webhook.Events, &webhook.Headers, &webhook.IsActive, &webhook.RetryCount, &webhook.TimeoutSeconds,
+			&webhook.CreatedBy, &webhook.CreatedAt, &webhook.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		webhooks = append(webhooks, webhook)
+	}
+	return webhooks, rows.Err()
+}
+
+func (s *PostgresStorage) ListWebhooksByEvent(ctx context.Context, tenantID *uuid.UUID, eventType string) ([]*storage.Webhook, error) {
+	var query string
+	var args []interface{}
+	
+	if tenantID != nil {
+		query = `
+			SELECT id, tenant_id, name, description, url, secret, events, headers, is_active, retry_count,
+			       timeout_seconds, created_by, created_at, updated_at
+			FROM webhooks WHERE tenant_id = $1 AND is_active = true AND $2 = ANY(events)
+		`
+		args = []interface{}{*tenantID, eventType}
+	} else {
+		query = `
+			SELECT id, tenant_id, name, description, url, secret, events, headers, is_active, retry_count,
+			       timeout_seconds, created_by, created_at, updated_at
+			FROM webhooks WHERE is_active = true AND $1 = ANY(events)
+		`
+		args = []interface{}{eventType}
+	}
+	
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var webhooks []*storage.Webhook
+	for rows.Next() {
+		webhook := &storage.Webhook{}
+		err := rows.Scan(
+			&webhook.ID, &webhook.TenantID, &webhook.Name, &webhook.Description, &webhook.URL, &webhook.Secret,
+			&webhook.Events, &webhook.Headers, &webhook.IsActive, &webhook.RetryCount, &webhook.TimeoutSeconds,
+			&webhook.CreatedBy, &webhook.CreatedAt, &webhook.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		webhooks = append(webhooks, webhook)
+	}
+	return webhooks, rows.Err()
+}
+
+func (s *PostgresStorage) UpdateWebhook(ctx context.Context, webhook *storage.Webhook) error {
+	query := `
+		UPDATE webhooks
+		SET name = $2, description = $3, url = $4, events = $5, headers = $6, is_active = $7,
+		    retry_count = $8, timeout_seconds = $9, updated_at = $10
+		WHERE id = $1
+	`
+	webhook.UpdatedAt = time.Now()
+	_, err := s.pool.Exec(ctx, query,
+		webhook.ID, webhook.Name, webhook.Description, webhook.URL, webhook.Events, webhook.Headers,
+		webhook.IsActive, webhook.RetryCount, webhook.TimeoutSeconds, webhook.UpdatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) DeleteWebhook(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM webhooks WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (s *PostgresStorage) CreateWebhookDelivery(ctx context.Context, delivery *storage.WebhookDelivery) error {
+	query := `
+		INSERT INTO webhook_deliveries (id, webhook_id, event_id, event_type, payload, response_status_code,
+		                               response_time_ms, attempt_number, status, error_message, next_retry_at,
+		                               created_at, completed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		delivery.ID, delivery.WebhookID, delivery.EventID, delivery.EventType, delivery.Payload,
+		delivery.ResponseStatusCode, delivery.ResponseTimeMs, delivery.AttemptNumber, delivery.Status,
+		delivery.ErrorMessage, delivery.NextRetryAt, delivery.CreatedAt, delivery.CompletedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) UpdateWebhookDelivery(ctx context.Context, delivery *storage.WebhookDelivery) error {
+	query := `
+		UPDATE webhook_deliveries
+		SET response_status_code = $2, response_time_ms = $3, attempt_number = $4, status = $5,
+		    error_message = $6, next_retry_at = $7, completed_at = $8
+		WHERE id = $1
+	`
+	_, err := s.pool.Exec(ctx, query,
+		delivery.ID, delivery.ResponseStatusCode, delivery.ResponseTimeMs, delivery.AttemptNumber,
+		delivery.Status, delivery.ErrorMessage, delivery.NextRetryAt, delivery.CompletedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetPendingDeliveries(ctx context.Context, limit int) ([]*storage.WebhookDelivery, error) {
+	query := `
+		SELECT id, webhook_id, event_id, event_type, payload, response_status_code, response_time_ms,
+		       attempt_number, status, error_message, next_retry_at, created_at, completed_at
+		FROM webhook_deliveries
+		WHERE status IN ('pending', 'retrying') AND (next_retry_at IS NULL OR next_retry_at <= now())
+		ORDER BY created_at ASC LIMIT $1
+	`
+	rows, err := s.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deliveries []*storage.WebhookDelivery
+	for rows.Next() {
+		delivery := &storage.WebhookDelivery{}
+		err := rows.Scan(
+			&delivery.ID, &delivery.WebhookID, &delivery.EventID, &delivery.EventType, &delivery.Payload,
+			&delivery.ResponseStatusCode, &delivery.ResponseTimeMs, &delivery.AttemptNumber, &delivery.Status,
+			&delivery.ErrorMessage, &delivery.NextRetryAt, &delivery.CreatedAt, &delivery.CompletedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	return deliveries, rows.Err()
+}
+
+func (s *PostgresStorage) GetWebhookDeliveries(ctx context.Context, webhookID uuid.UUID, limit, offset int) ([]*storage.WebhookDelivery, error) {
+	query := `
+		SELECT id, webhook_id, event_id, event_type, payload, response_status_code, response_time_ms,
+		       attempt_number, status, error_message, next_retry_at, created_at, completed_at
+		FROM webhook_deliveries WHERE webhook_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, webhookID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deliveries []*storage.WebhookDelivery
+	for rows.Next() {
+		delivery := &storage.WebhookDelivery{}
+		err := rows.Scan(
+			&delivery.ID, &delivery.WebhookID, &delivery.EventID, &delivery.EventType, &delivery.Payload,
+			&delivery.ResponseStatusCode, &delivery.ResponseTimeMs, &delivery.AttemptNumber, &delivery.Status,
+			&delivery.ErrorMessage, &delivery.NextRetryAt, &delivery.CreatedAt, &delivery.CompletedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	return deliveries, rows.Err()
+}
+
+// ============================================================================
+// InvitationStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) CreateInvitation(ctx context.Context, invitation *storage.UserInvitation) error {
+	query := `
+		INSERT INTO user_invitations (id, tenant_id, email, first_name, last_name, role_ids, group_ids,
+		                              token_hash, invited_by, message, expires_at, accepted_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		invitation.ID, invitation.TenantID, invitation.Email, invitation.FirstName, invitation.LastName,
+		invitation.RoleIDs, invitation.GroupIDs, invitation.TokenHash, invitation.InvitedBy,
+		invitation.Message, invitation.ExpiresAt, invitation.AcceptedAt, invitation.CreatedAt,
+	)
+	return err
+}
+
+func (s *PostgresStorage) GetInvitationByID(ctx context.Context, id uuid.UUID) (*storage.UserInvitation, error) {
+	query := `
+		SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+		       message, expires_at, accepted_at, created_at
+		FROM user_invitations WHERE id = $1
+	`
+	invitation := &storage.UserInvitation{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&invitation.ID, &invitation.TenantID, &invitation.Email, &invitation.FirstName, &invitation.LastName,
+		&invitation.RoleIDs, &invitation.GroupIDs, &invitation.TokenHash, &invitation.InvitedBy,
+		&invitation.Message, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return invitation, nil
+}
+
+func (s *PostgresStorage) GetInvitationByToken(ctx context.Context, tokenHash string) (*storage.UserInvitation, error) {
+	query := `
+		SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+		       message, expires_at, accepted_at, created_at
+		FROM user_invitations WHERE token_hash = $1
+	`
+	invitation := &storage.UserInvitation{}
+	err := s.pool.QueryRow(ctx, query, tokenHash).Scan(
+		&invitation.ID, &invitation.TenantID, &invitation.Email, &invitation.FirstName, &invitation.LastName,
+		&invitation.RoleIDs, &invitation.GroupIDs, &invitation.TokenHash, &invitation.InvitedBy,
+		&invitation.Message, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return invitation, nil
+}
+
+func (s *PostgresStorage) GetInvitationByEmail(ctx context.Context, tenantID *uuid.UUID, email string) (*storage.UserInvitation, error) {
+	var query string
+	var args []interface{}
+	
+	if tenantID != nil {
+		query = `
+			SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+			       message, expires_at, accepted_at, created_at
+			FROM user_invitations WHERE tenant_id = $1 AND email = $2 AND accepted_at IS NULL
+			ORDER BY created_at DESC LIMIT 1
+		`
+		args = []interface{}{*tenantID, email}
+	} else {
+		query = `
+			SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+			       message, expires_at, accepted_at, created_at
+			FROM user_invitations WHERE tenant_id IS NULL AND email = $1 AND accepted_at IS NULL
+			ORDER BY created_at DESC LIMIT 1
+		`
+		args = []interface{}{email}
+	}
+	
+	invitation := &storage.UserInvitation{}
+	err := s.pool.QueryRow(ctx, query, args...).Scan(
+		&invitation.ID, &invitation.TenantID, &invitation.Email, &invitation.FirstName, &invitation.LastName,
+		&invitation.RoleIDs, &invitation.GroupIDs, &invitation.TokenHash, &invitation.InvitedBy,
+		&invitation.Message, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return invitation, nil
+}
+
+func (s *PostgresStorage) ListInvitations(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.UserInvitation, error) {
+	var query string
+	var args []interface{}
+	
+	if tenantID != nil {
+		query = `
+			SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+			       message, expires_at, accepted_at, created_at
+			FROM user_invitations WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
+		`
+		args = []interface{}{*tenantID, limit, offset}
+	} else {
+		query = `
+			SELECT id, tenant_id, email, first_name, last_name, role_ids, group_ids, token_hash, invited_by,
+			       message, expires_at, accepted_at, created_at
+			FROM user_invitations WHERE tenant_id IS NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2
+		`
+		args = []interface{}{limit, offset}
+	}
+	
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var invitations []*storage.UserInvitation
+	for rows.Next() {
+		invitation := &storage.UserInvitation{}
+		err := rows.Scan(
+			&invitation.ID, &invitation.TenantID, &invitation.Email, &invitation.FirstName, &invitation.LastName,
+			&invitation.RoleIDs, &invitation.GroupIDs, &invitation.TokenHash, &invitation.InvitedBy,
+			&invitation.Message, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		invitations = append(invitations, invitation)
+	}
+	return invitations, rows.Err()
+}
+
+func (s *PostgresStorage) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE user_invitations SET accepted_at = now() WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (s *PostgresStorage) DeleteInvitation(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM user_invitations WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (s *PostgresStorage) DeleteExpiredInvitations(ctx context.Context) error {
+	query := `DELETE FROM user_invitations WHERE expires_at < now() AND accepted_at IS NULL`
+	_, err := s.pool.Exec(ctx, query)
+	return err
 }

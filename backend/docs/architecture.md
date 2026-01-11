@@ -34,6 +34,10 @@
 - **TokenBlacklist**: Immediate token revocation via Redis
 - **RBAC**: Role and permission management
 
+### Tenant Service (`/internal/tenant`)
+- **Service**: Core multi-tenancy logic (tenant creation, isolation, settings)
+- **Middleware**: Tenant identification from domain or headers
+
 ### Storage Layer (`/internal/storage`)
 - **Interfaces**: Clean separation between business logic and data access
 - **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens, roles, permissions

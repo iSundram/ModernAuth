@@ -62,6 +62,16 @@ Query parameters for `/v1/audit/logs`:
 | POST | `/v1/admin/users/{id}/roles` | Assign role to user |
 | DELETE | `/v1/admin/users/{id}/roles/{roleId}` | Remove role from user |
 
+### Tenant Management (requires `admin` role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/tenants` | List all tenants |
+| POST | `/v1/tenants` | Create a new tenant |
+| GET | `/v1/tenants/{id}` | Get tenant details |
+| PUT | `/v1/tenants/{id}` | Update tenant settings |
+| DELETE | `/v1/tenants/{id}` | Delete a tenant |
+| GET | `/v1/tenants/{id}/users` | List users in a tenant |
+
 ### Health & Metrics
 | Method | Endpoint | Description |
 |--------|----------|-------------|
