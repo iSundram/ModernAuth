@@ -17,6 +17,15 @@ const (
 	sessionIDKey contextKey = "session_id"
 )
 
+// getUserIDFromContext safely extracts user ID from context.
+func getUserIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	userIDStr, ok := ctx.Value(userIDKey).(string)
+	if !ok || userIDStr == "" {
+		return uuid.Nil, fmt.Errorf("user ID not found in context")
+	}
+	return uuid.Parse(userIDStr)
+}
+
 // Auth middleware validates the JWT access token and adds user information to the context.
 func (h *Handler) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +45,18 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 		if err != nil {
 			h.writeError(w, http.StatusUnauthorized, "Invalid or expired token", err)
 			return
+		}
+
+		// Check if token is blacklisted
+		if h.tokenBlacklist != nil {
+			blacklisted, err := h.tokenBlacklist.IsBlacklisted(r.Context(), tokenString)
+			if err != nil {
+				h.logger.Error("Failed to check token blacklist", "error", err)
+				// Continue if blacklist check fails (fail open for availability)
+			} else if blacklisted {
+				h.writeError(w, http.StatusUnauthorized, "Token has been revoked", nil)
+				return
+			}
 		}
 
 		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)

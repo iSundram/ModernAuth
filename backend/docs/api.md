@@ -33,8 +33,59 @@
 |--------|----------|-------------|
 | POST | `/v1/auth/mfa/setup` | Setup TOTP MFA (requires auth) |
 | POST | `/v1/auth/mfa/enable` | Enable TOTP MFA (requires auth) |
+| POST | `/v1/auth/mfa/disable` | Disable TOTP MFA (requires auth) |
+| POST | `/v1/auth/mfa/backup-codes` | Generate new backup codes (requires auth) |
+| GET | `/v1/auth/mfa/backup-codes/count` | Get remaining backup code count (requires auth) |
+| POST | `/v1/auth/login/mfa/backup` | Login using a backup code |
 
-### User Management (requires permissions)
+### Device & Session Management (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/devices` | List all registered devices |
+| GET | `/v1/devices/{id}` | Get device details |
+| DELETE | `/v1/devices/{id}` | Remove/Logout a device |
+| POST | `/v1/devices/{id}/trust` | Mark device as trusted |
+| DELETE | `/v1/devices/{id}/trust` | Remove trust from device |
+| GET | `/v1/sessions/history` | Get login history for current user |
+
+### API Key Management (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/api-keys` | List user's API keys |
+| POST | `/v1/api-keys` | Create a new API key (shows raw key once) |
+| GET | `/v1/api-keys/{id}` | Get API key metadata |
+| DELETE | `/v1/api-keys/{id}` | Revoke an API key |
+| POST | `/v1/api-keys/{id}/rotate` | Rotate API key (revokes old, creates new) |
+
+### Webhook Management (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/webhooks` | List configured webhooks |
+| POST | `/v1/webhooks` | Create a new webhook subscription |
+| GET | `/v1/webhooks/{id}` | Get webhook details |
+| PUT | `/v1/webhooks/{id}` | Update webhook configuration |
+| DELETE | `/v1/webhooks/{id}` | Delete a webhook |
+| GET | `/v1/webhooks/{id}/deliveries` | Get webhook delivery history |
+
+### Invitation Management (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/invitations` | List all invitations |
+| POST | `/v1/invitations` | Create and send a new invitation |
+| GET | `/v1/invitations/{id}` | Get invitation details |
+| DELETE | `/v1/invitations/{id}` | Revoke an invitation |
+| POST | `/v1/invitations/{id}/resend` | Resend invitation email |
+| POST | `/v1/invitations/public/validate` | Validate invitation token (public) |
+| POST | `/v1/invitations/public/accept` | Accept invitation & create account (public) |
+
+### OAuth2 Social Login
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/oauth/providers` | List available social providers |
+| GET | `/v1/oauth/{provider}/authorize` | Get authorization URL for provider |
+| GET | `/v1/oauth/{provider}/callback` | OAuth callback endpoint |
+
+### Health & Metrics
 | Method | Endpoint | Permission | Description |
 |--------|----------|------------|-------------|
 | GET | `/v1/users` | `users:read` | List all users |

@@ -70,14 +70,28 @@ func (m *MockStorage) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (m *MockStorage) ListUsers(ctx context.Context) ([]*storage.User, error) {
+func (m *MockStorage) ListUsers(ctx context.Context, limit, offset int) ([]*storage.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	users := make([]*storage.User, 0, len(m.users))
 	for _, user := range m.users {
 		users = append(users, user)
 	}
-	return users, nil
+	// Apply simple pagination
+	if offset > len(users) {
+		return []*storage.User{}, nil
+	}
+	end := offset + limit
+	if end > len(users) {
+		end = len(users)
+	}
+	return users[offset:end], nil
+}
+
+func (m *MockStorage) CountUsers(ctx context.Context) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.users), nil
 }
 
 func (m *MockStorage) CreateSession(ctx context.Context, session *storage.Session) error {
@@ -239,6 +253,145 @@ func (m *MockStorage) GetUserPermissions(ctx context.Context, userID uuid.UUID) 
 
 func (m *MockStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
 	return false, nil
+}
+
+// TenantStorage mock implementations
+func (m *MockStorage) CreateTenant(ctx context.Context, tenant *storage.Tenant) error {
+	return nil
+}
+func (m *MockStorage) GetTenantByID(ctx context.Context, id uuid.UUID) (*storage.Tenant, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetTenantBySlug(ctx context.Context, slug string) (*storage.Tenant, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetTenantByDomain(ctx context.Context, domain string) (*storage.Tenant, error) {
+	return nil, nil
+}
+func (m *MockStorage) ListTenants(ctx context.Context, limit, offset int) ([]*storage.Tenant, error) {
+	return []*storage.Tenant{}, nil
+}
+func (m *MockStorage) UpdateTenant(ctx context.Context, tenant *storage.Tenant) error {
+	return nil
+}
+func (m *MockStorage) DeleteTenant(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) ListTenantUsers(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
+	return []*storage.User{}, nil
+}
+func (m *MockStorage) CountTenantUsers(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+// DeviceStorage mock implementations
+func (m *MockStorage) CreateDevice(ctx context.Context, device *storage.UserDevice) error {
+	return nil
+}
+func (m *MockStorage) GetDeviceByID(ctx context.Context, id uuid.UUID) (*storage.UserDevice, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetDeviceByFingerprint(ctx context.Context, userID uuid.UUID, fingerprint string) (*storage.UserDevice, error) {
+	return nil, nil
+}
+func (m *MockStorage) ListUserDevices(ctx context.Context, userID uuid.UUID) ([]*storage.UserDevice, error) {
+	return []*storage.UserDevice{}, nil
+}
+func (m *MockStorage) UpdateDevice(ctx context.Context, device *storage.UserDevice) error {
+	return nil
+}
+func (m *MockStorage) DeleteDevice(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) TrustDevice(ctx context.Context, id uuid.UUID, trusted bool) error {
+	return nil
+}
+func (m *MockStorage) CreateLoginHistory(ctx context.Context, history *storage.LoginHistory) error {
+	return nil
+}
+func (m *MockStorage) GetLoginHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*storage.LoginHistory, error) {
+	return []*storage.LoginHistory{}, nil
+}
+
+// APIKeyStorage mock implementations
+func (m *MockStorage) CreateAPIKey(ctx context.Context, key *storage.APIKey) error {
+	return nil
+}
+func (m *MockStorage) GetAPIKeyByID(ctx context.Context, id uuid.UUID) (*storage.APIKey, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetAPIKeyByHash(ctx context.Context, keyHash string) (*storage.APIKey, error) {
+	return nil, nil
+}
+func (m *MockStorage) ListAPIKeys(ctx context.Context, userID *uuid.UUID, tenantID *uuid.UUID, limit, offset int) ([]*storage.APIKey, error) {
+	return []*storage.APIKey{}, nil
+}
+func (m *MockStorage) UpdateAPIKey(ctx context.Context, key *storage.APIKey) error {
+	return nil
+}
+func (m *MockStorage) RevokeAPIKey(ctx context.Context, id uuid.UUID, revokedBy *uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID, ip string) error {
+	return nil
+}
+
+// WebhookStorage mock implementations
+func (m *MockStorage) CreateWebhook(ctx context.Context, webhook *storage.Webhook) error {
+	return nil
+}
+func (m *MockStorage) GetWebhookByID(ctx context.Context, id uuid.UUID) (*storage.Webhook, error) {
+	return nil, nil
+}
+func (m *MockStorage) ListWebhooks(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.Webhook, error) {
+	return []*storage.Webhook{}, nil
+}
+func (m *MockStorage) ListWebhooksByEvent(ctx context.Context, tenantID *uuid.UUID, eventType string) ([]*storage.Webhook, error) {
+	return []*storage.Webhook{}, nil
+}
+func (m *MockStorage) UpdateWebhook(ctx context.Context, webhook *storage.Webhook) error {
+	return nil
+}
+func (m *MockStorage) DeleteWebhook(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) CreateWebhookDelivery(ctx context.Context, delivery *storage.WebhookDelivery) error {
+	return nil
+}
+func (m *MockStorage) UpdateWebhookDelivery(ctx context.Context, delivery *storage.WebhookDelivery) error {
+	return nil
+}
+func (m *MockStorage) GetPendingDeliveries(ctx context.Context, limit int) ([]*storage.WebhookDelivery, error) {
+	return []*storage.WebhookDelivery{}, nil
+}
+func (m *MockStorage) GetWebhookDeliveries(ctx context.Context, webhookID uuid.UUID, limit, offset int) ([]*storage.WebhookDelivery, error) {
+	return []*storage.WebhookDelivery{}, nil
+}
+
+// InvitationStorage mock implementations
+func (m *MockStorage) CreateInvitation(ctx context.Context, invitation *storage.UserInvitation) error {
+	return nil
+}
+func (m *MockStorage) GetInvitationByID(ctx context.Context, id uuid.UUID) (*storage.UserInvitation, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetInvitationByToken(ctx context.Context, tokenHash string) (*storage.UserInvitation, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetInvitationByEmail(ctx context.Context, tenantID *uuid.UUID, email string) (*storage.UserInvitation, error) {
+	return nil, nil
+}
+func (m *MockStorage) ListInvitations(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.UserInvitation, error) {
+	return []*storage.UserInvitation{}, nil
+}
+func (m *MockStorage) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) DeleteInvitation(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) DeleteExpiredInvitations(ctx context.Context) error {
+	return nil
 }
 
 func setupTestAuthService() (*AuthService, *MockStorage) {

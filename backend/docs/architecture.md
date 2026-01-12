@@ -38,6 +38,15 @@
 - **Service**: Core multi-tenancy logic (tenant creation, isolation, settings)
 - **Middleware**: Tenant identification from domain or headers
 
+### Webhook Engine (`/internal/webhook`)
+- **Delivery**: Asynchronous delivery system using a worker pool.
+- **Retries**: Exponential backoff retry strategy for failed deliveries.
+- **History**: Detailed logs for every delivery attempt.
+
+### API Key Service (`/internal/apikey`)
+- **Validation**: High-performance key validation with optional caching.
+- **Rotation**: Secure key rotation without service interruption.
+
 ### Storage Layer (`/internal/storage`)
 - **Interfaces**: Clean separation between business logic and data access
 - **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens, roles, permissions

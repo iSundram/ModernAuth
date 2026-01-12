@@ -13,12 +13,16 @@ type Config struct {
 	Redis    RedisConfig    `yaml:"redis"`
 	Auth     AuthConfig     `yaml:"auth"`
 	Lockout  LockoutConfig  `yaml:"lockout"`
+	Email    EmailConfig    `yaml:"email"`
+	OAuth    OAuthConfig    `yaml:"oauth"`
 }
 
 type AppConfig struct {
-	Name string `yaml:"name" env:"APP_NAME" env-default:"ModernAuth"`
-	Port string `yaml:"port" env:"PORT" env-default:"8080"`
-	Env  string `yaml:"env" env:"APP_ENV" env-default:"development"`
+	Name         string   `yaml:"name" env:"APP_NAME" env-default:"ModernAuth"`
+	Port         string   `yaml:"port" env:"PORT" env-default:"8080"`
+	Env          string   `yaml:"env" env:"APP_ENV" env-default:"development"`
+	CORSOrigins  []string `yaml:"cors_origins" env:"CORS_ORIGINS" env-default:"*" env-separator:","`
+	BaseURL      string   `yaml:"base_url" env:"APP_BASE_URL" env-default:""`
 }
 
 type DatabaseConfig struct {
@@ -42,6 +46,55 @@ type LockoutConfig struct {
 	MaxAttempts     int           `yaml:"max_attempts" env:"LOCKOUT_MAX_ATTEMPTS" env-default:"5"`
 	LockoutWindow   time.Duration `yaml:"lockout_window" env:"LOCKOUT_WINDOW" env-default:"15m"`
 	LockoutDuration time.Duration `yaml:"lockout_duration" env:"LOCKOUT_DURATION" env-default:"30m"`
+}
+
+// EmailConfig holds email service configuration.
+type EmailConfig struct {
+	Provider     string `yaml:"provider" env:"EMAIL_PROVIDER" env-default:"console"` // console, smtp
+	SMTPHost     string `yaml:"smtp_host" env:"SMTP_HOST" env-default:""`
+	SMTPPort     int    `yaml:"smtp_port" env:"SMTP_PORT" env-default:"587"`
+	SMTPUsername string `yaml:"smtp_username" env:"SMTP_USERNAME" env-default:""`
+	SMTPPassword string `yaml:"smtp_password" env:"SMTP_PASSWORD" env-default:""`
+	FromEmail    string `yaml:"from_email" env:"EMAIL_FROM" env-default:"noreply@modernauth.local"`
+	FromName     string `yaml:"from_name" env:"EMAIL_FROM_NAME" env-default:"ModernAuth"`
+}
+
+// OAuthConfig holds OAuth2 provider configurations.
+type OAuthConfig struct {
+	// Google OAuth
+	GoogleClientID     string `yaml:"google_client_id" env:"OAUTH_GOOGLE_CLIENT_ID" env-default:""`
+	GoogleClientSecret string `yaml:"google_client_secret" env:"OAUTH_GOOGLE_CLIENT_SECRET" env-default:""`
+	
+	// GitHub OAuth
+	GitHubClientID     string `yaml:"github_client_id" env:"OAUTH_GITHUB_CLIENT_ID" env-default:""`
+	GitHubClientSecret string `yaml:"github_client_secret" env:"OAUTH_GITHUB_CLIENT_SECRET" env-default:""`
+	
+	// Microsoft OAuth
+	MicrosoftClientID     string `yaml:"microsoft_client_id" env:"OAUTH_MICROSOFT_CLIENT_ID" env-default:""`
+	MicrosoftClientSecret string `yaml:"microsoft_client_secret" env:"OAUTH_MICROSOFT_CLIENT_SECRET" env-default:""`
+	
+	// Redirect URLs
+	RedirectBaseURL string `yaml:"redirect_base_url" env:"OAUTH_REDIRECT_BASE_URL" env-default:""`
+}
+
+// IsGoogleConfigured returns true if Google OAuth is configured.
+func (c *OAuthConfig) IsGoogleConfigured() bool {
+	return c.GoogleClientID != "" && c.GoogleClientSecret != ""
+}
+
+// IsGitHubConfigured returns true if GitHub OAuth is configured.
+func (c *OAuthConfig) IsGitHubConfigured() bool {
+	return c.GitHubClientID != "" && c.GitHubClientSecret != ""
+}
+
+// IsMicrosoftConfigured returns true if Microsoft OAuth is configured.
+func (c *OAuthConfig) IsMicrosoftConfigured() bool {
+	return c.MicrosoftClientID != "" && c.MicrosoftClientSecret != ""
+}
+
+// IsSMTPConfigured returns true if SMTP email is configured.
+func (c *EmailConfig) IsSMTPConfigured() bool {
+	return c.Provider == "smtp" && c.SMTPHost != ""
 }
 
 func Load() (*Config, error) {

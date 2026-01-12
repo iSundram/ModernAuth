@@ -18,6 +18,8 @@ var (
 	ErrUserNotFound = errors.New("user not found")
 	// ErrUserExists indicates that a user with the given email already exists.
 	ErrUserExists = errors.New("user already exists")
+	// ErrUserInactive indicates that the user account is deactivated.
+	ErrUserInactive = errors.New("user account is deactivated")
 	// ErrInvalidCredentials indicates that the provided credentials are invalid.
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrSessionNotFound indicates that the session was not found.
@@ -100,6 +102,9 @@ func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (*Regi
 		Email:           req.Email,
 		HashedPassword:  hashedPassword,
 		IsEmailVerified: false,
+		IsActive:        true,
+		Timezone:        "UTC",
+		Locale:          "en",
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -182,6 +187,14 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 	}
 	if user == nil {
 		return nil, ErrInvalidCredentials
+	}
+
+	// Check if user account is active
+	if !user.IsActive {
+		s.logAuditEvent(ctx, &user.ID, nil, "login.failed", &req.IP, &req.UserAgent, map[string]interface{}{
+			"reason": "account_inactive",
+		})
+		return nil, ErrUserInactive
 	}
 
 	// Verify the password
@@ -412,9 +425,52 @@ func (s *AuthService) GetUserByID(ctx context.Context, id uuid.UUID) (*storage.U
 	return s.storage.GetUserByID(ctx, id)
 }
 
-// ListUsers retrieves all users.
-func (s *AuthService) ListUsers(ctx context.Context) ([]*storage.User, error) {
-	return s.storage.ListUsers(ctx)
+// ListUsersRequest represents a request to list users with pagination.
+type ListUsersRequest struct {
+	Limit  int
+	Offset int
+}
+
+// ListUsersResult represents the result of listing users.
+type ListUsersResult struct {
+	Users      []*storage.User `json:"users"`
+	Total      int             `json:"total"`
+	Limit      int             `json:"limit"`
+	Offset     int             `json:"offset"`
+	HasMore    bool            `json:"has_more"`
+}
+
+// ListUsers retrieves users with pagination.
+func (s *AuthService) ListUsers(ctx context.Context, limit, offset int) (*ListUsersResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	users, err := s.storage.ListUsers(ctx, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	total, err := s.storage.CountUsers(ctx)
+	if err != nil {
+		// Don't fail if count fails, just set to 0
+		s.logger.Error("Failed to count users", "error", err)
+		total = 0
+	}
+
+	return &ListUsersResult{
+		Users:   users,
+		Total:   total,
+		Limit:   limit,
+		Offset:  offset,
+		HasMore: offset+len(users) < total,
+	}, nil
 }
 
 // SetupTOTPRequest represents a request to setup TOTP.
