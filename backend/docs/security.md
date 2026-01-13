@@ -3,7 +3,13 @@
 ### Password Security
 - **Password Hashing**: Argon2id with secure parameters (64MB memory, 3 iterations, parallelism 2)
 - **Password Requirements**: Minimum 8 characters, maximum 128 characters
+- **Password Strength Validation**: Configurable policies with common password blocking
 - **Password Change**: Authenticated endpoint requiring current password verification
+
+### OAuth2 Social Login
+- **Providers**: Google, GitHub, Microsoft with easy extensibility
+- **Account Linking**: Link multiple social providers to a single user account
+- **Secure State**: CSRF protection via state parameter validation
 
 ### Token Strategy
 - **Access Tokens**: Short-lived JWTs (15 min default), stateless validation

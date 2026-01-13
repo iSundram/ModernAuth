@@ -16,7 +16,10 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **Multi-tenancy**: Built-in support for isolated tenants (organizations) with custom settings and domains.
 - **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
-- **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords.
+- **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords with backup codes.
+- **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers.
+- **SMTP Email Service**: Production-ready email with TLS support and HTML templates.
+- **Password Strength Validation**: Configurable policies with common password blocking.
 - **Email Verification**: Token-based email verification flow.
 - **Password Management**: Secure password reset and change flows.
 - **Account Lockout**: Protection against brute-force attacks with configurable lockout policies.
@@ -149,11 +152,23 @@ go test -bench=. ./internal/auth/...
 |----------|--------|-------------|
 | `/v1/auth/mfa/setup` | POST | Setup TOTP MFA (requires auth) |
 | `/v1/auth/mfa/enable` | POST | Enable TOTP MFA (requires auth) |
+| `/v1/auth/mfa/disable` | POST | Disable MFA (requires auth) |
+| `/v1/auth/mfa/backup-codes` | POST | Generate new backup codes (requires auth) |
+| `/v1/auth/mfa/backup-codes` | GET | Get backup code count (requires auth) |
+| `/v1/auth/login/backup-code` | POST | Login with backup code |
+
+### OAuth2 Social Login
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/oauth/{provider}/authorize` | GET | Get OAuth authorization URL |
+| `/v1/oauth/{provider}/callback` | POST | Handle OAuth callback |
+
+Supported providers: `google`, `github`, `microsoft`
 
 ### User Management (requires `users:*` permissions)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/users` | GET | List all users |
+| `/v1/users` | GET | List all users (supports `?limit=&offset=`) |
 | `/v1/users` | POST | Create a new user |
 | `/v1/users/{id}` | GET | Get user by ID |
 | `/v1/users/{id}` | PUT | Update user |
@@ -201,6 +216,7 @@ ModernAuth includes a built-in RBAC system with:
 
 ## Configuration
 
+### Core Settings
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `PORT` | Server port | `8080` |
@@ -215,6 +231,29 @@ ModernAuth includes a built-in RBAC system with:
 | `LOCKOUT_MAX_ATTEMPTS` | Max failed login attempts | `5` |
 | `LOCKOUT_WINDOW` | Window for counting attempts | `15m` |
 | `LOCKOUT_DURATION` | Lockout duration | `30m` |
+
+### Email (SMTP)
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `SMTP_HOST` | SMTP server hostname | - |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USERNAME` | SMTP username | - |
+| `SMTP_PASSWORD` | SMTP password | - |
+| `SMTP_FROM_EMAIL` | Sender email address | - |
+| `SMTP_FROM_NAME` | Sender display name | `ModernAuth` |
+
+### OAuth2 Providers
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `OAUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
+| `OAUTH_GOOGLE_REDIRECT_URL` | Google OAuth redirect URL | - |
+| `OAUTH_GITHUB_CLIENT_ID` | GitHub OAuth client ID | - |
+| `OAUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret | - |
+| `OAUTH_GITHUB_REDIRECT_URL` | GitHub OAuth redirect URL | - |
+| `OAUTH_MICROSOFT_CLIENT_ID` | Microsoft OAuth client ID | - |
+| `OAUTH_MICROSOFT_CLIENT_SECRET` | Microsoft OAuth client secret | - |
+| `OAUTH_MICROSOFT_REDIRECT_URL` | Microsoft OAuth redirect URL | - |
 
 ## License
 

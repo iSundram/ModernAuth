@@ -33,6 +33,15 @@
 - **AccountLockout**: Brute-force protection with configurable policies
 - **TokenBlacklist**: Immediate token revocation via Redis
 - **RBAC**: Role and permission management
+- **BackupCodes**: MFA backup code generation and verification
+
+### OAuth Service (`/internal/oauth`)
+- **Providers**: Google, GitHub, Microsoft social login support
+- **User Linking**: Link multiple OAuth providers to a single user account
+
+### Email Service (`/internal/email`)
+- **SMTP**: Production-ready SMTP with TLS support (STARTTLS and implicit TLS)
+- **Templates**: HTML email templates for verification, reset, welcome, alerts
 
 ### Tenant Service (`/internal/tenant`)
 - **Service**: Core multi-tenancy logic (tenant creation, isolation, settings)
