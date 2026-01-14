@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Poppins Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* --- User Defined Palette --- */
+  --color-white: #FFFFFF;
+  --color-gray-light: #D4D4D4;
+  --color-gray-medium: #B3B3B3;
+  --color-gray-dark: #2B2B2B;
+
+  /* --- Universal / Status Colors --- */
+  --color-info: #3B82F6;
+  --color-success: #22C55E;
+  --color-warning: #EAB308;
+  --color-error: #EF4444;
+
+  /* --- Mappings --- */
+  --color-primary: var(--color-gray-dark);
+  --color-primary-dark: #1a1a1a;
+  --color-primary-medium: var(--color-gray-medium);
+  --color-primary-light: var(--color-gray-light);
+  
+  --color-background: var(--color-white);
+  --color-surface: var(--color-white);
+  --color-surface-hover: #F5F5F5;
+  
+  --color-text-primary: var(--color-gray-dark);
+  --color-text-secondary: #555555;
+  --color-text-muted: var(--color-gray-medium);
+  --color-text-inverted: var(--color-white);
+
+  --color-border: var(--color-gray-light);
+  --color-border-light: #F0F0F0;
+
+  /* Semantic UI variables */
+  --bg-app: var(--color-background);
+  --bg-sidebar: var(--color-white);
+  --bg-card: var(--color-white);
+  
+  --shadow-color: rgba(0, 0, 0, 0.05);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: 'Poppins', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Component Overrides */
+.sidebar-active {
+  background-color: var(--color-gray-dark) !important;
+  color: white !important;
+}
+
+.sidebar-hover:hover {
+  background-color: var(--color-gray-light) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-light);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-medium);
+}

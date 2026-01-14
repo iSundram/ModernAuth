@@ -1,0 +1,31 @@
+<svg xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="svg45509" viewBox="0 0 1024 768" height="768px" width="1024px" version="1.1">
+  <metadata id="metadata45515">
+    <rdf:rdf>
+      <cc:work rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"></dc:type>
+      </cc:work>
+    </rdf:rdf>
+  </metadata>
+  <defs id="defs45513"></defs>
+  <linearGradient spreadMethod="pad" y2="30%" x2="-10%" y1="120%" x1="30%" id="3d_gradient2-logo-5ba7d240-e271-4356-8c98-02294eaa406b">
+    <stop id="stop45490" stop-opacity="1" stop-color="#ffffff" offset="0%"></stop>
+    <stop id="stop45492" stop-opacity="1" stop-color="#000000" offset="100%"></stop>
+  </linearGradient>
+  <linearGradient gradientTransform="rotate(-30)" spreadMethod="pad" y2="30%" x2="-10%" y1="120%" x1="30%" id="3d_gradient3-logo-5ba7d240-e271-4356-8c98-02294eaa406b">
+    <stop id="stop45495" stop-opacity="1" stop-color="#ffffff" offset="0%"></stop>
+    <stop id="stop45497" stop-opacity="1" stop-color="#cccccc" offset="50%"></stop>
+    <stop id="stop45499" stop-opacity="1" stop-color="#000000" offset="100%"></stop>
+  </linearGradient>
+  <g id="logo-group">
+    <image xlink:href="" id="container" x="272" y="144" width="480" height="480" style="display: none;" transform="translate(0 0)"></image>
+    <g id="logo-center" transform="translate(0 0)">
+      <image xlink:href="" id="icon_container" x="0" y="0" style="display: none;"></image>
+      <g id="slogan" style="font-style:normal;font-weight:700;font-size:32px;line-height:1;font-family:'Maven Pro';font-variant-ligatures:none;text-align:center;text-anchor:middle" transform="translate(0 0)"></g>
+      <g id="title" style="font-style:normal;font-weight:normal;font-size:72px;line-height:1;font-family:'Brandmark Sans 45 Color';font-variant-ligatures:normal;text-align:center;text-anchor:middle" transform="translate(0 0)">
+        <g id="path45518" aria-label="^m" transform="translate(0 492.4) translate(191.60000000000002 -306.4) scale(10) translate(-479.93469 39.6)"> <path class="c3" d="M67.96095,89.91692c0-0.43188,0.28809-0.71997,0.71997-0.71997h5.04053 c0.43188,0,0.71997,0.28809,0.71997,0.71997v31.68286c0,0.43213-0.28809,0.71997-0.71997,0.71997h-5.04053 c-0.43188,0-0.71997-0.28784-0.71997-0.71997V89.91692z" transform="translate(411.97374 -122.31648)" stroke-width="0" stroke-linejoin="miter" stroke-miterlimit="2" fill="#b3b3b3" stroke="#b3b3b3"></path> <path class="c1" d="M74.44142,88.47698v-5.04053c0-0.43213,0.28809-0.71997,0.72021-0.71997h47.30811 c0.57593,0,1.22412,0.28784,1.58398,0.64795l7.34473,7.34473c0.35986,0.36011,0.64795,1.00806,0.64795,1.58423v29.3064 c0,0.43213-0.28809,0.71997-0.71997,0.71997h-5.04053c-0.43188,0-0.71997-0.28784-0.71997-0.71997V91.71722 c0-1.51221-1.00806-2.52026-2.52026-2.52026H75.16164C74.72951,89.19695,74.44142,88.90887,74.44142,88.47698z" transform="translate(411.97374 -122.31648)" stroke-width="0" stroke-linejoin="miter" stroke-miterlimit="2" fill="#2b2b2b" stroke="#2b2b2b"></path> <path class="c3" d="M96.76344,98.55779c0-0.43213,0.28809-0.71997,0.71997-0.71997h5.04053 c0.43213,0,0.71997,0.28784,0.71997,0.71997v23.04199c0,0.43213-0.28784,0.71997-0.71997,0.71997h-5.04053 c-0.43188,0-0.71997-0.28784-0.71997-0.71997V98.55779z" transform="translate(411.97374 -122.31648)" stroke-width="0" stroke-linejoin="miter" stroke-miterlimit="2" fill="#b3b3b3" stroke="#b3b3b3"></path> </g>
+       </g>
+      <image xlink:href="" id="icon" x="0" y="0" style="display: none;"></image>
+    </g>
+  </g>
+</svg>
