@@ -30,6 +30,9 @@ func (h *TenantHandler) TenantRoutes() chi.Router {
 	r.Put("/{id}", h.UpdateTenant)
 	r.Delete("/{id}", h.DeleteTenant)
 	r.Get("/{id}/stats", h.GetTenantStats)
+	r.Get("/{id}/users", h.ListTenantUsers)
+	r.Post("/{id}/users/{userId}", h.AssignUserToTenant)
+	r.Delete("/{id}/users/{userId}", h.RemoveUserFromTenant)
 
 	return r
 }
@@ -277,4 +280,119 @@ func (h *TenantHandler) GetTenantStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, stats)
+}
+
+// ListTenantUsers handles listing users in a tenant.
+func (h *TenantHandler) ListTenantUsers(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	limit, offset := parsePagination(r)
+
+	users, err := h.tenantService.ListTenantUsers(r.Context(), id, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list tenant users", err)
+		return
+	}
+
+	response := make([]TenantUserResponse, len(users))
+	for i, user := range users {
+		response[i] = TenantUserResponse{
+			ID:              user.ID.String(),
+			Email:           user.Email,
+			Username:        user.Username,
+			FirstName:       user.FirstName,
+			LastName:        user.LastName,
+			IsEmailVerified: user.IsEmailVerified,
+			IsActive:        user.IsActive,
+			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data":   response,
+		"limit":  limit,
+		"offset": offset,
+		"count":  len(response),
+	})
+}
+
+// AssignUserToTenant handles assigning a user to a tenant.
+func (h *TenantHandler) AssignUserToTenant(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	userIDStr := chi.URLParam(r, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID", err)
+		return
+	}
+
+	err = h.tenantService.AssignUserToTenant(r.Context(), tenantID, userID)
+	if err != nil {
+		switch err {
+		case tenant.ErrTenantNotFound:
+			writeError(w, http.StatusNotFound, "Tenant not found", err)
+		case tenant.ErrUserNotFound:
+			writeError(w, http.StatusNotFound, "User not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to assign user to tenant", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "User assigned to tenant successfully"})
+}
+
+// RemoveUserFromTenant handles removing a user from a tenant.
+func (h *TenantHandler) RemoveUserFromTenant(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	userIDStr := chi.URLParam(r, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID", err)
+		return
+	}
+
+	err = h.tenantService.RemoveUserFromTenant(r.Context(), tenantID, userID)
+	if err != nil {
+		switch err {
+		case tenant.ErrTenantNotFound:
+			writeError(w, http.StatusNotFound, "Tenant not found", err)
+		case tenant.ErrUserNotFound:
+			writeError(w, http.StatusNotFound, "User not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to remove user from tenant", err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TenantUserResponse represents a user in tenant API responses.
+type TenantUserResponse struct {
+	ID              string  `json:"id"`
+	Email           string  `json:"email"`
+	Username        *string `json:"username,omitempty"`
+	FirstName       *string `json:"first_name,omitempty"`
+	LastName        *string `json:"last_name,omitempty"`
+	IsEmailVerified bool    `json:"is_email_verified"`
+	IsActive        bool    `json:"is_active"`
+	CreatedAt       string  `json:"created_at"`
 }

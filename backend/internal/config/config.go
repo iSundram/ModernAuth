@@ -15,6 +15,7 @@ type Config struct {
 	Lockout  LockoutConfig  `yaml:"lockout"`
 	Email    EmailConfig    `yaml:"email"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
+	Audit    AuditConfig    `yaml:"audit"`
 }
 
 type AppConfig struct {
@@ -75,6 +76,12 @@ type OAuthConfig struct {
 	
 	// Redirect URLs
 	RedirectBaseURL string `yaml:"redirect_base_url" env:"OAUTH_REDIRECT_BASE_URL" env-default:""`
+}
+
+// AuditConfig holds audit log configuration.
+type AuditConfig struct {
+	RetentionPeriod time.Duration `yaml:"retention_period" env:"AUDIT_RETENTION_PERIOD" env-default:"8760h"` // Default: 1 year
+	CleanupInterval time.Duration `yaml:"cleanup_interval" env:"AUDIT_CLEANUP_INTERVAL" env-default:"24h"`   // Default: daily
 }
 
 // IsGoogleConfigured returns true if Google OAuth is configured.

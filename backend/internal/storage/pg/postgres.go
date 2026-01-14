@@ -4,6 +4,8 @@ package pg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,8 +28,8 @@ func NewPostgresStorage(pool *pgxpool.Pool) *PostgresStorage {
 // CreateUser creates a new user in the database.
 func (s *PostgresStorage) CreateUser(ctx context.Context, user *storage.User) error {
 	query := `
-		INSERT INTO users (id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO users (id, email, phone, username, hashed_password, is_email_verified, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := s.pool.Exec(ctx, query,
 		user.ID,
@@ -36,6 +38,7 @@ func (s *PostgresStorage) CreateUser(ctx context.Context, user *storage.User) er
 		user.Username,
 		user.HashedPassword,
 		user.IsEmailVerified,
+		user.IsActive,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
@@ -45,7 +48,9 @@ func (s *PostgresStorage) CreateUser(ctx context.Context, user *storage.User) er
 // GetUserByID retrieves a user by their ID.
 func (s *PostgresStorage) GetUserByID(ctx context.Context, id uuid.UUID) (*storage.User, error) {
 	query := `
-		SELECT id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at
+		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+		       password_changed_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -55,8 +60,17 @@ func (s *PostgresStorage) GetUserByID(ctx context.Context, id uuid.UUID) (*stora
 		&user.Email,
 		&user.Phone,
 		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&user.AvatarURL,
 		&user.HashedPassword,
 		&user.IsEmailVerified,
+		&user.IsActive,
+		&user.Timezone,
+		&user.Locale,
+		&user.Metadata,
+		&user.LastLoginAt,
+		&user.PasswordChangedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -72,7 +86,9 @@ func (s *PostgresStorage) GetUserByID(ctx context.Context, id uuid.UUID) (*stora
 // GetUserByEmail retrieves a user by their email.
 func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*storage.User, error) {
 	query := `
-		SELECT id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at
+		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+		       password_changed_at, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -82,8 +98,17 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 		&user.Email,
 		&user.Phone,
 		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&user.AvatarURL,
 		&user.HashedPassword,
 		&user.IsEmailVerified,
+		&user.IsActive,
+		&user.Timezone,
+		&user.Locale,
+		&user.Metadata,
+		&user.LastLoginAt,
+		&user.PasswordChangedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -99,7 +124,9 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 // ListUsers retrieves users with pagination from the database.
 func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*storage.User, error) {
 	query := `
-		SELECT id, email, phone, username, hashed_password, is_email_verified, created_at, updated_at
+		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+		       password_changed_at, created_at, updated_at
 		FROM users
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -118,8 +145,17 @@ func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*
 			&user.Email,
 			&user.Phone,
 			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
 			&user.HashedPassword,
 			&user.IsEmailVerified,
+			&user.IsActive,
+			&user.Timezone,
+			&user.Locale,
+			&user.Metadata,
+			&user.LastLoginAt,
+			&user.PasswordChangedAt,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -144,17 +180,19 @@ func (s *PostgresStorage) CountUsers(ctx context.Context) (int, error) {
 func (s *PostgresStorage) UpdateUser(ctx context.Context, user *storage.User) error {
 	query := `
 		UPDATE users
-		SET email = $2, phone = $3, username = $4, hashed_password = $5, is_email_verified = $6, updated_at = $7
+		SET tenant_id = $2, email = $3, phone = $4, username = $5, hashed_password = $6, is_email_verified = $7, is_active = $8, updated_at = $9
 		WHERE id = $1
 	`
 	user.UpdatedAt = time.Now()
 	_, err := s.pool.Exec(ctx, query,
 		user.ID,
+		user.TenantID,
 		user.Email,
 		user.Phone,
 		user.Username,
 		user.HashedPassword,
 		user.IsEmailVerified,
+		user.IsActive,
 		user.UpdatedAt,
 	)
 	return err
@@ -170,12 +208,14 @@ func (s *PostgresStorage) DeleteUser(ctx context.Context, id uuid.UUID) error {
 // CreateSession creates a new session.
 func (s *PostgresStorage) CreateSession(ctx context.Context, session *storage.Session) error {
 	query := `
-		INSERT INTO sessions (id, user_id, fingerprint, created_at, expires_at, revoked, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO sessions (id, user_id, tenant_id, device_id, fingerprint, created_at, expires_at, revoked, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := s.pool.Exec(ctx, query,
 		session.ID,
 		session.UserID,
+		session.TenantID,
+		session.DeviceID,
 		session.Fingerprint,
 		session.CreatedAt,
 		session.ExpiresAt,
@@ -188,7 +228,7 @@ func (s *PostgresStorage) CreateSession(ctx context.Context, session *storage.Se
 // GetSessionByID retrieves a session by its ID.
 func (s *PostgresStorage) GetSessionByID(ctx context.Context, id uuid.UUID) (*storage.Session, error) {
 	query := `
-		SELECT id, user_id, fingerprint, created_at, expires_at, revoked, metadata
+		SELECT id, user_id, tenant_id, device_id, fingerprint, created_at, expires_at, revoked, metadata
 		FROM sessions
 		WHERE id = $1
 	`
@@ -196,6 +236,8 @@ func (s *PostgresStorage) GetSessionByID(ctx context.Context, id uuid.UUID) (*st
 	err := s.pool.QueryRow(ctx, query, id).Scan(
 		&session.ID,
 		&session.UserID,
+		&session.TenantID,
+		&session.DeviceID,
 		&session.Fingerprint,
 		&session.CreatedAt,
 		&session.ExpiresAt,
@@ -209,6 +251,44 @@ func (s *PostgresStorage) GetSessionByID(ctx context.Context, id uuid.UUID) (*st
 		return nil, err
 	}
 	return session, nil
+}
+
+// GetUserSessions retrieves active sessions for a user.
+func (s *PostgresStorage) GetUserSessions(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*storage.Session, error) {
+	query := `
+		SELECT id, user_id, tenant_id, device_id, fingerprint, created_at, expires_at, revoked, metadata
+		FROM sessions
+		WHERE user_id = $1 AND revoked = false AND expires_at > now()
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*storage.Session
+	for rows.Next() {
+		session := &storage.Session{}
+		err := rows.Scan(
+			&session.ID,
+			&session.UserID,
+			&session.TenantID,
+			&session.DeviceID,
+			&session.Fingerprint,
+			&session.CreatedAt,
+			&session.ExpiresAt,
+			&session.Revoked,
+			&session.Metadata,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+
+	return sessions, rows.Err()
 }
 
 // RevokeSession revokes a session by its ID.
@@ -302,30 +382,43 @@ func (s *PostgresStorage) CreateAuditLog(ctx context.Context, log *storage.Audit
 	return err
 }
 
-// GetAuditLogs retrieves audit logs with optional user filtering.
-func (s *PostgresStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+// GetAuditLogs retrieves audit logs with optional user and event type filtering.
+func (s *PostgresStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*storage.AuditLog, error) {
 	var query string
 	var rows pgx.Rows
 	var err error
+	var args []interface{}
+	argIndex := 1
 
+	// Build WHERE clause dynamically
+	var conditions []string
 	if userID != nil {
-		query = `
-			SELECT id, user_id, actor_id, event_type, ip, user_agent, data, created_at
-			FROM audit_logs
-			WHERE user_id = $1
-			ORDER BY created_at DESC
-			LIMIT $2 OFFSET $3
-		`
-		rows, err = s.pool.Query(ctx, query, userID, limit, offset)
-	} else {
-		query = `
-			SELECT id, user_id, actor_id, event_type, ip, user_agent, data, created_at
-			FROM audit_logs
-			ORDER BY created_at DESC
-			LIMIT $1 OFFSET $2
-		`
-		rows, err = s.pool.Query(ctx, query, limit, offset)
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", argIndex))
+		args = append(args, *userID)
+		argIndex++
 	}
+	if eventType != nil {
+		conditions = append(conditions, fmt.Sprintf("event_type = $%d", argIndex))
+		args = append(args, *eventType)
+		argIndex++
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Add limit and offset
+	args = append(args, limit, offset)
+	query = fmt.Sprintf(`
+		SELECT id, tenant_id, user_id, actor_id, event_type, ip, user_agent, data, created_at
+		FROM audit_logs
+		%s
+		ORDER BY created_at DESC
+		LIMIT $%d OFFSET $%d
+	`, whereClause, argIndex, argIndex+1)
+
+	rows, err = s.pool.Query(ctx, query, args...)
 
 	if err != nil {
 		return nil, err
@@ -337,6 +430,7 @@ func (s *PostgresStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, l
 		log := &storage.AuditLog{}
 		err := rows.Scan(
 			&log.ID,
+			&log.TenantID,
 			&log.UserID,
 			&log.ActorID,
 			&log.EventType,
@@ -352,6 +446,16 @@ func (s *PostgresStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, l
 	}
 
 	return logs, rows.Err()
+}
+
+// DeleteOldAuditLogs deletes audit logs older than the specified time.
+func (s *PostgresStorage) DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	query := `DELETE FROM audit_logs WHERE created_at < $1`
+	result, err := s.pool.Exec(ctx, query, olderThan)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 // GetMFASettings retrieves MFA settings for a user.
@@ -456,9 +560,9 @@ func (s *PostgresStorage) DeleteExpiredVerificationTokens(ctx context.Context) e
 
 // GetRoleByID retrieves a role by its ID.
 func (s *PostgresStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*storage.Role, error) {
-	query := `SELECT id, name, description, created_at FROM roles WHERE id = $1`
+	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE id = $1`
 	role := &storage.Role{}
-	err := s.pool.QueryRow(ctx, query, id).Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt)
+	err := s.pool.QueryRow(ctx, query, id).Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -470,9 +574,9 @@ func (s *PostgresStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*stora
 
 // GetRoleByName retrieves a role by its name.
 func (s *PostgresStorage) GetRoleByName(ctx context.Context, name string) (*storage.Role, error) {
-	query := `SELECT id, name, description, created_at FROM roles WHERE name = $1`
+	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE name = $1`
 	role := &storage.Role{}
-	err := s.pool.QueryRow(ctx, query, name).Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt)
+	err := s.pool.QueryRow(ctx, query, name).Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -484,7 +588,7 @@ func (s *PostgresStorage) GetRoleByName(ctx context.Context, name string) (*stor
 
 // ListRoles retrieves all roles.
 func (s *PostgresStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
-	query := `SELECT id, name, description, created_at FROM roles ORDER BY name`
+	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles ORDER BY name`
 	rows, err := s.pool.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -494,7 +598,7 @@ func (s *PostgresStorage) ListRoles(ctx context.Context) ([]*storage.Role, error
 	var roles []*storage.Role
 	for rows.Next() {
 		role := &storage.Role{}
-		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt); err != nil {
 			return nil, err
 		}
 		roles = append(roles, role)
@@ -502,10 +606,57 @@ func (s *PostgresStorage) ListRoles(ctx context.Context) ([]*storage.Role, error
 	return roles, rows.Err()
 }
 
+// CreateRole creates a new role.
+func (s *PostgresStorage) CreateRole(ctx context.Context, role *storage.Role) error {
+	query := `
+		INSERT INTO roles (id, tenant_id, name, description, is_system, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := s.pool.Exec(ctx, query,
+		role.ID,
+		role.TenantID,
+		role.Name,
+		role.Description,
+		role.IsSystem,
+		role.CreatedAt,
+	)
+	return err
+}
+
+// UpdateRole updates an existing role.
+func (s *PostgresStorage) UpdateRole(ctx context.Context, role *storage.Role) error {
+	query := `
+		UPDATE roles 
+		SET name = $2, description = $3
+		WHERE id = $1 AND is_system = false
+	`
+	result, err := s.pool.Exec(ctx, query, role.ID, role.Name, role.Description)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteRole deletes a role (only non-system roles).
+func (s *PostgresStorage) DeleteRole(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM roles WHERE id = $1 AND is_system = false`
+	result, err := s.pool.Exec(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // GetUserRoles retrieves all roles assigned to a user.
 func (s *PostgresStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*storage.Role, error) {
 	query := `
-		SELECT r.id, r.name, r.description, r.created_at
+		SELECT r.id, r.tenant_id, r.name, r.description, r.is_system, r.created_at
 		FROM roles r
 		INNER JOIN user_roles ur ON r.id = ur.role_id
 		WHERE ur.user_id = $1
@@ -520,7 +671,7 @@ func (s *PostgresStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([
 	var roles []*storage.Role
 	for rows.Next() {
 		role := &storage.Role{}
-		if err := rows.Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt); err != nil {
 			return nil, err
 		}
 		roles = append(roles, role)
@@ -597,6 +748,72 @@ func (s *PostgresStorage) GetUserPermissions(ctx context.Context, userID uuid.UU
 		ORDER BY p.name
 	`
 	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var perms []*storage.Permission
+	for rows.Next() {
+		perm := &storage.Permission{}
+		if err := rows.Scan(&perm.ID, &perm.Name, &perm.Description, &perm.CreatedAt); err != nil {
+			return nil, err
+		}
+		perms = append(perms, perm)
+	}
+	return perms, rows.Err()
+}
+
+// AssignPermissionToRole assigns a permission to a role.
+func (s *PostgresStorage) AssignPermissionToRole(ctx context.Context, roleID, permissionID uuid.UUID) error {
+	query := `
+		INSERT INTO role_permissions (role_id, permission_id)
+		VALUES ($1, $2)
+		ON CONFLICT (role_id, permission_id) DO NOTHING
+	`
+	_, err := s.pool.Exec(ctx, query, roleID, permissionID)
+	return err
+}
+
+// RemovePermissionFromRole removes a permission from a role.
+func (s *PostgresStorage) RemovePermissionFromRole(ctx context.Context, roleID, permissionID uuid.UUID) error {
+	query := `DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2`
+	_, err := s.pool.Exec(ctx, query, roleID, permissionID)
+	return err
+}
+
+// GetPermissionByID retrieves a permission by its ID.
+func (s *PostgresStorage) GetPermissionByID(ctx context.Context, id uuid.UUID) (*storage.Permission, error) {
+	query := `SELECT id, name, description, created_at FROM permissions WHERE id = $1`
+	perm := &storage.Permission{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(&perm.ID, &perm.Name, &perm.Description, &perm.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return perm, nil
+}
+
+// GetPermissionByName retrieves a permission by its name.
+func (s *PostgresStorage) GetPermissionByName(ctx context.Context, name string) (*storage.Permission, error) {
+	query := `SELECT id, name, description, created_at FROM permissions WHERE name = $1`
+	perm := &storage.Permission{}
+	err := s.pool.QueryRow(ctx, query, name).Scan(&perm.ID, &perm.Name, &perm.Description, &perm.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return perm, nil
+}
+
+// ListPermissions retrieves all permissions.
+func (s *PostgresStorage) ListPermissions(ctx context.Context) ([]*storage.Permission, error) {
+	query := `SELECT id, name, description, created_at FROM permissions ORDER BY name`
+	rows, err := s.pool.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -1478,5 +1695,76 @@ func (s *PostgresStorage) DeleteInvitation(ctx context.Context, id uuid.UUID) er
 func (s *PostgresStorage) DeleteExpiredInvitations(ctx context.Context) error {
 	query := `DELETE FROM user_invitations WHERE expires_at < now() AND accepted_at IS NULL`
 	_, err := s.pool.Exec(ctx, query)
+	return err
+}
+
+// ============================================================================
+// SystemSettingsStorage methods
+// ============================================================================
+
+func (s *PostgresStorage) GetSetting(ctx context.Context, key string) (*storage.SystemSetting, error) {
+	query := `
+		SELECT key, value, category, is_secret, description, updated_at
+		FROM system_settings WHERE key = $1
+	`
+	setting := &storage.SystemSetting{}
+	err := s.pool.QueryRow(ctx, query, key).Scan(
+		&setting.Key, &setting.Value, &setting.Category, &setting.IsSecret,
+		&setting.Description, &setting.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return setting, nil
+}
+
+func (s *PostgresStorage) ListSettings(ctx context.Context, category string) ([]*storage.SystemSetting, error) {
+	var query string
+	var args []interface{}
+
+	if category != "" {
+		query = `
+			SELECT key, value, category, is_secret, description, updated_at
+			FROM system_settings WHERE category = $1 ORDER BY key
+		`
+		args = []interface{}{category}
+	} else {
+		query = `
+			SELECT key, value, category, is_secret, description, updated_at
+			FROM system_settings ORDER BY category, key
+		`
+	}
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var settings []*storage.SystemSetting
+	for rows.Next() {
+		setting := &storage.SystemSetting{}
+		err := rows.Scan(
+			&setting.Key, &setting.Value, &setting.Category, &setting.IsSecret,
+			&setting.Description, &setting.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		settings = append(settings, setting)
+	}
+	return settings, rows.Err()
+}
+
+func (s *PostgresStorage) UpdateSetting(ctx context.Context, key string, value interface{}) error {
+	query := `
+		UPDATE system_settings
+		SET value = $2, updated_at = now()
+		WHERE key = $1
+	`
+	_, err := s.pool.Exec(ctx, query, key, value)
 	return err
 }

@@ -4,7 +4,6 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 )
@@ -35,13 +34,21 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"message": "If an account exists with that email, a password reset link has been sent",
 	}
-	
-	// In production, you would send an email here and not return the token
-	// For development/testing, we return the token if user exists
-	if result != nil {
-		response["expires_at"] = result.ExpiresAt.Format(time.RFC3339)
-		// Remove this in production:
-		response["token"] = result.Token
+
+	// Send email if token was generated and email service is configured
+	if result != nil && h.emailService != nil {
+		user, err := h.storage.GetUserByEmail(r.Context(), req.Email)
+		if err == nil && user != nil {
+			// Build reset URL
+			resetURL := h.getBaseURL(r) + "/reset-password?token=" + result.Token
+			
+			// Send email asynchronously (don't block response)
+			go func() {
+				if err := h.emailService.SendPasswordResetEmail(r.Context(), user, result.Token, resetURL); err != nil {
+					h.logger.Error("Failed to send password reset email", "error", err, "email", req.Email)
+				}
+			}()
+		}
 	}
 
 	writeJSON(w, http.StatusOK, response)

@@ -14,6 +14,7 @@ func (h *Handler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 	userIDStr := r.URL.Query().Get("user_id")
+	eventTypeStr := r.URL.Query().Get("event_type")
 
 	limit := 50
 	offset := 0
@@ -36,7 +37,12 @@ func (h *Handler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := h.authService.GetAuditLogs(r.Context(), userID, limit, offset)
+	var eventType *string
+	if eventTypeStr != "" {
+		eventType = &eventTypeStr
+	}
+
+	logs, err := h.authService.GetAuditLogs(r.Context(), userID, eventType, limit, offset)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to fetch audit logs", err)
 		return

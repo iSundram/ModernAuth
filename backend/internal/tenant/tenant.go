@@ -20,16 +20,18 @@ var (
 	ErrTenantInactive = errors.New("tenant is inactive")
 	// ErrInvalidTenant indicates an invalid tenant configuration.
 	ErrInvalidTenant = errors.New("invalid tenant configuration")
+	// ErrUserNotFound indicates the user was not found.
+	ErrUserNotFound = errors.New("user not found")
 )
 
 // Service provides tenant management operations.
 type Service struct {
-	storage storage.TenantStorage
+	storage storage.Storage
 	logger  *slog.Logger
 }
 
 // NewService creates a new tenant service.
-func NewService(store storage.TenantStorage) *Service {
+func NewService(store storage.Storage) *Service {
 	return &Service{
 		storage: store,
 		logger:  slog.Default().With("component", "tenant_service"),
@@ -262,4 +264,85 @@ func (s *Service) ResolveTenant(ctx context.Context, identifier string) (*storag
 	}
 
 	return nil, ErrTenantNotFound
+}
+
+// ListTenantUsers lists users in a tenant.
+func (s *Service) ListTenantUsers(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.storage.ListTenantUsers(ctx, tenantID, limit, offset)
+}
+
+// AssignUserToTenant assigns a user to a tenant.
+func (s *Service) AssignUserToTenant(ctx context.Context, tenantID, userID uuid.UUID) error {
+	// Verify tenant exists
+	tenant, err := s.storage.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if tenant == nil {
+		return ErrTenantNotFound
+	}
+
+	// Verify user exists
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Update user's tenant_id
+	user.TenantID = &tenantID
+	user.UpdatedAt = time.Now()
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	s.logger.Info("User assigned to tenant", "user_id", userID, "tenant_id", tenantID)
+	return nil
+}
+
+// RemoveUserFromTenant removes a user from a tenant.
+func (s *Service) RemoveUserFromTenant(ctx context.Context, tenantID, userID uuid.UUID) error {
+	// Verify tenant exists
+	tenant, err := s.storage.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if tenant == nil {
+		return ErrTenantNotFound
+	}
+
+	// Verify user exists and belongs to this tenant
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Check if user belongs to this tenant
+	if user.TenantID == nil || *user.TenantID != tenantID {
+		return ErrUserNotFound // User doesn't belong to this tenant
+	}
+
+	// Remove user from tenant by setting tenant_id to nil
+	user.TenantID = nil
+	user.UpdatedAt = time.Now()
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	s.logger.Info("User removed from tenant", "user_id", userID, "tenant_id", tenantID)
+	return nil
 }

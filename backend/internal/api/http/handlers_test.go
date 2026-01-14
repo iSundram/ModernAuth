@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/email"
 	"github.com/iSundram/ModernAuth/internal/storage"
 )
 
@@ -173,7 +174,7 @@ func (m *mockStorage) CreateAuditLog(ctx context.Context, log *storage.AuditLog)
 	return nil
 }
 
-func (m *mockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+func (m *mockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*storage.AuditLog, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result []*storage.AuditLog
@@ -191,6 +192,22 @@ func (m *mockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit
 		end = len(result)
 	}
 	return result[start:end], nil
+}
+
+func (m *mockStorage) DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var deleted int64
+	var remaining []*storage.AuditLog
+	for _, log := range m.auditLogs {
+		if log.CreatedAt.Before(olderThan) {
+			deleted++
+		} else {
+			remaining = append(remaining, log)
+		}
+	}
+	m.auditLogs = remaining
+	return deleted, nil
 }
 
 func (m *mockStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {
@@ -408,7 +425,8 @@ func setupTestHandler() *Handler {
 	}
 	tokenService := auth.NewTokenService(tokenConfig)
 	authService := auth.NewAuthService(ms, tokenService, 24*time.Hour)
-	return NewHandler(authService, tokenService, nil, nil, nil)
+	emailService := email.NewConsoleService()
+	return NewHandler(authService, tokenService, ms, nil, nil, nil, emailService)
 }
 
 func TestHealthCheck(t *testing.T) {

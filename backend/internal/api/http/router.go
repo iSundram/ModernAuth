@@ -55,6 +55,7 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
 			r.With(h.Auth).Post("/logout", h.Logout)
 			r.With(h.Auth).Get("/me", h.Me)
+			r.Get("/settings", h.GetPublicSettings)
 
 			// Email Verification
 			r.With(h.RateLimit(5, time.Hour)).Post("/verify-email", h.VerifyEmail)
@@ -107,9 +108,23 @@ func (h *Handler) Router() *chi.Mux {
 			r.Use(h.RequireRole("admin"))
 			r.Get("/stats", h.GetSystemStats)
 			r.Get("/services", h.GetServicesStatus)
-			r.Get("/roles", h.ListRoles)
+			r.Get("/settings", h.ListSettings)
+			r.Patch("/settings/{key}", h.UpdateSetting)
 			r.Post("/users/{id}/roles", h.AssignUserRole)
 			r.Delete("/users/{id}/roles/{roleId}", h.RemoveUserRole)
+			
+			// Role management
+			r.Get("/roles", h.ListRoles)
+			r.Post("/roles", h.CreateRole)
+			r.Get("/roles/{id}", h.GetRole)
+			r.Put("/roles/{id}", h.UpdateRole)
+			r.Delete("/roles/{id}", h.DeleteRole)
+			r.Get("/roles/{id}/permissions", h.GetRolePermissions)
+			r.Post("/roles/{id}/permissions", h.AssignPermissionToRole)
+			r.Delete("/roles/{id}/permissions/{permissionId}", h.RemovePermissionFromRole)
+			
+			// Permission management
+			r.Get("/permissions", h.ListPermissions)
 		})
 
 		// Tenant Management (requires admin role)
@@ -131,6 +146,7 @@ func (h *Handler) Router() *chi.Mux {
 			// Session Management (requires auth)
 			r.Route("/sessions", func(r chi.Router) {
 				r.Use(h.Auth)
+				r.Get("/", h.ListSessions)
 				r.Mount("/", h.deviceHandler.SessionRoutes())
 			})
 		}

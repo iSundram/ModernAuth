@@ -284,6 +284,16 @@ type LoginHistory struct {
 	CreatedAt       time.Time  `json:"created_at"`
 }
 
+// SystemSetting represents a dynamic application configuration.
+type SystemSetting struct {
+	Key         string      `json:"key"`
+	Value       interface{} `json:"value"`
+	Category    string      `json:"category"`
+	IsSecret    bool        `json:"is_secret"`
+	Description string      `json:"description"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
 // Storage defines the interface for data persistence.
 type Storage interface {
 	UserStorage
@@ -298,6 +308,14 @@ type Storage interface {
 	APIKeyStorage
 	WebhookStorage
 	InvitationStorage
+	SystemSettingsStorage
+}
+
+// SystemSettingsStorage defines settings-related storage operations.
+type SystemSettingsStorage interface {
+	GetSetting(ctx context.Context, key string) (*SystemSetting, error)
+	ListSettings(ctx context.Context, category string) ([]*SystemSetting, error)
+	UpdateSetting(ctx context.Context, key string, value interface{}) error
 }
 
 // UserStorage defines user-related storage operations.
@@ -315,6 +333,7 @@ type UserStorage interface {
 type SessionStorage interface {
 	CreateSession(ctx context.Context, session *Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*Session, error)
+	GetUserSessions(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Session, error)
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	RevokeUserSessions(ctx context.Context, userID uuid.UUID) error
 }
@@ -330,7 +349,8 @@ type RefreshTokenStorage interface {
 // AuditLogStorage defines audit log storage operations.
 type AuditLogStorage interface {
 	CreateAuditLog(ctx context.Context, log *AuditLog) error
-	GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*AuditLog, error)
+	GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*AuditLog, error)
+	DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error)
 }
 
 // MFAStorage defines MFA-related storage operations.
@@ -350,9 +370,12 @@ type VerificationTokenStorage interface {
 // RBACStorage defines role-based access control storage operations.
 type RBACStorage interface {
 	// Role operations
+	CreateRole(ctx context.Context, role *Role) error
 	GetRoleByID(ctx context.Context, id uuid.UUID) (*Role, error)
 	GetRoleByName(ctx context.Context, name string) (*Role, error)
 	ListRoles(ctx context.Context) ([]*Role, error)
+	UpdateRole(ctx context.Context, role *Role) error
+	DeleteRole(ctx context.Context, id uuid.UUID) error
 
 	// User role operations
 	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*Role, error)
@@ -364,6 +387,11 @@ type RBACStorage interface {
 	GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*Permission, error)
 	GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*Permission, error)
 	UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error)
+	AssignPermissionToRole(ctx context.Context, roleID, permissionID uuid.UUID) error
+	RemovePermissionFromRole(ctx context.Context, roleID, permissionID uuid.UUID) error
+	GetPermissionByID(ctx context.Context, id uuid.UUID) (*Permission, error)
+	GetPermissionByName(ctx context.Context, name string) (*Permission, error)
+	ListPermissions(ctx context.Context) ([]*Permission, error)
 }
 
 // TenantStorage defines tenant-related storage operations.

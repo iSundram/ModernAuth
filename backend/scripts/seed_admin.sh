@@ -109,24 +109,29 @@ DO \$\$
 DECLARE
     v_user_id UUID;
 BEGIN
-    -- Insert user if not exists
-    INSERT INTO users (id, email, hashed_password, is_email_verified, created_at, updated_at)
-    VALUES (
-        gen_random_uuid(),
-        '$ADMIN_EMAIL',
-        '$HASHED_PASSWORD',
-        true,
-        NOW(),
-        NOW()
-    )
-    ON CONFLICT (email) DO UPDATE
-    SET hashed_password = EXCLUDED.hashed_password,
-        updated_at = NOW()
-    RETURNING id INTO v_user_id;
-
-    -- Get user ID if already existed
+    -- Check if user exists
+    SELECT id INTO v_user_id FROM users WHERE email = '$ADMIN_EMAIL';
+    
     IF v_user_id IS NULL THEN
-        SELECT id INTO v_user_id FROM users WHERE email = '$ADMIN_EMAIL';
+        -- Insert new user
+        INSERT INTO users (id, email, hashed_password, is_email_verified, is_active, created_at, updated_at)
+        VALUES (
+            gen_random_uuid(),
+            '$ADMIN_EMAIL',
+            '$HASHED_PASSWORD',
+            true,
+            true,
+            NOW(),
+            NOW()
+        )
+        RETURNING id INTO v_user_id;
+    ELSE
+        -- Update existing user
+        UPDATE users
+        SET hashed_password = '$HASHED_PASSWORD',
+            is_active = true,
+            updated_at = NOW()
+        WHERE id = v_user_id;
     END IF;
 
     -- Assign admin role (00000000-0000-0000-0000-000000000001 is the admin role UUID from migration)

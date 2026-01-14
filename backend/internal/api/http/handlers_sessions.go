@@ -3,6 +3,7 @@ package http
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 )
@@ -29,13 +30,68 @@ func (h *Handler) RevokeAllSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "All sessions revoked successfully"})
 }
 
-// ListSessions handles listing user sessions.
-// Note: This can be implemented using the device service's GetLoginHistory
-// For now, returns a message directing to the sessions endpoint
+// ListSessions handles listing active user sessions.
 func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
-	// This endpoint can be enhanced to list active sessions
-	// For now, use /v1/sessions/history for login history via device handler
+	userID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	// Parse pagination
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit := 50
+	offset := 0
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	sessions, err := h.authService.GetUserSessions(r.Context(), userID, limit, offset)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to get sessions", err)
+		return
+	}
+
+	response := make([]SessionResponse, len(sessions))
+	for i, session := range sessions {
+		response[i] = SessionResponse{
+			ID:        session.ID.String(),
+			UserID:    session.UserID.String(),
+			CreatedAt: session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ExpiresAt: session.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+			Revoked:   session.Revoked,
+			IsCurrent: false, // Would need to check against current session ID
+		}
+		if session.TenantID != nil {
+			id := session.TenantID.String()
+			response[i].TenantID = &id
+		}
+		if session.DeviceID != nil {
+			id := session.DeviceID.String()
+			response[i].DeviceID = &id
+		}
+		if session.Fingerprint != nil {
+			response[i].Fingerprint = session.Fingerprint
+		}
+		if session.Metadata != nil {
+			response[i].Metadata = session.Metadata
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message": "Use /v1/sessions/history endpoint for login history",
+		"data":   response,
+		"limit":  limit,
+		"offset": offset,
+		"count":  len(response),
 	})
 }

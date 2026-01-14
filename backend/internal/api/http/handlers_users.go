@@ -36,13 +36,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	users := make([]UserResponse, len(result.Users))
 	for i, user := range result.Users {
-		users[i] = UserResponse{
-			ID:              user.ID.String(),
-			Email:           user.Email,
-			Username:        user.Username,
-			IsEmailVerified: user.IsEmailVerified,
-			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		}
+		users[i] = h.buildUserResponse(r.Context(), user)
 	}
 
 	response := map[string]interface{}{
@@ -75,15 +69,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
-		ID:              result.User.ID.String(),
-		Email:           result.User.Email,
-		Username:        result.User.Username,
-		IsEmailVerified: result.User.IsEmailVerified,
-		CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
-	writeJSON(w, http.StatusCreated, response)
+	writeJSON(w, http.StatusCreated, h.buildUserResponse(r.Context(), result.User))
 }
 
 // GetUser handles requests for a specific user.
@@ -105,15 +91,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
-		ID:              user.ID.String(),
-		Email:           user.Email,
-		Username:        user.Username,
-		IsEmailVerified: user.IsEmailVerified,
-		CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
 }
 
 // UpdateUser handles user updates.
@@ -158,15 +136,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
-		ID:              user.ID.String(),
-		Email:           user.Email,
-		Username:        user.Username,
-		IsEmailVerified: user.IsEmailVerified,
-		CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
 }
 
 // DeleteUser handles user deletion.

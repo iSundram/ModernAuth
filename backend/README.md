@@ -31,7 +31,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **Secure Token Management**: Stateless JWT access tokens and stateful opaque refresh tokens.
 - **Session Security**: Built-in token reuse detection to prevent token theft.
 - **Rate Limiting**: Redis-backed rate limiting on sensitive endpoints.
-- **Audit Trails**: Comprehensive database-backed audit logging for all auth events.
+- **Audit Trails**: Comprehensive database-backed audit logging for all auth events with configurable retention policy and automatic cleanup.
 - **Input Validation**: Request validation using go-playground/validator.
 - **Docker Ready**: Easy deployment with Docker and Docker Compose.
 
@@ -184,9 +184,32 @@ Supported providers: `google`, `github`, `microsoft`
 |----------|--------|-------------|
 | `/v1/admin/stats` | GET | Get system statistics |
 | `/v1/admin/services` | GET | Get service health status |
+| `/v1/admin/settings` | GET | List system settings |
+| `/v1/admin/settings/{key}` | PATCH | Update system setting |
 | `/v1/admin/roles` | GET | List all roles |
+| `/v1/admin/roles` | POST | Create a new role |
+| `/v1/admin/roles/{id}` | GET | Get role by ID |
+| `/v1/admin/roles/{id}` | PUT | Update role |
+| `/v1/admin/roles/{id}` | DELETE | Delete role |
+| `/v1/admin/roles/{id}/permissions` | GET | Get permissions for a role |
+| `/v1/admin/roles/{id}/permissions` | POST | Assign permission to role |
+| `/v1/admin/roles/{id}/permissions/{permissionId}` | DELETE | Remove permission from role |
+| `/v1/admin/permissions` | GET | List all available permissions |
 | `/v1/admin/users/{id}/roles` | POST | Assign role to user |
 | `/v1/admin/users/{id}/roles/{roleId}` | DELETE | Remove role from user |
+
+### Tenant Management (requires `admin` role)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/tenants` | GET | List all tenants |
+| `/v1/tenants` | POST | Create a new tenant |
+| `/v1/tenants/{id}` | GET | Get tenant details |
+| `/v1/tenants/{id}` | PUT | Update tenant |
+| `/v1/tenants/{id}` | DELETE | Delete tenant |
+| `/v1/tenants/{id}/stats` | GET | Get tenant statistics |
+| `/v1/tenants/{id}/users` | GET | List users in a tenant |
+| `/v1/tenants/{id}/users/{userId}` | POST | Assign user to tenant |
+| `/v1/tenants/{id}/users/{userId}` | DELETE | Remove user from tenant |
 
 ### Health & Metrics
 | Endpoint | Method | Description |
@@ -196,13 +219,13 @@ Supported providers: `google`, `github`, `microsoft`
 
 ## Role-Based Access Control (RBAC)
 
-ModernAuth includes a built-in RBAC system with:
+ModernAuth includes a comprehensive RBAC system with full CRUD operations:
 
 ### Default Roles
 | Role | Description |
 |------|-------------|
-| `admin` | Full system access with all permissions |
-| `user` | Standard user with basic read permissions |
+| `admin` | Full system access with all permissions (system role, cannot be modified) |
+| `user` | Standard user with basic read permissions (system role, cannot be modified) |
 
 ### Default Permissions
 | Permission | Description |
@@ -213,6 +236,13 @@ ModernAuth includes a built-in RBAC system with:
 | `audit:read` | View audit logs |
 | `admin:access` | Access admin endpoints |
 | `roles:manage` | Manage roles and permissions |
+
+### Role Management
+- **Create Custom Roles**: Create tenant-specific or global roles with custom permissions
+- **Update Roles**: Modify role descriptions and permissions (system roles are protected)
+- **Delete Roles**: Remove custom roles (system roles cannot be deleted)
+- **Permission Assignment**: Assign or remove permissions from roles dynamically
+- **System Role Protection**: System roles (`admin`, `user`) cannot be modified or deleted
 
 ## Configuration
 
@@ -231,6 +261,8 @@ ModernAuth includes a built-in RBAC system with:
 | `LOCKOUT_MAX_ATTEMPTS` | Max failed login attempts | `5` |
 | `LOCKOUT_WINDOW` | Window for counting attempts | `15m` |
 | `LOCKOUT_DURATION` | Lockout duration | `30m` |
+| `AUDIT_RETENTION_PERIOD` | Audit log retention period | `8760h` (1 year) |
+| `AUDIT_CLEANUP_INTERVAL` | Audit log cleanup interval | `24h` (daily) |
 
 ### Email (SMTP)
 | Environment Variable | Description | Default |

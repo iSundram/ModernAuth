@@ -306,6 +306,8 @@ func (h *InvitationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Requ
 			Email:           user.Email,
 			Username:        user.Username,
 			IsEmailVerified: user.IsEmailVerified,
+			IsActive:        user.IsActive,
+			Role:            "user", // New users via invitation default to user role
 			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		},
 	})

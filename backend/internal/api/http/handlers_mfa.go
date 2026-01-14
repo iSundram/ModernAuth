@@ -143,13 +143,7 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 
 	authSuccessTotal.WithLabelValues("login_backup").Inc()
 	response := LoginResponse{
-		User: UserResponse{
-			ID:              result.User.ID.String(),
-			Email:           result.User.Email,
-			Username:        result.User.Username,
-			IsEmailVerified: result.User.IsEmailVerified,
-			CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		},
+		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
 			AccessToken:  result.TokenPair.AccessToken,
 			RefreshToken: result.TokenPair.RefreshToken,

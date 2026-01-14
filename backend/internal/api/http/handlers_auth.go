@@ -2,13 +2,70 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/storage"
 )
+
+// getUserRole fetches the primary role for a user (admin > user)
+func (h *Handler) getUserRole(ctx context.Context, userID uuid.UUID) string {
+	roles, err := h.authService.GetUserRoles(ctx, userID)
+	if err != nil {
+		return "user"
+	}
+	for _, r := range roles {
+		if r.Name == "admin" {
+			return "admin"
+		}
+	}
+	if len(roles) > 0 {
+		return roles[0].Name
+	}
+	return "user"
+}
+
+// buildUserResponse creates a UserResponse with role included
+func (h *Handler) buildUserResponse(ctx context.Context, user *storage.User) UserResponse {
+	role := h.getUserRole(ctx, user.ID)
+	
+	resp := UserResponse{
+		ID:              user.ID.String(),
+		Email:           user.Email,
+		Username:        user.Username,
+		Phone:           user.Phone,
+		FirstName:       user.FirstName,
+		LastName:        user.LastName,
+		IsEmailVerified: user.IsEmailVerified,
+		IsActive:        user.IsActive,
+		Role:            role,
+		CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	
+	if user.Timezone != "" {
+		resp.Timezone = &user.Timezone
+	}
+	if user.Locale != "" {
+		resp.Locale = &user.Locale
+	}
+	if user.Metadata != nil {
+		resp.Metadata = user.Metadata
+	}
+	if user.LastLoginAt != nil {
+		t := user.LastLoginAt.Format("2006-01-02T15:04:05Z07:00")
+		resp.LastLoginAt = &t
+	}
+	if !user.UpdatedAt.IsZero() {
+		t := user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
+		resp.UpdatedAt = &t
+	}
+	
+	return resp
+}
 
 // Register handles user registration.
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -44,13 +101,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := RegisterResponse{
-		User: UserResponse{
-			ID:              result.User.ID.String(),
-			Email:           result.User.Email,
-			Username:        result.User.Username,
-			IsEmailVerified: result.User.IsEmailVerified,
-			CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		},
+		User:   h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
 			AccessToken:  result.TokenPair.AccessToken,
 			RefreshToken: result.TokenPair.RefreshToken,
@@ -151,13 +202,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	authSuccessTotal.WithLabelValues("login").Inc()
 	response := LoginResponse{
-		User: UserResponse{
-			ID:              result.User.ID.String(),
-			Email:           result.User.Email,
-			Username:        result.User.Username,
-			IsEmailVerified: result.User.IsEmailVerified,
-			CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		},
+		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
 			AccessToken:  result.TokenPair.AccessToken,
 			RefreshToken: result.TokenPair.RefreshToken,
@@ -213,13 +258,7 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 
 	authSuccessTotal.WithLabelValues("login_mfa").Inc()
 	response := LoginResponse{
-		User: UserResponse{
-			ID:              result.User.ID.String(),
-			Email:           result.User.Email,
-			Username:        result.User.Username,
-			IsEmailVerified: result.User.IsEmailVerified,
-			CreatedAt:       result.User.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		},
+		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
 			AccessToken:  result.TokenPair.AccessToken,
 			RefreshToken: result.TokenPair.RefreshToken,
@@ -348,15 +387,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := UserResponse{
-		ID:              user.ID.String(),
-		Email:           user.Email,
-		Username:        user.Username,
-		IsEmailVerified: user.IsEmailVerified,
-		CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
 }
 
 // SetupMFA handles the initiation of MFA setup.

@@ -1,21 +1,23 @@
 # Binaries
-/auth-server
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+backend/auth-server
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
 
 # Test binary
-*.test
+backend/*.test
 
 # Output of go build
-/bin/
-/dist/
+backend/bin/
+backend/dist/
 
+# Output of Frontend
+frontend/dist/
 # Dependencies
 /vendor/
-
+frontend/node_modules
 # IDE files
 .idea/
 .vscode/

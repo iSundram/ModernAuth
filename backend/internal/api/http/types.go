@@ -16,11 +16,21 @@ type RegisterResponse struct {
 
 // UserResponse represents a user in API responses.
 type UserResponse struct {
-	ID              string  `json:"id"`
-	Email           string  `json:"email"`
-	Username        *string `json:"username,omitempty"`
-	IsEmailVerified bool    `json:"is_email_verified"`
-	CreatedAt       string  `json:"created_at"`
+	ID              string                 `json:"id"`
+	Email           string                 `json:"email"`
+	Username        *string                `json:"username,omitempty"`
+	Phone           *string                `json:"phone,omitempty"`
+	FirstName       *string                `json:"first_name,omitempty"`
+	LastName        *string                `json:"last_name,omitempty"`
+	IsEmailVerified bool                   `json:"is_email_verified"`
+	IsActive        bool                   `json:"is_active"`
+	Role            string                 `json:"role"`
+	Timezone        *string                `json:"timezone,omitempty"`
+	Locale          *string                `json:"locale,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	LastLoginAt     *string                `json:"last_login_at,omitempty"`
+	CreatedAt       string                 `json:"created_at"`
+	UpdatedAt       *string                `json:"updated_at,omitempty"`
 }
 
 // TokensResponse represents tokens in API responses.
@@ -119,11 +129,53 @@ type AuditLogResponse struct {
 // RoleResponse represents a role in API responses.
 type RoleResponse struct {
 	ID          string  `json:"id"`
+	TenantID    *string `json:"tenant_id,omitempty"`
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
+	IsSystem    bool    `json:"is_system"`
+	CreatedAt   string  `json:"created_at,omitempty"`
+}
+
+// CreateRoleRequest represents the create role request body.
+type CreateRoleRequest struct {
+	TenantID    *string `json:"tenant_id,omitempty" validate:"omitempty,uuid"`
+	Name        string  `json:"name" validate:"required,min=1,max=50"`
+	Description *string `json:"description,omitempty" validate:"omitempty,max=255"`
+}
+
+// UpdateRoleRequest represents the update role request body.
+type UpdateRoleRequest struct {
+	Name        *string `json:"name,omitempty" validate:"omitempty,min=1,max=50"`
+	Description *string `json:"description,omitempty" validate:"omitempty,max=255"`
+}
+
+// PermissionResponse represents a permission in API responses.
+type PermissionResponse struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+}
+
+// AssignPermissionRequest represents the assign permission request body.
+type AssignPermissionRequest struct {
+	PermissionID string `json:"permission_id" validate:"required,uuid"`
 }
 
 // AssignUserRoleRequest represents the assign role request body.
 type AssignUserRoleRequest struct {
 	RoleID string `json:"role_id" validate:"required,uuid"`
+}
+
+// SessionResponse represents a session in API responses.
+type SessionResponse struct {
+	ID         string                 `json:"id"`
+	UserID     string                 `json:"user_id"`
+	TenantID   *string                `json:"tenant_id,omitempty"`
+	DeviceID   *string                `json:"device_id,omitempty"`
+	Fingerprint *string               `json:"fingerprint,omitempty"`
+	CreatedAt  string                 `json:"created_at"`
+	ExpiresAt  string                 `json:"expires_at"`
+	Revoked    bool                   `json:"revoked"`
+	IsCurrent  bool                   `json:"is_current"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }

@@ -169,7 +169,7 @@ func (m *MockStorage) CreateAuditLog(ctx context.Context, log *storage.AuditLog)
 	return nil
 }
 
-func (m *MockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+func (m *MockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*storage.AuditLog, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var result []*storage.AuditLog
@@ -188,6 +188,22 @@ func (m *MockStorage) GetAuditLogs(ctx context.Context, userID *uuid.UUID, limit
 		end = len(result)
 	}
 	return result[start:end], nil
+}
+
+func (m *MockStorage) DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var deleted int64
+	var remaining []*storage.AuditLog
+	for _, log := range m.auditLogs {
+		if log.CreatedAt.Before(olderThan) {
+			deleted++
+		} else {
+			remaining = append(remaining, log)
+		}
+	}
+	m.auditLogs = remaining
+	return deleted, nil
 }
 
 func (m *MockStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {

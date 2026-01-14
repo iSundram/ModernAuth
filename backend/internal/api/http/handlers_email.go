@@ -4,7 +4,6 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 )
@@ -57,12 +56,23 @@ func (h *Handler) SendVerificationEmail(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// In production, you would send an email here and not return the token
-	// For development/testing, we return the token
+	// Send email if email service is configured
+	if h.emailService != nil {
+		user, err := h.storage.GetUserByID(r.Context(), userID)
+		if err == nil && user != nil {
+			// Build verification URL
+			verifyURL := h.getBaseURL(r) + "/verify-email?token=" + result.Token
+			
+			// Send email asynchronously (don't block response)
+			go func() {
+				if err := h.emailService.SendVerificationEmail(r.Context(), user, result.Token, verifyURL); err != nil {
+					h.logger.Error("Failed to send verification email", "error", err, "user_id", userID)
+				}
+			}()
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message":    "Verification email sent",
-		"expires_at": result.ExpiresAt.Format(time.RFC3339),
-		// Remove this in production:
-		"token": result.Token,
+		"message": "Verification email sent",
 	})
 }

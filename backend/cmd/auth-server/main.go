@@ -15,6 +15,7 @@ import (
 
 	httpapi "github.com/iSundram/ModernAuth/internal/api/http"
 	"github.com/iSundram/ModernAuth/internal/apikey"
+	"github.com/iSundram/ModernAuth/internal/audit"
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/config"
 	"github.com/iSundram/ModernAuth/internal/device"
@@ -97,7 +98,23 @@ func main() {
 	authService := auth.NewAuthService(storage, tokenService, cfg.Auth.SessionTTL)
 
 	// Initialize email service
-	emailService := email.NewConsoleService()
+	var emailService email.Service
+	if cfg.Email.Provider == "smtp" && cfg.Email.SMTPHost != "" {
+		emailConfig := &email.Config{
+			SMTPHost:     cfg.Email.SMTPHost,
+			SMTPPort:     cfg.Email.SMTPPort,
+			SMTPUsername: cfg.Email.SMTPUsername,
+			SMTPPassword: cfg.Email.SMTPPassword,
+			FromEmail:    cfg.Email.FromEmail,
+			FromName:     cfg.Email.FromName,
+			BaseURL:      cfg.App.BaseURL,
+		}
+		emailService = email.NewSMTPService(emailConfig)
+		slog.Info("Using SMTP email service", "host", cfg.Email.SMTPHost, "port", cfg.Email.SMTPPort)
+	} else {
+		emailService = email.NewConsoleService()
+		slog.Info("Using console email service (development mode)")
+	}
 
 	// Initialize tenant service
 	tenantService := tenant.NewService(storage)
@@ -116,8 +133,16 @@ func main() {
 		BaseURL: cfg.App.BaseURL, // Use config value, defaults handled in service
 	})
 
+	// Initialize audit cleanup service
+	auditCleanupService := audit.NewCleanupService(storage, cfg.Audit.RetentionPeriod, cfg.Audit.CleanupInterval)
+	auditCleanupService.Start(ctx)
+	defer auditCleanupService.Stop()
+	slog.Info("Audit cleanup service started", 
+		"retention_period", cfg.Audit.RetentionPeriod,
+		"cleanup_interval", cfg.Audit.CleanupInterval)
+
 	// Initialize HTTP handler
-	handler := httpapi.NewHandler(authService, tokenService, rdb, accountLockout, tokenBlacklist)
+	handler := httpapi.NewHandler(authService, tokenService, storage, rdb, accountLockout, tokenBlacklist, emailService)
 	
 	// Set database pool for health checks
 	handler.SetDBPool(pool)

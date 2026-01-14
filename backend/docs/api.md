@@ -109,7 +109,29 @@ Query parameters for `/v1/audit/logs`:
 |--------|----------|-------------|
 | GET | `/v1/admin/stats` | Get system statistics |
 | GET | `/v1/admin/services` | Get service health status |
+| GET | `/v1/admin/settings` | List system settings |
+| PATCH | `/v1/admin/settings/{key}` | Update system setting |
+
+### Role Management (requires `admin` role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/v1/admin/roles` | List all available roles |
+| POST | `/v1/admin/roles` | Create a new role |
+| GET | `/v1/admin/roles/{id}` | Get role by ID |
+| PUT | `/v1/admin/roles/{id}` | Update role (system roles cannot be modified) |
+| DELETE | `/v1/admin/roles/{id}` | Delete role (system roles cannot be deleted) |
+| GET | `/v1/admin/roles/{id}/permissions` | Get permissions assigned to a role |
+| POST | `/v1/admin/roles/{id}/permissions` | Assign a permission to a role |
+| DELETE | `/v1/admin/roles/{id}/permissions/{permissionId}` | Remove a permission from a role |
+
+### Permission Management (requires `admin` role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/admin/permissions` | List all available permissions |
+
+### User Role Assignment (requires `admin` role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | POST | `/v1/admin/users/{id}/roles` | Assign role to user |
 | DELETE | `/v1/admin/users/{id}/roles/{roleId}` | Remove role from user |
 
@@ -121,7 +143,10 @@ Query parameters for `/v1/audit/logs`:
 | GET | `/v1/tenants/{id}` | Get tenant details |
 | PUT | `/v1/tenants/{id}` | Update tenant settings |
 | DELETE | `/v1/tenants/{id}` | Delete a tenant |
-| GET | `/v1/tenants/{id}/users` | List users in a tenant |
+| GET | `/v1/tenants/{id}/stats` | Get tenant statistics |
+| GET | `/v1/tenants/{id}/users` | List users in a tenant (supports `?limit=&offset=`) |
+| POST | `/v1/tenants/{id}/users/{userId}` | Assign user to tenant |
+| DELETE | `/v1/tenants/{id}/users/{userId}` | Remove user from tenant |
 
 ### Health & Metrics
 | Method | Endpoint | Description |
@@ -248,6 +273,44 @@ curl -X POST http://localhost:8080/v1/auth/mfa/enable \
   }'
 ```
 
+### Example: Create Role (Admin only)
+```bash
+curl -X POST http://localhost:8080/v1/admin/roles \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "manager",
+    "description": "Team manager with elevated permissions",
+    "tenant_id": "optional-tenant-uuid"
+  }'
+```
+
+### Example: Update Role (Admin only)
+```bash
+curl -X PUT http://localhost:8080/v1/admin/roles/{role_id} \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description"
+  }'
+```
+
+### Example: Assign Permission to Role (Admin only)
+```bash
+curl -X POST http://localhost:8080/v1/admin/roles/{role_id}/permissions \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "permission_id": "permission-uuid"
+  }'
+```
+
+### Example: List Permissions (Admin only)
+```bash
+curl -X GET http://localhost:8080/v1/admin/permissions \
+  -H "Authorization: Bearer <admin_access_token>"
+```
+
 ### Example: Assign Role to User (Admin only)
 ```bash
 curl -X POST http://localhost:8080/v1/admin/users/{user_id}/roles \
@@ -256,6 +319,18 @@ curl -X POST http://localhost:8080/v1/admin/users/{user_id}/roles \
   -d '{
     "role_id": "00000000-0000-0000-0000-000000000001"
   }'
+```
+
+### Example: Assign User to Tenant (Admin only)
+```bash
+curl -X POST http://localhost:8080/v1/tenants/{tenant_id}/users/{user_id} \
+  -H "Authorization: Bearer <admin_access_token>"
+```
+
+### Example: List Tenant Users (Admin only)
+```bash
+curl -X GET "http://localhost:8080/v1/tenants/{tenant_id}/users?limit=20&offset=0" \
+  -H "Authorization: Bearer <admin_access_token>"
 ```
 
 ### Example: Get Audit Logs (with pagination)
