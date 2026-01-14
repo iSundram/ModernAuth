@@ -9,6 +9,7 @@
 | POST | `/v1/auth/refresh` | Rotate refresh token |
 | POST | `/v1/auth/logout` | Revoke session & tokens (requires auth) |
 | GET | `/v1/auth/me` | Get current user profile (requires auth) |
+| GET | `/v1/auth/settings` | Get public authentication settings (registration, MFA flags, etc.) |
 
 ### Email Verification
 | Method | Endpoint | Description |
@@ -46,6 +47,7 @@
 | DELETE | `/v1/devices/{id}` | Remove/Logout a device |
 | POST | `/v1/devices/{id}/trust` | Mark device as trusted |
 | DELETE | `/v1/devices/{id}/trust` | Remove trust from device |
+| GET | `/v1/sessions` | List active sessions for the current user |
 | GET | `/v1/sessions/history` | Get login history for current user |
 
 ### API Key Management (requires auth)
@@ -83,9 +85,9 @@
 |--------|----------|-------------|
 | GET | `/v1/oauth/providers` | List available social providers |
 | GET | `/v1/oauth/{provider}/authorize` | Get authorization URL for provider |
-| GET | `/v1/oauth/{provider}/callback` | OAuth callback endpoint |
+| GET | `/v1/oauth/{provider}/callback` | OAuth callback endpoint (supports GET and POST) |
 
-### Health & Metrics
+### User Management (requires permissions)
 | Method | Endpoint | Permission | Description |
 |--------|----------|------------|-------------|
 | GET | `/v1/users` | `users:read` | List all users |
