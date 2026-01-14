@@ -15,5 +15,6 @@ ModernAuth is a modern authentication and identity core built in Go with a TypeS
 ### Frontend
 
 - **Code**: `frontend/`
-- Vite + React + TypeScript admin/user console for managing ModernAuth (tenants, users, roles, API keys, webhooks, etc.).
+- Vite + React + TypeScript admin/user console for managing ModernAuth (tenants, users, roles, API keys, webhooks, invitations, devices, etc.).
+- For local development and feature overview, see `frontend/README.md`.
 
