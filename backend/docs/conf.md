@@ -8,6 +8,7 @@ Environment variables:
 | `PORT` | Server port | `8080` |
 | `APP_NAME` | Application name | `ModernAuth` |
 | `APP_ENV` | Environment (development/production) | `development` |
+| `CORS_ORIGINS` | Comma-separated list of allowed CORS origins | `*` (all origins - not recommended for production) |
 
 ### Database & Cache
 | Variable | Description | Default |
@@ -31,15 +32,16 @@ Environment variables:
 | `LOCKOUT_WINDOW` | Time window for counting attempts | `15m` |
 | `LOCKOUT_DURATION` | How long account stays locked | `30m` |
 
-### Email (SMTP)
+### Email / SMTP
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SMTP_HOST` | SMTP server hostname | - |
+| `EMAIL_PROVIDER` | Email provider: `console` (logs to stdout) or `smtp` (real emails) | `console` |
+| `SMTP_HOST` | SMTP server hostname (required when `EMAIL_PROVIDER=smtp`) | - |
 | `SMTP_PORT` | SMTP server port | `587` |
 | `SMTP_USERNAME` | SMTP authentication username | - |
 | `SMTP_PASSWORD` | SMTP authentication password | - |
-| `SMTP_FROM_EMAIL` | Sender email address | - |
-| `SMTP_FROM_NAME` | Sender display name | `ModernAuth` |
+| `EMAIL_FROM` | Sender email address (required when `EMAIL_PROVIDER=smtp`) | `noreply@modernauth.local` |
+| `EMAIL_FROM_NAME` | Sender display name | `ModernAuth` |
 
 ### OAuth2 Providers
 | Variable | Description | Default |
@@ -59,6 +61,7 @@ Environment variables:
 # Application
 PORT=8080
 APP_ENV=development
+CORS_ORIGINS=https://app.example.com,https://admin.example.com
 
 # Database
 DATABASE_URL=postgres://user:password@localhost:5432/modernauth?sslmode=disable

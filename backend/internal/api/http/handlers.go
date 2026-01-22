@@ -19,6 +19,7 @@ type Handler struct {
 	storage        storage.Storage
 	rdb            *redis.Client
 	accountLockout *auth.AccountLockout
+	mfaLockout     *auth.AccountLockout
 	tokenBlacklist *auth.TokenBlacklist
 	emailService   email.Service
 	logger         *slog.Logger
@@ -58,6 +59,15 @@ func (h *Handler) SetCORSOrigins(origins []string) {
 	} else {
 		h.corsOrigins = origins
 	}
+	// Warn about wildcard CORS in production
+	if len(h.corsOrigins) > 0 && h.corsOrigins[0] == "*" {
+		h.logger.Warn("CORS is configured to allow all origins (*). This is insecure for production. Set CORS_ORIGINS to specific domains.")
+	}
+}
+
+// SetMFALockout sets the MFA lockout manager.
+func (h *Handler) SetMFALockout(lockout *auth.AccountLockout) {
+	h.mfaLockout = lockout
 }
 
 // SetTenantHandler sets the tenant handler.

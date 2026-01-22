@@ -32,6 +32,8 @@ func (h *Handler) Router() *chi.Mux {
 	}
 
 	r.Use(cors.Handler(corsOptions))
+	r.Use(h.SecurityHeaders)
+	r.Use(h.MaxBodySize(1 << 20)) // 1MB max request body
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(h.Metrics)

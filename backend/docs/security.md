@@ -30,11 +30,15 @@
 - **Account Lockout**: Configurable brute-force protection
   - Default: 5 failed attempts within 15 minutes triggers 30-minute lockout
   - Configurable via `LOCKOUT_MAX_ATTEMPTS`, `LOCKOUT_WINDOW`, `LOCKOUT_DURATION`
+- **MFA Lockout**: Separate brute-force protection for MFA attempts
+  - 5 failed TOTP/backup code attempts triggers 5-minute lockout
+  - Prevents brute-forcing of 6-digit TOTP codes
 - **Rate Limiting**: Redis-backed rate limiting on sensitive endpoints
   - Registration: 5 requests/hour
   - Login: 10 requests/15 minutes
   - Token refresh: 100 requests/15 minutes
   - Password reset: 5 requests/hour
+- **Request Size Limits**: Maximum 1MB request body to prevent DoS attacks
 
 ### MFA (Multi-Factor Authentication)
 - **TOTP Support**: Time-based One-Time Passwords (RFC 6238)
@@ -67,3 +71,17 @@
 - **No User Enumeration**: Password reset returns success regardless of email existence
 - **Audit Logging**: All authentication events are logged with IP and user agent
 - **Permission-Based Access**: All admin and user management endpoints are protected by RBAC
+
+### HTTP Security Headers
+All responses include security headers to protect against common web vulnerabilities:
+- **X-Frame-Options: DENY** - Prevents clickjacking attacks
+- **X-Content-Type-Options: nosniff** - Prevents MIME type sniffing
+- **X-XSS-Protection: 1; mode=block** - Enables XSS filter in older browsers
+- **Strict-Transport-Security** - Enforces HTTPS (1 year, includes subdomains)
+- **Referrer-Policy: strict-origin-when-cross-origin** - Limits referrer information leakage
+- **Permissions-Policy** - Restricts browser features (geolocation, microphone, camera)
+
+### CORS Configuration
+- **Development**: Allows all origins (`*`) by default with a warning logged
+- **Production**: Configure `CORS_ORIGINS` environment variable with specific allowed domains
+- **Warning**: A log warning is emitted when wildcard CORS is in use to alert operators

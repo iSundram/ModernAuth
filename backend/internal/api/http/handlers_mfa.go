@@ -121,6 +121,22 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check MFA lockout
+	if h.mfaLockout != nil {
+		locked, remaining, err := h.mfaLockout.IsLocked(r.Context(), "mfa:"+req.UserID)
+		if err != nil {
+			h.logger.Error("Failed to check MFA lockout", "error", err)
+		} else if locked {
+			authFailureTotal.WithLabelValues("login_backup", "mfa_locked").Inc()
+			writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+				"error":               "MFA temporarily locked",
+				"message":             "Too many failed MFA attempts. Please try again later.",
+				"retry_after_seconds": int(remaining.Seconds()),
+			})
+			return
+		}
+	}
+
 	result, err := h.authService.LoginWithBackupCode(r.Context(), &auth.LoginWithBackupCodeRequest{
 		UserID:     userID,
 		BackupCode: req.BackupCode,
@@ -129,6 +145,22 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		// Record failed MFA attempt
+		if h.mfaLockout != nil && err == auth.ErrInvalidMFACode {
+			locked, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
+			if lockErr != nil {
+				h.logger.Error("Failed to record MFA attempt", "error", lockErr)
+			}
+			if locked {
+				authFailureTotal.WithLabelValues("login_backup", "mfa_locked").Inc()
+				writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+					"error":   "MFA temporarily locked",
+					"message": "Too many failed MFA attempts. Please try again later.",
+				})
+				return
+			}
+		}
+
 		switch err {
 		case auth.ErrInvalidMFACode:
 			authFailureTotal.WithLabelValues("login_backup", "invalid_code").Inc()
@@ -139,6 +171,13 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "Login failed", err)
 		}
 		return
+	}
+
+	// Clear MFA lockout on success
+	if h.mfaLockout != nil {
+		if err := h.mfaLockout.ClearFailedAttempts(r.Context(), "mfa:"+req.UserID); err != nil {
+			h.logger.Error("Failed to clear MFA attempts", "error", err)
+		}
 	}
 
 	authSuccessTotal.WithLabelValues("login_backup").Inc()

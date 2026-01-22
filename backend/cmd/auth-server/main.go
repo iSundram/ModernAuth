@@ -91,6 +91,14 @@ func main() {
 	}
 	accountLockout := auth.NewAccountLockout(rdb, lockoutConfig)
 
+	// Initialize MFA lockout with stricter settings (5 attempts, 5 min lockout)
+	mfaLockoutConfig := &auth.LockoutConfig{
+		MaxAttempts:     5,
+		LockoutWindow:   5 * time.Minute,
+		LockoutDuration: 5 * time.Minute,
+	}
+	mfaLockout := auth.NewAccountLockout(rdb, mfaLockoutConfig)
+
 	// Initialize token blacklist
 	tokenBlacklist := auth.NewTokenBlacklist(rdb)
 
@@ -99,7 +107,18 @@ func main() {
 
 	// Initialize email service
 	var emailService email.Service
-	if cfg.Email.Provider == "smtp" && cfg.Email.SMTPHost != "" {
+	// If SMTP is selected but required fields are missing, fail fast so that
+	// production deployments don't silently fall back to the console provider.
+	if cfg.Email.Provider == "smtp" && !cfg.Email.IsSMTPConfigured() {
+		slog.Error("SMTP email provider selected but configuration is incomplete",
+			"provider", cfg.Email.Provider,
+			"smtp_host_set", cfg.Email.SMTPHost != "",
+			"from_email_set", cfg.Email.FromEmail != "",
+		)
+		os.Exit(1)
+	}
+
+	if cfg.Email.IsSMTPConfigured() {
 		emailConfig := &email.Config{
 			SMTPHost:     cfg.Email.SMTPHost,
 			SMTPPort:     cfg.Email.SMTPPort,
@@ -113,7 +132,9 @@ func main() {
 		slog.Info("Using SMTP email service", "host", cfg.Email.SMTPHost, "port", cfg.Email.SMTPPort)
 	} else {
 		emailService = email.NewConsoleService()
-		slog.Info("Using console email service (development mode)")
+		slog.Info("Using console email service (development mode)",
+			"provider", cfg.Email.Provider,
+		)
 	}
 
 	// Initialize tenant service
@@ -151,6 +172,9 @@ func main() {
 	if len(cfg.App.CORSOrigins) > 0 {
 		handler.SetCORSOrigins(cfg.App.CORSOrigins)
 	}
+
+	// Set MFA lockout
+	handler.SetMFALockout(mfaLockout)
 
 	// Initialize specialized handlers
 	tenantHandler := httpapi.NewTenantHandler(tenantService)

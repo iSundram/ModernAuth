@@ -204,3 +204,37 @@ func (h *Handler) RequirePermission(permissionName string) func(http.Handler) ht
 		})
 	}
 }
+
+// SecurityHeaders middleware adds essential security headers to all responses.
+func (h *Handler) SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent clickjacking attacks
+		w.Header().Set("X-Frame-Options", "DENY")
+		// Prevent MIME type sniffing
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Enable XSS filter in older browsers
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		// Enforce HTTPS (1 year, include subdomains)
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// Prevent information leakage via Referer header
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Restrict permissions/features the browser can use
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// MaxBodySize middleware limits the size of request bodies.
+func (h *Handler) MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > maxBytes {
+				h.writeError(w, http.StatusRequestEntityTooLarge, "Request body too large", nil)
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
+	}
+}

@@ -23,6 +23,8 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **Email Verification**: Token-based email verification flow.
 - **Password Management**: Secure password reset and change flows.
 - **Account Lockout**: Protection against brute-force attacks with configurable lockout policies.
+- **MFA Lockout**: Separate brute-force protection for MFA verification attempts.
+- **Security Headers**: Comprehensive HTTP security headers (X-Frame-Options, HSTS, CSP, etc.).
 - **Token Blacklisting**: Redis-backed JWT access token blacklisting for immediate revocation.
 - **Observability**: 
     - **Prometheus Metrics**: Request latency, counts, and authentication success/failure rates.
