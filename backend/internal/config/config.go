@@ -78,7 +78,8 @@ type OAuthConfig struct {
 	MicrosoftClientSecret string `yaml:"microsoft_client_secret" env:"OAUTH_MICROSOFT_CLIENT_SECRET" env-default:""`
 	
 	// Redirect URLs
-	RedirectBaseURL string `yaml:"redirect_base_url" env:"OAUTH_REDIRECT_BASE_URL" env-default:""`
+	RedirectBaseURL     string   `yaml:"redirect_base_url" env:"OAUTH_REDIRECT_BASE_URL" env-default:""`
+	AllowedRedirectURLs []string `yaml:"allowed_redirect_urls" env:"OAUTH_ALLOWED_REDIRECT_URLS" env-default:"" env-separator:","`
 }
 
 // AuditConfig holds audit log configuration.
@@ -122,6 +123,11 @@ func Load() (*Config, error) {
 		if err := cleanenv.ReadEnv(cfg); err != nil {
 			return nil, fmt.Errorf("config error: %w", err)
 		}
+	}
+
+	// Validate JWT secret minimum length (32 bytes for HS256)
+	if len(cfg.Auth.JWTSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters for security, got %d", len(cfg.Auth.JWTSecret))
 	}
 
 	return cfg, nil

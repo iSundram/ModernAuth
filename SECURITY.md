@@ -35,6 +35,9 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Providers**: Google, GitHub, Microsoft with easy extensibility
 - **Account Linking**: Link multiple social providers to a single user account
 - **Secure State**: CSRF protection via state parameter validation
+- **PKCE Support**: Proof Key for Code Exchange (S256) for public clients (SPAs, mobile apps)
+- **Redirect URI Validation**: OAuth redirect URLs validated against allowed list to prevent open redirect attacks
+- **JWT Secret Validation**: Minimum 32 characters required for HS256 signing key
 
 ### Token Strategy
 - **Access Tokens**: Short-lived JWTs (15 min default), stateless validation

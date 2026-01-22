@@ -3,6 +3,8 @@ package oauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +33,10 @@ var (
 	ErrUserInfoFailed = errors.New("failed to fetch user info")
 	// ErrEmailNotVerified indicates the email from the provider is not verified.
 	ErrEmailNotVerified = errors.New("email not verified by provider")
+	// ErrInvalidRedirectURL indicates the redirect URL is not allowed.
+	ErrInvalidRedirectURL = errors.New("redirect URL not in allowed list")
+	// ErrInvalidPKCE indicates the PKCE code verifier is invalid.
+	ErrInvalidPKCE = errors.New("invalid PKCE code verifier")
 )
 
 // Provider represents an OAuth2 provider.
@@ -52,10 +58,11 @@ type ProviderConfig struct {
 
 // Config contains OAuth2 service configuration.
 type Config struct {
-	Google    *ProviderConfig
-	GitHub    *ProviderConfig
-	Microsoft *ProviderConfig
-	StateSecret string // Secret for signing state tokens
+	Google              *ProviderConfig
+	GitHub              *ProviderConfig
+	Microsoft           *ProviderConfig
+	StateSecret         string   // Secret for signing state tokens
+	AllowedRedirectURLs []string // Allowed redirect URLs for OAuth callbacks
 }
 
 // UserInfo contains user information from OAuth provider.
@@ -134,6 +141,48 @@ func (s *Service) GetAuthorizationURL(provider Provider, redirectURL string) (st
 	}
 
 	return authURL, state, nil
+}
+
+// GetAuthorizationURLWithPKCE generates the OAuth authorization URL with PKCE support.
+// Returns the authorization URL, state, and PKCE struct (containing code_verifier).
+// The code_verifier must be stored and sent during token exchange.
+func (s *Service) GetAuthorizationURLWithPKCE(provider Provider, redirectURL string) (string, string, *PKCE, error) {
+	cfg := s.getProviderConfig(provider)
+	if cfg == nil {
+		return "", "", nil, ErrProviderNotConfigured
+	}
+
+	// Validate redirect URL
+	if err := s.ValidateRedirectURL(redirectURL); err != nil {
+		return "", "", nil, err
+	}
+
+	// Generate state token
+	state, err := s.generateState()
+	if err != nil {
+		return "", "", nil, fmt.Errorf("failed to generate state: %w", err)
+	}
+
+	// Generate PKCE challenge
+	pkce, err := GeneratePKCE()
+	if err != nil {
+		return "", "", nil, fmt.Errorf("failed to generate PKCE: %w", err)
+	}
+
+	var authURL string
+	switch provider {
+	case ProviderGoogle:
+		authURL = s.buildGoogleAuthURLWithPKCE(cfg, state, redirectURL, pkce)
+	case ProviderGitHub:
+		// GitHub doesn't support PKCE, use regular URL
+		authURL = s.buildGitHubAuthURL(cfg, state, redirectURL)
+	case ProviderMicrosoft:
+		authURL = s.buildMicrosoftAuthURLWithPKCE(cfg, state, redirectURL, pkce)
+	default:
+		return "", "", nil, ErrProviderNotFound
+	}
+
+	return authURL, state, pkce, nil
 }
 
 // ExchangeCode exchanges an authorization code for user info.
@@ -305,6 +354,21 @@ func (s *Service) buildGoogleAuthURL(cfg *ProviderConfig, state, redirectURL str
 	params.Set("state", state)
 	params.Set("access_type", "offline")
 	params.Set("prompt", "consent")
+
+	return "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode()
+}
+
+func (s *Service) buildGoogleAuthURLWithPKCE(cfg *ProviderConfig, state, redirectURL string, pkce *PKCE) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", strings.Join(cfg.Scopes, " "))
+	params.Set("state", state)
+	params.Set("access_type", "offline")
+	params.Set("prompt", "consent")
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", pkce.Method)
 
 	return "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode()
 }
@@ -532,6 +596,20 @@ func (s *Service) buildMicrosoftAuthURL(cfg *ProviderConfig, state, redirectURL 
 	return "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + params.Encode()
 }
 
+func (s *Service) buildMicrosoftAuthURLWithPKCE(cfg *ProviderConfig, state, redirectURL string, pkce *PKCE) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", strings.Join(cfg.Scopes, " "))
+	params.Set("state", state)
+	params.Set("response_mode", "query")
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", pkce.Method)
+
+	return "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + params.Encode()
+}
+
 func (s *Service) exchangeMicrosoftCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
 	// Exchange code for tokens
 	tokenURL := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
@@ -615,4 +693,75 @@ func parseName(fullName string) (string, string) {
 		return parts[0], ""
 	}
 	return "", ""
+}
+
+// PKCE represents a PKCE (Proof Key for Code Exchange) challenge.
+type PKCE struct {
+	CodeVerifier  string `json:"code_verifier"`
+	CodeChallenge string `json:"code_challenge"`
+	Method        string `json:"method"` // Always "S256"
+}
+
+// GeneratePKCE generates a new PKCE code verifier and challenge.
+// Uses S256 method (SHA-256 hash, base64url encoded).
+func GeneratePKCE() (*PKCE, error) {
+	// Generate a random 32-byte code verifier
+	verifier, err := utils.GenerateRandomString(43) // 43 chars is standard for PKCE
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate code verifier: %w", err)
+	}
+
+	// Create S256 challenge: base64url(sha256(verifier))
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	return &PKCE{
+		CodeVerifier:  verifier,
+		CodeChallenge: challenge,
+		Method:        "S256",
+	}, nil
+}
+
+// ValidatePKCE validates that a code verifier matches a code challenge.
+func ValidatePKCE(codeVerifier, codeChallenge string) bool {
+	hash := sha256.Sum256([]byte(codeVerifier))
+	expected := base64.RawURLEncoding.EncodeToString(hash[:])
+	return expected == codeChallenge
+}
+
+// ValidateRedirectURL checks if a redirect URL is in the allowed list.
+func (s *Service) ValidateRedirectURL(redirectURL string) error {
+	if len(s.config.AllowedRedirectURLs) == 0 {
+		// If no allowed URLs configured, allow any (development mode)
+		s.logger.Warn("No allowed redirect URLs configured, allowing any redirect URL")
+		return nil
+	}
+
+	// Parse the provided URL
+	parsed, err := url.Parse(redirectURL)
+	if err != nil {
+		return ErrInvalidRedirectURL
+	}
+
+	// Check against allowed list
+	for _, allowed := range s.config.AllowedRedirectURLs {
+		allowedParsed, err := url.Parse(allowed)
+		if err != nil {
+			continue
+		}
+
+		// Match scheme and host (port included in host)
+		if parsed.Scheme == allowedParsed.Scheme && parsed.Host == allowedParsed.Host {
+			// If allowed URL has a path, it must be a prefix match
+			if allowedParsed.Path == "" || strings.HasPrefix(parsed.Path, allowedParsed.Path) {
+				return nil
+			}
+		}
+	}
+
+	s.logger.Warn("Redirect URL not in allowed list",
+		"redirect_url", redirectURL,
+		"allowed_urls", s.config.AllowedRedirectURLs,
+	)
+	return ErrInvalidRedirectURL
 }

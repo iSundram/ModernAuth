@@ -55,6 +55,7 @@ Environment variables:
 | `OAUTH_MICROSOFT_CLIENT_ID` | Microsoft OAuth client ID | - |
 | `OAUTH_MICROSOFT_CLIENT_SECRET` | Microsoft OAuth client secret | - |
 | `OAUTH_MICROSOFT_REDIRECT_URL` | Microsoft OAuth redirect URL | - |
+| `OAUTH_ALLOWED_REDIRECT_URLS` | Comma-separated list of allowed OAuth redirect URLs (security) | - |
 
 ### Example `.env` file
 ```bash
