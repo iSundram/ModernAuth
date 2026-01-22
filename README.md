@@ -8,8 +8,8 @@ ModernAuth is a modern authentication and identity core built in Go with a TypeS
 - **Docs**: see `backend/docs/`:
   - `api.md` – REST API reference (endpoints, requests, responses, examples)
   - `conf.md` – configuration and environment variables
-  - `security.md` – security model and hardening
   - `architecture.md` – high-level architecture
+- **Security**: see `SECURITY.md` in the root directory
 - **Backend quick start**: see `backend/README.md`.
 
 ### Frontend

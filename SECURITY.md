@@ -1,4 +1,29 @@
-## Security
+# Security Policy
+
+## Reporting a Vulnerability
+
+We take security vulnerabilities seriously. If you discover a security issue, please report it responsibly.
+
+### How to Report
+
+1. **Do NOT** open a public GitHub issue for security vulnerabilities
+2. Email security concerns to the maintainers privately
+3. Include as much detail as possible:
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Suggested fix (if any)
+
+### What to Expect
+
+- **Acknowledgment**: We will acknowledge receipt within 48 hours
+- **Updates**: We will provide status updates as we investigate
+- **Resolution**: We aim to resolve critical issues within 7 days
+- **Credit**: We will credit reporters in release notes (unless anonymity is requested)
+
+---
+
+## Security Features
 
 ### Password Security
 - **Password Hashing**: Argon2id with secure parameters (64MB memory, 3 iterations, parallelism 2)
@@ -43,34 +68,28 @@
 ### MFA (Multi-Factor Authentication)
 - **TOTP Support**: Time-based One-Time Passwords (RFC 6238)
 - **Secure Storage**: TOTP secrets stored in database
-- **Backup Codes**: Single-use recovery codes generated on demand, stored as SHA-256 hashes.
+- **Backup Codes**: Single-use recovery codes generated on demand, stored as SHA-256 hashes
 
 ### API Key Security
-- **Secure Storage**: API keys are hashed with SHA-256 before storage; the raw key is only shown once upon creation.
-- **Prefixes**: Keys use a standard prefix (e.g., `mk_live_`) for easier identification in logs and code.
-- **IP Allowlisting**: Configurable IP/CIDR restrictions per API key.
-- **Scoped Access**: Granular permission scopes for each key.
+- **Secure Storage**: API keys are hashed with SHA-256 before storage; the raw key is only shown once upon creation
+- **Prefixes**: Keys use a standard prefix (e.g., `mk_live_`) for easier identification in logs and code
+- **IP Allowlisting**: Configurable IP/CIDR restrictions per API key
+- **Scoped Access**: Granular permission scopes for each key
 
 ### Webhook Security
-- **HMAC Signatures**: Every payload is signed with a SHA-256 HMAC using the webhook's secret.
-- **Verification**: Clients should verify the `X-Signature` header to ensure authenticity.
-- **TLS Enforcement**: Webhooks should ideally target HTTPS endpoints.
+- **HMAC Signatures**: Every payload is signed with a SHA-256 HMAC using the webhook's secret
+- **Verification**: Clients should verify the `X-Signature` header to ensure authenticity
+- **TLS Enforcement**: Webhooks should ideally target HTTPS endpoints
 
 ### Device & Session Tracking
-- **Fingerprinting**: Unique device identification to detect logins from new devices.
-- **Trusted Devices**: Users can mark specific devices as trusted to reduce MFA friction.
-- **Login History**: Full audit trail of IPs, locations, and user agents for every login attempt.
+- **Fingerprinting**: Unique device identification to detect logins from new devices
+- **Trusted Devices**: Users can mark specific devices as trusted to reduce MFA friction
+- **Login History**: Full audit trail of IPs, locations, and user agents for every login attempt
 
 ### Email Verification & Password Reset
 - **Verification Tokens**: Secure random tokens (32 bytes), stored as SHA-256 hashes
 - **Token Expiry**: Email verification (24 hours), Password reset (1 hour)
 - **Single Use**: Tokens are marked as used after consumption
-
-### Best Practices
-- **Constant-Time Comparison**: Password and token verification use constant-time comparison
-- **No User Enumeration**: Password reset returns success regardless of email existence
-- **Audit Logging**: All authentication events are logged with IP and user agent
-- **Permission-Based Access**: All admin and user management endpoints are protected by RBAC
 
 ### HTTP Security Headers
 All responses include security headers to protect against common web vulnerabilities:
@@ -85,3 +104,18 @@ All responses include security headers to protect against common web vulnerabili
 - **Development**: Allows all origins (`*`) by default with a warning logged
 - **Production**: Configure `CORS_ORIGINS` environment variable with specific allowed domains
 - **Warning**: A log warning is emitted when wildcard CORS is in use to alert operators
+
+---
+
+## Best Practices for Deployment
+
+1. **Use HTTPS**: Always deploy behind TLS/HTTPS
+2. **Set CORS properly**: Configure `CORS_ORIGINS` to specific domains (not `*`)
+3. **Secure secrets**: Use strong `JWT_SECRET` (min 32 characters)
+4. **Database security**: Use SSL for database connections
+5. **Redis security**: Use authentication and TLS for Redis
+6. **Environment variables**: Never commit secrets to version control
+- **Constant-Time Comparison**: Password and token verification use constant-time comparison
+- **No User Enumeration**: Password reset returns success regardless of email existence
+- **Audit Logging**: All authentication events are logged with IP and user agent
+- **Permission-Based Access**: All admin and user management endpoints are protected by RBAC

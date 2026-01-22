@@ -129,7 +129,7 @@ For detailed backend documentation, see:
 
 - `docs/api.md` – full API reference (endpoints, payloads, examples)
 - `docs/conf.md` – configuration and environment variables
-- `docs/security.md` – security model and hardening notes
+- `../SECURITY.md` – security model and hardening notes
 - `docs/architecture.md` – high-level architecture and components
 
 ## License
