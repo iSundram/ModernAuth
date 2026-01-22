@@ -80,10 +80,11 @@ type UserInfo struct {
 
 // Service provides OAuth2 authentication operations.
 type Service struct {
-	config  *Config
-	storage OAuthStorage
-	logger  *slog.Logger
-	httpClient *http.Client
+	config       *Config
+	storage      OAuthStorage
+	stateStorage OAuthStateStorage
+	logger       *slog.Logger
+	httpClient   *http.Client
 }
 
 // OAuthStorage defines OAuth-specific storage operations.
@@ -103,12 +104,33 @@ type OAuthStorage interface {
 	GetUserProviders(ctx context.Context, userID uuid.UUID) ([]*storage.UserProvider, error)
 }
 
+// OAuthStateStorage defines OAuth state storage for CSRF protection.
+type OAuthStateStorage interface {
+	CreateOAuthState(ctx context.Context, state *storage.SocialLoginState) error
+	GetOAuthStateByHash(ctx context.Context, stateHash string) (*storage.SocialLoginState, error)
+	DeleteOAuthState(ctx context.Context, id uuid.UUID) error
+	DeleteExpiredOAuthStates(ctx context.Context) error
+}
+
 // NewService creates a new OAuth service.
 func NewService(config *Config, store OAuthStorage) *Service {
 	return &Service{
 		config:  config,
 		storage: store,
 		logger:  slog.Default().With("component", "oauth_service"),
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// NewServiceWithStateStorage creates a new OAuth service with state storage for CSRF protection.
+func NewServiceWithStateStorage(config *Config, store OAuthStorage, stateStore OAuthStateStorage) *Service {
+	return &Service{
+		config:       config,
+		storage:      store,
+		stateStorage: stateStore,
+		logger:       slog.Default().With("component", "oauth_service"),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -126,6 +148,35 @@ func (s *Service) GetAuthorizationURL(provider Provider, redirectURL string) (st
 	state, err := s.generateState()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate state: %w", err)
+	}
+
+	var authURL string
+	switch provider {
+	case ProviderGoogle:
+		authURL = s.buildGoogleAuthURL(cfg, state, redirectURL)
+	case ProviderGitHub:
+		authURL = s.buildGitHubAuthURL(cfg, state, redirectURL)
+	case ProviderMicrosoft:
+		authURL = s.buildMicrosoftAuthURL(cfg, state, redirectURL)
+	default:
+		return "", "", ErrProviderNotFound
+	}
+
+	return authURL, state, nil
+}
+
+// GetAuthorizationURLWithStoredState generates the OAuth authorization URL and stores the state for CSRF protection.
+// This is the recommended method for production use.
+func (s *Service) GetAuthorizationURLWithStoredState(ctx context.Context, provider Provider, redirectURL string) (string, string, error) {
+	cfg := s.getProviderConfig(provider)
+	if cfg == nil {
+		return "", "", ErrProviderNotConfigured
+	}
+
+	// Store state with the redirect URL for validation during callback
+	state, err := s.StoreState(ctx, provider, redirectURL, "")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to store state: %w", err)
 	}
 
 	var authURL string
@@ -322,6 +373,77 @@ func (s *Service) getProviderConfig(provider Provider) *ProviderConfig {
 
 func (s *Service) generateState() (string, error) {
 	return utils.GenerateRandomString(32)
+}
+
+// StoreState stores an OAuth state for CSRF protection.
+// Returns the raw state token to be included in the authorization URL.
+func (s *Service) StoreState(ctx context.Context, provider Provider, redirectURI, codeVerifier string) (string, error) {
+	if s.stateStorage == nil {
+		// Fallback: just generate state without storage (less secure)
+		return s.generateState()
+	}
+
+	state, err := s.generateState()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate state: %w", err)
+	}
+
+	stateRecord := &storage.SocialLoginState{
+		ID:           uuid.New(),
+		Provider:     string(provider),
+		StateHash:    utils.HashToken(state),
+		RedirectURI:  redirectURI,
+		CodeVerifier: codeVerifier,
+		ExpiresAt:    time.Now().Add(10 * time.Minute), // State expires in 10 minutes
+		CreatedAt:    time.Now(),
+	}
+
+	if err := s.stateStorage.CreateOAuthState(ctx, stateRecord); err != nil {
+		return "", fmt.Errorf("failed to store state: %w", err)
+	}
+
+	return state, nil
+}
+
+// ValidateAndConsumeState validates an OAuth state and removes it (single use).
+// Returns the stored state record if valid, nil if invalid or expired.
+func (s *Service) ValidateAndConsumeState(ctx context.Context, provider Provider, state string) (*storage.SocialLoginState, error) {
+	if s.stateStorage == nil {
+		// No state storage configured - skip validation (less secure)
+		s.logger.Warn("OAuth state validation skipped: no state storage configured")
+		return nil, nil
+	}
+
+	if state == "" {
+		return nil, ErrInvalidState
+	}
+
+	stateHash := utils.HashToken(state)
+	stateRecord, err := s.stateStorage.GetOAuthStateByHash(ctx, stateHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state: %w", err)
+	}
+
+	if stateRecord == nil {
+		return nil, ErrInvalidState
+	}
+
+	// Verify provider matches
+	if stateRecord.Provider != string(provider) {
+		s.logger.Warn("OAuth state provider mismatch",
+			"expected", stateRecord.Provider,
+			"got", string(provider),
+		)
+		return nil, ErrInvalidState
+	}
+
+	// Delete the state (single use)
+	if err := s.stateStorage.DeleteOAuthState(ctx, stateRecord.ID); err != nil {
+		s.logger.Error("Failed to delete OAuth state", "error", err, "state_id", stateRecord.ID)
+		// Continue - state is still valid
+	}
+
+	return stateRecord, nil
 }
 
 func (s *Service) linkProviderToUser(ctx context.Context, userID uuid.UUID, info *UserInfo) error {

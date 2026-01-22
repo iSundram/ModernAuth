@@ -275,6 +275,55 @@ func (m *mockStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, p
 	return false, nil
 }
 
+func (m *mockStorage) CreateRole(ctx context.Context, role *storage.Role) error {
+	return nil
+}
+
+func (m *mockStorage) UpdateRole(ctx context.Context, role *storage.Role) error {
+	return nil
+}
+
+func (m *mockStorage) DeleteRole(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) AssignPermissionToRole(ctx context.Context, roleID, permissionID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) RemovePermissionFromRole(ctx context.Context, roleID, permissionID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) GetPermissionByID(ctx context.Context, id uuid.UUID) (*storage.Permission, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) GetPermissionByName(ctx context.Context, name string) (*storage.Permission, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) ListPermissions(ctx context.Context) ([]*storage.Permission, error) {
+	return []*storage.Permission{}, nil
+}
+
+// SystemSettingsStorage mock implementations
+func (m *mockStorage) GetSetting(ctx context.Context, key string) (*storage.SystemSetting, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) ListSettings(ctx context.Context, category string) ([]*storage.SystemSetting, error) {
+	return []*storage.SystemSetting{}, nil
+}
+
+func (m *mockStorage) UpdateSetting(ctx context.Context, key string, value interface{}) error {
+	return nil
+}
+
+func (m *mockStorage) GetUserSessions(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*storage.Session, error) {
+	return []*storage.Session{}, nil
+}
+
 // TenantStorage mock implementations
 func (m *mockStorage) CreateTenant(ctx context.Context, tenant *storage.Tenant) error {
 	return nil
@@ -405,6 +454,9 @@ func (m *mockStorage) ListInvitations(ctx context.Context, tenantID *uuid.UUID, 
 	return []*storage.UserInvitation{}, nil
 }
 func (m *mockStorage) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *mockStorage) UpdateInvitation(ctx context.Context, invitation *storage.UserInvitation) error {
 	return nil
 }
 func (m *mockStorage) DeleteInvitation(ctx context.Context, id uuid.UUID) error {

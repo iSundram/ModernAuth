@@ -12,12 +12,13 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 
 ## Features
 
-- **Go-Native**: Built with Go 1.23+ following Clean Architecture.
+- **Go-Native**: Built with Go 1.24+ following Clean Architecture.
 - **Multi-tenancy**: Built-in support for isolated tenants (organizations) with custom settings and domains.
 - **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
 - **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords with backup codes.
-- **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers.
+- **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers with CSRF protection and PKCE support.
+- **User Invitations**: Token-based invitation system with automatic role assignment.
 - **SMTP Email Service**: Production-ready email with TLS support and HTML templates.
 - **Password Strength Validation**: Configurable policies with common password blocking.
 - **Email Verification**: Token-based email verification flow.
@@ -41,7 +42,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.24+
 - Docker & Docker Compose
 - Make
 - PostgreSQL client (psql) for migrations

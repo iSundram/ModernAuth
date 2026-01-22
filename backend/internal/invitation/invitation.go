@@ -35,6 +35,7 @@ const (
 type Service struct {
 	invitationStorage storage.InvitationStorage
 	userStorage       storage.UserStorage
+	rbacStorage       storage.RBACStorage
 	emailService      email.Service
 	baseURL           string
 	logger            *slog.Logger
@@ -64,6 +65,19 @@ func NewService(
 		baseURL:           baseURL,
 		logger:            slog.Default().With("component", "invitation_service"),
 	}
+}
+
+// NewServiceWithRBAC creates a new invitation service with RBAC support for role assignment.
+func NewServiceWithRBAC(
+	invitationStore storage.InvitationStorage,
+	userStore storage.UserStorage,
+	rbacStore storage.RBACStorage,
+	emailSvc email.Service,
+	cfg *Config,
+) *Service {
+	svc := NewService(invitationStore, userStore, emailSvc, cfg)
+	svc.rbacStorage = rbacStore
+	return svc
 }
 
 // CreateInvitationRequest represents a request to create an invitation.
@@ -258,8 +272,23 @@ func (s *Service) AcceptInvitation(ctx context.Context, req *AcceptInvitationReq
 		s.logger.Error("Failed to mark invitation as accepted", "error", err, "invitation_id", invitation.ID)
 	}
 
-	// TODO: Assign roles and groups from invitation
-	// This would require additional storage interfaces
+	// Assign roles from invitation if RBAC storage is configured
+	if s.rbacStorage != nil && len(invitation.RoleIDs) > 0 {
+		for _, roleID := range invitation.RoleIDs {
+			if err := s.rbacStorage.AssignRoleToUser(ctx, user.ID, roleID, invitation.InvitedBy); err != nil {
+				s.logger.Error("Failed to assign role to user from invitation",
+					"error", err,
+					"user_id", user.ID,
+					"role_id", roleID,
+				)
+				// Continue with other roles - don't fail the whole invitation
+			}
+		}
+		s.logger.Info("Assigned roles to invited user",
+			"user_id", user.ID,
+			"role_count", len(invitation.RoleIDs),
+		)
+	}
 
 	s.logger.Info("Invitation accepted", "invitation_id", invitation.ID, "user_id", user.ID)
 
@@ -319,7 +348,10 @@ func (s *Service) ResendInvitation(ctx context.Context, id uuid.UUID) error {
 	invitation.TokenHash = utils.HashToken(token)
 	invitation.ExpiresAt = time.Now().Add(DefaultInvitationTTL)
 
-	// TODO: Update invitation in storage (need UpdateInvitation method)
+	// Update invitation in storage
+	if err := s.invitationStorage.UpdateInvitation(ctx, invitation); err != nil {
+		return err
+	}
 
 	// Send invitation email
 	inviteURL := s.baseURL + "/accept-invitation?token=" + token

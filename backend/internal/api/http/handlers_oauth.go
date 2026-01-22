@@ -83,7 +83,8 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Build redirect URL
 	redirectURL := h.baseURL + "/v1/oauth/" + providerName + "/callback"
 
-	authURL, state, err := h.oauthService.GetAuthorizationURL(provider, redirectURL)
+	// Generate authorization URL with stored state for CSRF protection
+	authURL, state, err := h.oauthService.GetAuthorizationURLWithStoredState(r.Context(), provider, redirectURL)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to generate authorization URL",
@@ -170,10 +171,28 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = state // State validation should be done here in production
+	// Validate OAuth state (CSRF protection)
+	stateRecord, err := h.oauthService.ValidateAndConsumeState(r.Context(), provider, state)
+	if err != nil {
+		if err == oauth.ErrInvalidState {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "Invalid or expired state parameter",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Failed to validate state",
+		})
+		return
+	}
 
 	// Build redirect URL (must match what was used in authorize)
 	redirectURL := h.baseURL + "/v1/oauth/" + providerName + "/callback"
+	
+	// Use stored redirect URL if available
+	if stateRecord != nil && stateRecord.RedirectURI != "" {
+		redirectURL = stateRecord.RedirectURI
+	}
 
 	// Exchange code for user info
 	userInfo, err := h.oauthService.ExchangeCode(r.Context(), provider, code, redirectURL)

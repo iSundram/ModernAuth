@@ -458,6 +458,7 @@ type InvitationStorage interface {
 	GetInvitationByToken(ctx context.Context, tokenHash string) (*UserInvitation, error)
 	GetInvitationByEmail(ctx context.Context, tenantID *uuid.UUID, email string) (*UserInvitation, error)
 	ListInvitations(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*UserInvitation, error)
+	UpdateInvitation(ctx context.Context, invitation *UserInvitation) error
 	AcceptInvitation(ctx context.Context, id uuid.UUID) error
 	DeleteInvitation(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredInvitations(ctx context.Context) error
@@ -476,4 +477,25 @@ type UserGroupStorage interface {
 	RemoveUserFromGroup(ctx context.Context, userID, groupID uuid.UUID) error
 	GetGroupMembers(ctx context.Context, groupID uuid.UUID, limit, offset int) ([]*UserGroupMember, error)
 	GetUserGroups(ctx context.Context, userID uuid.UUID) ([]*UserGroup, error)
+}
+
+// SocialLoginState represents an OAuth state token for CSRF protection.
+type SocialLoginState struct {
+	ID           uuid.UUID              `json:"id"`
+	TenantID     *uuid.UUID             `json:"tenant_id,omitempty"`
+	Provider     string                 `json:"provider"`
+	StateHash    string                 `json:"-"`
+	RedirectURI  string                 `json:"redirect_uri,omitempty"`
+	CodeVerifier string                 `json:"-"` // PKCE
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	ExpiresAt    time.Time              `json:"expires_at"`
+	CreatedAt    time.Time              `json:"created_at"`
+}
+
+// OAuthStateStorage defines OAuth state storage operations for CSRF protection.
+type OAuthStateStorage interface {
+	CreateOAuthState(ctx context.Context, state *SocialLoginState) error
+	GetOAuthStateByHash(ctx context.Context, stateHash string) (*SocialLoginState, error)
+	DeleteOAuthState(ctx context.Context, id uuid.UUID) error
+	DeleteExpiredOAuthStates(ctx context.Context) error
 }

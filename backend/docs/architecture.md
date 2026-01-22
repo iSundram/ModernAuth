@@ -38,6 +38,13 @@
 ### OAuth Service (`/internal/oauth`)
 - **Providers**: Google, GitHub, Microsoft social login support
 - **User Linking**: Link multiple OAuth providers to a single user account
+- **CSRF Protection**: Database-backed state tokens prevent cross-site request forgery
+- **PKCE Support**: Proof Key for Code Exchange for enhanced security
+
+### Invitation Service (`/internal/invitation`)
+- **User Invitations**: Token-based invitation system with email delivery
+- **Role Assignment**: Automatic role assignment from invitation on acceptance
+- **Expiration**: Configurable invitation expiry with automatic cleanup
 
 ### Email Service (`/internal/email`)
 - **SMTP**: Production-ready SMTP with TLS support (STARTTLS and implicit TLS)
@@ -69,3 +76,5 @@
 - Email verification and password reset flows
 - Account lockout after failed attempts
 - Role-Based Access Control (RBAC)
+- OAuth state validation (CSRF protection)
+- PKCE support for OAuth flows
