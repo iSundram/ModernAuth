@@ -16,23 +16,77 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, ConfirmDialog } from '../../components/ui';
 import { tenantService, userService } from '../../api/services';
 import { useToast } from '../../components/ui/Toast';
-import type { Tenant, CreateTenantRequest, UpdateTenantRequest, User } from '../../types';
+import type { Tenant, CreateTenantRequest, UpdateTenantRequest, TenantSecurityStats, User } from '../../types';
 
 function TenantStats({ tenantId }: { tenantId: string }) {
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['tenant-stats', tenantId],
     queryFn: () => tenantService.getStats(tenantId),
   });
 
-  if (isLoading) return <div className="animate-pulse h-4 w-24 bg-[var(--color-gray-light)] rounded"></div>;
-  if (!stats) return null;
+  const { data: security, isLoading: securityLoading } = useQuery<TenantSecurityStats>({
+    queryKey: ['tenant-security-stats', tenantId],
+    queryFn: () => tenantService.getSecurityStats(tenantId),
+  });
+
+  if (statsLoading || securityLoading) {
+    return <div className="animate-pulse h-4 w-40 bg-[var(--color-gray-light)] rounded" />;
+  }
+  if (!stats || !security) return null;
+
+  const maxUsers = stats.max_users || 0;
+  const userCount = stats.user_count || 0;
+  const usagePercent = maxUsers > 0 ? Math.min(100, Math.round((userCount / maxUsers) * 100)) : undefined;
 
   return (
-    <div className="flex gap-4 mt-2">
-      <div className="text-xs text-[var(--color-text-muted)]">
-        Users: <span className="text-[var(--color-text-primary)] font-medium">{stats.user_count || 0}</span>
+    <div className="mt-2 space-y-2">
+      <div className="flex justify-between items-center text-xs text-[var(--color-text-muted)]">
+        <span>
+          Users:{' '}
+          <span className="text-[var(--color-text-primary)] font-medium">
+            {userCount}
+            {maxUsers > 0 ? ` / ${maxUsers}` : ''}
+          </span>
+        </span>
+        {stats.plan && (
+          <span>
+            Plan:{' '}
+            <span className="text-[var(--color-text-primary)] font-medium">
+              {stats.plan}
+            </span>
+          </span>
+        )}
       </div>
-      {/* Add more stats if returned by backend */}
+      {usagePercent !== undefined && (
+        <div className="w-full h-1.5 rounded-full bg-[var(--color-border-light)] overflow-hidden">
+          <div
+            className={`h-full rounded-full ${
+              usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+            }`}
+            style={{ width: `${usagePercent}%` }}
+          />
+        </div>
+      )}
+      <div className="flex gap-4 text-[10px] text-[var(--color-text-muted)]">
+        <span>
+          Active:{' '}
+          <span className="text-[var(--color-text-primary)] font-medium">
+            {security.active_users}/{security.total_users}
+          </span>
+        </span>
+        <span>
+          Verified:{' '}
+          <span className="text-[var(--color-text-primary)] font-medium">
+            {security.verified_users}
+          </span>
+        </span>
+        <span>
+          MFA:{' '}
+          <span className="text-[var(--color-text-primary)] font-medium">
+            {security.mfa_enabled_users}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

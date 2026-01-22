@@ -35,6 +35,13 @@ func (s *SMTPService) sendEmail(to, subject, htmlBody, textBody string) error {
 		from = fmt.Sprintf("%s <%s>", s.config.FromName, s.config.FromEmail)
 	}
 
+	s.logger.Info("Sending email via SMTP",
+		"to", to,
+		"subject", subject,
+		"smtp_host", s.config.SMTPHost,
+		"smtp_port", s.config.SMTPPort,
+	)
+
 	// Build the email message with MIME headers
 	var msg bytes.Buffer
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
@@ -74,10 +81,27 @@ func (s *SMTPService) sendEmail(to, subject, htmlBody, textBody string) error {
 
 	// Use TLS for ports 465, regular SMTP for others
 	if s.config.SMTPPort == 465 {
-		return s.sendEmailTLS(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes())
+		if err := s.sendEmailTLS(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes()); err != nil {
+			s.logger.Error("Failed to send email via SMTP (TLS)",
+				"to", to,
+				"subject", subject,
+				"error", err,
+			)
+			return err
+		}
+		return nil
 	}
 
-	return smtp.SendMail(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes())
+	if err := smtp.SendMail(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes()); err != nil {
+		s.logger.Error("Failed to send email via SMTP",
+			"to", to,
+			"subject", subject,
+			"error", err,
+		)
+		return err
+	}
+
+	return nil
 }
 
 // sendEmailTLS sends email using implicit TLS (port 465).

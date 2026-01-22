@@ -8,7 +8,7 @@ import type {
   APIKey, CreateAPIKeyRequest,
   Webhook, CreateWebhookRequest, WebhookDelivery,
   UserInvitation, CreateInvitationRequest,
-  Tenant, CreateTenantRequest, UpdateTenantRequest,
+  Tenant, CreateTenantRequest, UpdateTenantRequest, TenantStats, TenantSecurityStats,
   SystemStats, ServiceStatus, SystemSetting,
   TokensResponse
 } from '../types';
@@ -264,7 +264,10 @@ export const tenantService = {
     apiClient.delete<void>(`/v1/tenants/${id}`),
 
   getStats: (id: string) =>
-    apiClient.get<any>(`/v1/tenants/${id}/stats`),
+    apiClient.get<TenantStats>(`/v1/tenants/${id}/stats`),
+
+  getSecurityStats: (id: string) =>
+    apiClient.get<TenantSecurityStats>(`/v1/tenants/${id}/security-stats`),
 
   listUsers: (id: string, params?: { limit?: number; offset?: number }) => {
     const searchParams = new URLSearchParams();

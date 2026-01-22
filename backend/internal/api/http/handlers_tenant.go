@@ -30,6 +30,7 @@ func (h *TenantHandler) TenantRoutes() chi.Router {
 	r.Put("/{id}", h.UpdateTenant)
 	r.Delete("/{id}", h.DeleteTenant)
 	r.Get("/{id}/stats", h.GetTenantStats)
+	r.Get("/{id}/security-stats", h.GetTenantSecurityStats)
 	r.Get("/{id}/users", h.ListTenantUsers)
 	r.Post("/{id}/users/{userId}", h.AssignUserToTenant)
 	r.Delete("/{id}/users/{userId}", h.RemoveUserFromTenant)
@@ -276,6 +277,24 @@ func (h *TenantHandler) GetTenantStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.tenantService.GetTenantStats(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to get tenant stats", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// GetTenantSecurityStats retrieves security-related statistics for a tenant.
+func (h *TenantHandler) GetTenantSecurityStats(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	stats, err := h.tenantService.GetTenantSecurityStats(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get tenant security stats", err)
 		return
 	}
 

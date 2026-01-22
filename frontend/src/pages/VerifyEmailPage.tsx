@@ -3,13 +3,16 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { Button, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
+import { useToast } from '../components/ui/Toast';
 
 export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [message, setMessage] = useState('Verifying your email address...');
+  const [isResending, setIsResending] = useState(false);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!token) {
@@ -31,6 +34,26 @@ export function VerifyEmailPage() {
 
     verify();
   }, [token]);
+
+  const handleResend = async () => {
+    setIsResending(true);
+    try {
+      await authService.sendVerification();
+      showToast({
+        title: 'Verification email sent',
+        message: 'Check your inbox for a new verification link.',
+        type: 'success',
+      });
+    } catch (error) {
+      showToast({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to resend verification email.',
+        type: 'error',
+      });
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
@@ -77,6 +100,17 @@ export function VerifyEmailPage() {
               >
                 {status === 'success' ? 'Continue to Dashboard' : 'Back to Login'}
               </Button>
+              {status === 'error' && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="w-full"
+                  onClick={handleResend}
+                  isLoading={isResending}
+                >
+                  Resend verification email
+                </Button>
+              )}
             </div>
           </div>
         </div>

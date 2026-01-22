@@ -307,6 +307,21 @@ export interface UpdateTenantRequest {
   is_active?: boolean;
 }
 
+export interface TenantStats {
+  tenant_id: string;
+  user_count: number;
+  plan?: string;
+  max_users?: number;
+}
+
+export interface TenantSecurityStats {
+  tenant_id: string;
+  total_users: number;
+  active_users: number;
+  verified_users: number;
+  mfa_enabled_users: number;
+}
+
 // ============================================================================
 // Audit Log Types
 // ============================================================================

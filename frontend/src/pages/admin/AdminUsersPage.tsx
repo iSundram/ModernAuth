@@ -255,6 +255,9 @@ export function AdminUsersPage() {
                     Status
                   </th>
                   <th className="text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider px-6 py-3">
+                    Tenant
+                  </th>
+                  <th className="text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider px-6 py-3">
                     Created
                   </th>
                   <th className="text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider px-6 py-3">
@@ -262,7 +265,7 @@ export function AdminUsersPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--color-border-light)]">
+                  <tbody className="divide-y divide-[var(--color-border-light)]">
                 {usersLoading ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center">
@@ -311,6 +314,11 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-6 py-4">
                         <StatusBadge isActive={user.is_active} isEmailVerified={user.is_email_verified} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-[var(--color-text-secondary)] text-xs">
+                          {user.tenant_id ? user.tenant_id : '—'}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-[var(--color-text-secondary)]">

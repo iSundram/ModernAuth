@@ -221,6 +221,14 @@ func (s *Service) DeleteTenant(ctx context.Context, id uuid.UUID) error {
 
 // GetTenantStats retrieves statistics for a tenant.
 func (s *Service) GetTenantStats(ctx context.Context, tenantID uuid.UUID) (*TenantStats, error) {
+	tenant, err := s.storage.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if tenant == nil {
+		return nil, ErrTenantNotFound
+	}
+
 	userCount, err := s.storage.CountTenantUsers(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -229,6 +237,8 @@ func (s *Service) GetTenantStats(ctx context.Context, tenantID uuid.UUID) (*Tena
 	return &TenantStats{
 		TenantID:  tenantID,
 		UserCount: userCount,
+		Plan:      tenant.Plan,
+		MaxUsers:  getPlanMaxUsers(tenant.Plan),
 	}, nil
 }
 
@@ -236,6 +246,72 @@ func (s *Service) GetTenantStats(ctx context.Context, tenantID uuid.UUID) (*Tena
 type TenantStats struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	UserCount int       `json:"user_count"`
+	Plan      string    `json:"plan"`
+	MaxUsers  int       `json:"max_users"`
+}
+
+// getPlanMaxUsers returns the soft user limit for a given plan.
+// A value of 0 means "unlimited" (no enforced limit).
+func getPlanMaxUsers(plan string) int {
+	switch plan {
+	case "free":
+		return 5
+	case "starter":
+		return 20
+	case "professional":
+		return 100
+	case "enterprise":
+		return 0
+	default:
+		return 0
+	}
+}
+
+// TenantSecurityStats represents basic security posture for a tenant.
+type TenantSecurityStats struct {
+	TenantID        uuid.UUID `json:"tenant_id"`
+	TotalUsers      int       `json:"total_users"`
+	ActiveUsers     int       `json:"active_users"`
+	VerifiedUsers   int       `json:"verified_users"`
+	MFAEnabledUsers int       `json:"mfa_enabled_users"`
+}
+
+// GetTenantSecurityStats computes security-related statistics for a tenant.
+func (s *Service) GetTenantSecurityStats(ctx context.Context, tenantID uuid.UUID) (*TenantSecurityStats, error) {
+	// Reuse ListTenantUsers; for now we fetch up to 1000 users per tenant.
+	const maxUsersPerTenant = 1000
+
+	users, err := s.storage.ListTenantUsers(ctx, tenantID, maxUsersPerTenant, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &TenantSecurityStats{
+		TenantID:   tenantID,
+		TotalUsers: len(users),
+	}
+
+	for _, u := range users {
+		if u.IsActive {
+			stats.ActiveUsers++
+		}
+		if u.IsEmailVerified {
+			stats.VerifiedUsers++
+		}
+
+		mfaSettings, err := s.storage.GetMFASettings(ctx, u.ID)
+		if err != nil {
+			// Log and continue; a single failure shouldn't break the whole stats call.
+			s.logger.Warn("Failed to load MFA settings for tenant security stats",
+				"user_id", u.ID, "tenant_id", tenantID, "error", err)
+			continue
+		}
+		if mfaSettings != nil && mfaSettings.IsTOTPEnabled {
+			stats.MFAEnabledUsers++
+		}
+	}
+
+	return stats, nil
 }
 
 // ResolveTenant resolves a tenant from various identifiers.

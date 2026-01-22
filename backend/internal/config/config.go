@@ -50,8 +50,11 @@ type LockoutConfig struct {
 }
 
 // EmailConfig holds email service configuration.
+// Provider can be:
+//   - "console": log emails to stdout (safe default for development)
+//   - "smtp":    send real emails via SMTP using the settings below.
 type EmailConfig struct {
-	Provider     string `yaml:"provider" env:"EMAIL_PROVIDER" env-default:"console"` // console, smtp
+	Provider     string `yaml:"provider" env:"EMAIL_PROVIDER" env-default:"console"`
 	SMTPHost     string `yaml:"smtp_host" env:"SMTP_HOST" env-default:""`
 	SMTPPort     int    `yaml:"smtp_port" env:"SMTP_PORT" env-default:"587"`
 	SMTPUsername string `yaml:"smtp_username" env:"SMTP_USERNAME" env-default:""`
@@ -99,9 +102,14 @@ func (c *OAuthConfig) IsMicrosoftConfigured() bool {
 	return c.MicrosoftClientID != "" && c.MicrosoftClientSecret != ""
 }
 
-// IsSMTPConfigured returns true if SMTP email is configured.
+// IsSMTPConfigured returns true if SMTP email is configured with the
+// minimum required fields for sending real emails.
 func (c *EmailConfig) IsSMTPConfigured() bool {
-	return c.Provider == "smtp" && c.SMTPHost != ""
+	// Require:
+	//   - Provider explicitly set to "smtp"
+	//   - SMTPHost non-empty
+	//   - FromEmail non-empty (address used as SMTP MAIL FROM)
+	return c.Provider == "smtp" && c.SMTPHost != "" && c.FromEmail != ""
 }
 
 func Load() (*Config, error) {
