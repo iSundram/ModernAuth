@@ -107,18 +107,34 @@ func main() {
 
 	// Initialize email service
 	var emailService email.Service
-	// If SMTP is selected but required fields are missing, fail fast so that
-	// production deployments don't silently fall back to the console provider.
-	if cfg.Email.Provider == "smtp" && !cfg.Email.IsSMTPConfigured() {
-		slog.Error("SMTP email provider selected but configuration is incomplete",
-			"provider", cfg.Email.Provider,
-			"smtp_host_set", cfg.Email.SMTPHost != "",
-			"from_email_set", cfg.Email.FromEmail != "",
-		)
-		os.Exit(1)
+	var queuedEmailService *email.QueuedService  // Track for graceful shutdown
+	var rateLimitedEmailService *email.RateLimitedService  // Track for cleanup
+
+	// Validate provider configuration
+	switch cfg.Email.Provider {
+	case "smtp":
+		if !cfg.Email.IsSMTPConfigured() {
+			slog.Error("SMTP email provider selected but configuration is incomplete",
+				"provider", cfg.Email.Provider,
+				"smtp_host_set", cfg.Email.SMTPHost != "",
+				"from_email_set", cfg.Email.FromEmail != "",
+			)
+			os.Exit(1)
+		}
+	case "sendgrid":
+		if !cfg.Email.IsSendGridConfigured() {
+			slog.Error("SendGrid email provider selected but configuration is incomplete",
+				"provider", cfg.Email.Provider,
+				"api_key_set", cfg.Email.SendGridAPIKey != "",
+				"from_email_set", cfg.Email.FromEmail != "",
+			)
+			os.Exit(1)
+		}
 	}
 
-	if cfg.Email.IsSMTPConfigured() {
+	// Create base email service based on provider
+	switch cfg.Email.Provider {
+	case "smtp":
 		emailConfig := &email.Config{
 			SMTPHost:     cfg.Email.SMTPHost,
 			SMTPPort:     cfg.Email.SMTPPort,
@@ -130,11 +146,48 @@ func main() {
 		}
 		emailService = email.NewSMTPService(emailConfig)
 		slog.Info("Using SMTP email service", "host", cfg.Email.SMTPHost, "port", cfg.Email.SMTPPort)
-	} else {
+
+	case "sendgrid":
+		sendgridConfig := &email.SendGridConfig{
+			APIKey:    cfg.Email.SendGridAPIKey,
+			FromEmail: cfg.Email.FromEmail,
+			FromName:  cfg.Email.FromName,
+			BaseURL:   cfg.App.BaseURL,
+		}
+		emailService = email.NewSendGridService(sendgridConfig)
+		slog.Info("Using SendGrid email service")
+
+	default:
 		emailService = email.NewConsoleService()
 		slog.Info("Using console email service (development mode)",
 			"provider", cfg.Email.Provider,
 		)
+	}
+
+	// Wrap with rate limiting if enabled
+	if cfg.Email.RateLimitEnabled {
+		rateLimitConfig := &email.RateLimitConfig{
+			VerificationLimit:  cfg.Email.VerificationRateLimit,
+			PasswordResetLimit: cfg.Email.PasswordResetRateLimit,
+			Window:             time.Hour,
+		}
+		rateLimitedEmailService = email.NewRateLimitedService(emailService, rateLimitConfig)
+		emailService = rateLimitedEmailService
+		slog.Info("Email rate limiting enabled",
+			"verification_limit", cfg.Email.VerificationRateLimit,
+			"password_reset_limit", cfg.Email.PasswordResetRateLimit,
+		)
+	}
+
+	// Wrap with queue if enabled
+	if cfg.Email.QueueEnabled {
+		queueConfig := &email.QueueConfig{
+			QueueSize:  cfg.Email.QueueSize,
+			MaxRetries: 3,
+		}
+		queuedEmailService = email.NewQueuedService(emailService, queueConfig)
+		emailService = queuedEmailService
+		slog.Info("Email queue enabled", "queue_size", cfg.Email.QueueSize)
 	}
 
 	// Initialize tenant service
@@ -217,6 +270,15 @@ func main() {
 	<-quit
 
 	slog.Info("Shutting down server...")
+
+	// Stop email services gracefully
+	if queuedEmailService != nil {
+		slog.Info("Stopping email queue...")
+		queuedEmailService.Stop()
+	}
+	if rateLimitedEmailService != nil {
+		rateLimitedEmailService.Stop()
+	}
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -3,9 +3,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/email"
 )
 
 // VerifyEmail handles email verification.
@@ -62,13 +64,17 @@ func (h *Handler) SendVerificationEmail(w http.ResponseWriter, r *http.Request) 
 		if err == nil && user != nil {
 			// Build verification URL
 			verifyURL := h.getBaseURL(r) + "/verify-email?token=" + result.Token
-			
-			// Send email asynchronously (don't block response)
-			go func() {
-				if err := h.emailService.SendVerificationEmail(r.Context(), user, result.Token, verifyURL); err != nil {
-					h.logger.Error("Failed to send verification email", "error", err, "user_id", userID)
+
+			// Queue email (async with retry via email queue)
+			if err := h.emailService.SendVerificationEmail(r.Context(), user, result.Token, verifyURL); err != nil {
+				// Handle rate limit error
+				if errors.Is(err, email.ErrRateLimitExceeded) {
+					h.writeError(w, http.StatusTooManyRequests, "Too many verification emails requested. Please try again later.", err)
+					return
 				}
-			}()
+				// Log other errors but don't fail the request (email is queued async)
+				h.logger.Error("Failed to queue verification email", "error", err, "user_id", userID)
+			}
 		}
 	}
 

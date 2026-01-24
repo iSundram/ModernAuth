@@ -93,6 +93,11 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Verification Tokens**: Secure random tokens (32 bytes), stored as SHA-256 hashes
 - **Token Expiry**: Email verification (24 hours), Password reset (1 hour)
 - **Single Use**: Tokens are marked as used after consumption
+- **Email Rate Limiting**: Per-user rate limits prevent abuse
+  - Verification emails: 3 per hour per user
+  - Password reset emails: 5 per hour per user
+- **Async Delivery**: Emails are queued with automatic retry on failure
+- **No Enumeration**: Password reset always returns success to prevent email enumeration
 
 ### HTTP Security Headers
 All responses include security headers to protect against common web vulnerabilities:

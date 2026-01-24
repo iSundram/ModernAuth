@@ -51,8 +51,9 @@ type LockoutConfig struct {
 
 // EmailConfig holds email service configuration.
 // Provider can be:
-//   - "console": log emails to stdout (safe default for development)
-//   - "smtp":    send real emails via SMTP using the settings below.
+//   - "console":  log emails to stdout (safe default for development)
+//   - "smtp":     send real emails via SMTP using the settings below
+//   - "sendgrid": send real emails via SendGrid API
 type EmailConfig struct {
 	Provider     string `yaml:"provider" env:"EMAIL_PROVIDER" env-default:"console"`
 	SMTPHost     string `yaml:"smtp_host" env:"SMTP_HOST" env-default:""`
@@ -61,6 +62,18 @@ type EmailConfig struct {
 	SMTPPassword string `yaml:"smtp_password" env:"SMTP_PASSWORD" env-default:""`
 	FromEmail    string `yaml:"from_email" env:"EMAIL_FROM" env-default:"noreply@modernauth.local"`
 	FromName     string `yaml:"from_name" env:"EMAIL_FROM_NAME" env-default:"ModernAuth"`
+
+	// SendGrid configuration
+	SendGridAPIKey string `yaml:"sendgrid_api_key" env:"SENDGRID_API_KEY" env-default:""`
+
+	// Queue configuration
+	QueueEnabled bool `yaml:"queue_enabled" env:"EMAIL_QUEUE_ENABLED" env-default:"true"`
+	QueueSize    int  `yaml:"queue_size" env:"EMAIL_QUEUE_SIZE" env-default:"1000"`
+
+	// Rate limiting configuration
+	RateLimitEnabled       bool `yaml:"rate_limit_enabled" env:"EMAIL_RATE_LIMIT_ENABLED" env-default:"true"`
+	VerificationRateLimit  int  `yaml:"verification_rate_limit" env:"EMAIL_VERIFICATION_RATE_LIMIT" env-default:"3"`
+	PasswordResetRateLimit int  `yaml:"password_reset_rate_limit" env:"EMAIL_PASSWORD_RESET_RATE_LIMIT" env-default:"5"`
 }
 
 // OAuthConfig holds OAuth2 provider configurations.
@@ -111,6 +124,11 @@ func (c *EmailConfig) IsSMTPConfigured() bool {
 	//   - SMTPHost non-empty
 	//   - FromEmail non-empty (address used as SMTP MAIL FROM)
 	return c.Provider == "smtp" && c.SMTPHost != "" && c.FromEmail != ""
+}
+
+// IsSendGridConfigured returns true if SendGrid is configured.
+func (c *EmailConfig) IsSendGridConfigured() bool {
+	return c.Provider == "sendgrid" && c.SendGridAPIKey != "" && c.FromEmail != ""
 }
 
 func Load() (*Config, error) {

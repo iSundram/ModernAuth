@@ -47,7 +47,11 @@
 - **Expiration**: Configurable invitation expiry with automatic cleanup
 
 ### Email Service (`/internal/email`)
+- **Providers**: SMTP, SendGrid, and Console (development) email providers
 - **SMTP**: Production-ready SMTP with TLS support (STARTTLS and implicit TLS)
+- **SendGrid**: SendGrid API v3 integration (no SDK dependency)
+- **Queue**: Async email delivery with exponential backoff retry (1min → 5min → 15min)
+- **Rate Limiting**: Per-user rate limits (3 verification/hr, 5 password reset/hr)
 - **Templates**: HTML email templates for verification, reset, welcome, alerts
 
 ### Tenant Service (`/internal/tenant`)

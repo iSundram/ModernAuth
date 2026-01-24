@@ -20,6 +20,9 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers with CSRF protection and PKCE support.
 - **User Invitations**: Token-based invitation system with automatic role assignment.
 - **SMTP Email Service**: Production-ready email with TLS support and HTML templates.
+- **SendGrid Integration**: Alternative email provider using SendGrid API v3.
+- **Email Queue**: Async email delivery with exponential backoff retry logic.
+- **Email Rate Limiting**: Per-user rate limits to prevent abuse.
 - **Password Strength Validation**: Configurable policies with common password blocking.
 - **Email Verification**: Token-based email verification flow.
 - **Password Management**: Secure password reset and change flows.

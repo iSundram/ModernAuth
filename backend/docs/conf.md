@@ -35,13 +35,31 @@ Environment variables:
 ### Email / SMTP
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `EMAIL_PROVIDER` | Email provider: `console` (logs to stdout) or `smtp` (real emails) | `console` |
+| `EMAIL_PROVIDER` | Email provider: `console` (logs to stdout), `smtp` (SMTP server), or `sendgrid` (SendGrid API) | `console` |
 | `SMTP_HOST` | SMTP server hostname (required when `EMAIL_PROVIDER=smtp`) | - |
 | `SMTP_PORT` | SMTP server port | `587` |
 | `SMTP_USERNAME` | SMTP authentication username | - |
 | `SMTP_PASSWORD` | SMTP authentication password | - |
-| `EMAIL_FROM` | Sender email address (required when `EMAIL_PROVIDER=smtp`) | `noreply@modernauth.local` |
+| `EMAIL_FROM` | Sender email address (required when `EMAIL_PROVIDER=smtp` or `sendgrid`) | `noreply@modernauth.local` |
 | `EMAIL_FROM_NAME` | Sender display name | `ModernAuth` |
+
+### SendGrid
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SENDGRID_API_KEY` | SendGrid API key (required when `EMAIL_PROVIDER=sendgrid`) | - |
+
+### Email Queue
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EMAIL_QUEUE_ENABLED` | Enable async email queue with retry logic | `true` |
+| `EMAIL_QUEUE_SIZE` | Maximum number of emails in queue | `1000` |
+
+### Email Rate Limiting
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `EMAIL_RATE_LIMIT_ENABLED` | Enable per-user email rate limiting | `true` |
+| `EMAIL_VERIFICATION_RATE_LIMIT` | Max verification emails per user per hour | `3` |
+| `EMAIL_PASSWORD_RESET_RATE_LIMIT` | Max password reset emails per user per hour | `5` |
 
 ### OAuth2 Providers
 | Variable | Description | Default |
@@ -83,12 +101,26 @@ LOCKOUT_WINDOW=15m
 LOCKOUT_DURATION=30m
 
 # Email (SMTP)
+EMAIL_PROVIDER=smtp
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USERNAME=your-smtp-username
 SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL=noreply@example.com
-SMTP_FROM_NAME=ModernAuth
+EMAIL_FROM=noreply@example.com
+EMAIL_FROM_NAME=ModernAuth
+
+# Email (SendGrid alternative)
+# EMAIL_PROVIDER=sendgrid
+# SENDGRID_API_KEY=your-sendgrid-api-key
+# EMAIL_FROM=noreply@example.com
+# EMAIL_FROM_NAME=ModernAuth
+
+# Email Queue & Rate Limiting
+EMAIL_QUEUE_ENABLED=true
+EMAIL_QUEUE_SIZE=1000
+EMAIL_RATE_LIMIT_ENABLED=true
+EMAIL_VERIFICATION_RATE_LIMIT=3
+EMAIL_PASSWORD_RESET_RATE_LIMIT=5
 
 # OAuth2 Providers (optional)
 OAUTH_GOOGLE_CLIENT_ID=your-google-client-id

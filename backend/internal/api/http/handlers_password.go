@@ -3,9 +3,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/email"
 )
 
 // ForgotPassword handles password reset requests.
@@ -41,13 +43,17 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		if err == nil && user != nil {
 			// Build reset URL
 			resetURL := h.getBaseURL(r) + "/reset-password?token=" + result.Token
-			
-			// Send email asynchronously (don't block response)
-			go func() {
-				if err := h.emailService.SendPasswordResetEmail(r.Context(), user, result.Token, resetURL); err != nil {
-					h.logger.Error("Failed to send password reset email", "error", err, "email", req.Email)
+
+			// Queue email (async with retry via email queue)
+			if err := h.emailService.SendPasswordResetEmail(r.Context(), user, result.Token, resetURL); err != nil {
+				// Handle rate limit error - still return generic message to prevent enumeration
+				if errors.Is(err, email.ErrRateLimitExceeded) {
+					h.logger.Warn("Password reset rate limit exceeded", "email", req.Email)
+					// Don't expose rate limit to prevent enumeration
+				} else {
+					h.logger.Error("Failed to queue password reset email", "error", err, "email", req.Email)
 				}
-			}()
+			}
 		}
 	}
 
