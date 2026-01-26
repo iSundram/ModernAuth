@@ -15,6 +15,8 @@ type RateLimitConfig struct {
 	VerificationLimit int
 	// PasswordResetLimit is the max password reset emails per user per hour
 	PasswordResetLimit int
+	// LoginAlertLimit is the max login alert emails per user per hour
+	LoginAlertLimit int
 	// Window is the time window for rate limiting
 	Window time.Duration
 }
@@ -24,6 +26,7 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 	return &RateLimitConfig{
 		VerificationLimit:  3,
 		PasswordResetLimit: 5,
+		LoginAlertLimit:    10,
 		Window:             time.Hour,
 	}
 }
@@ -41,6 +44,7 @@ type RateLimitedService struct {
 	// In-memory rate limit tracking (can be replaced with Redis)
 	verificationLimits  map[string]*rateLimitEntry
 	passwordResetLimits map[string]*rateLimitEntry
+	loginAlertLimits    map[string]*rateLimitEntry
 	mu                  sync.RWMutex
 
 	// Cleanup ticker
@@ -59,6 +63,7 @@ func NewRateLimitedService(inner Service, cfg *RateLimitConfig) *RateLimitedServ
 		config:              cfg,
 		verificationLimits:  make(map[string]*rateLimitEntry),
 		passwordResetLimits: make(map[string]*rateLimitEntry),
+		loginAlertLimits:    make(map[string]*rateLimitEntry),
 		cleanupTicker:       time.NewTicker(10 * time.Minute),
 		stopCh:              make(chan struct{}),
 	}
@@ -107,6 +112,14 @@ func (r *RateLimitedService) cleanup() {
 		entry.timestamps = filterTimestamps(entry.timestamps, cutoff)
 		if len(entry.timestamps) == 0 {
 			delete(r.passwordResetLimits, key)
+		}
+	}
+
+	// Clean login alert limits
+	for key, entry := range r.loginAlertLimits {
+		entry.timestamps = filterTimestamps(entry.timestamps, cutoff)
+		if len(entry.timestamps) == 0 {
+			delete(r.loginAlertLimits, key)
 		}
 	}
 }
@@ -170,8 +183,11 @@ func (r *RateLimitedService) SendWelcomeEmail(ctx context.Context, user *storage
 	return r.inner.SendWelcomeEmail(ctx, user)
 }
 
-// SendLoginAlertEmail sends a login alert (no rate limiting - system triggered).
+// SendLoginAlertEmail sends a login alert with rate limiting to prevent abuse.
 func (r *RateLimitedService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
+	if err := r.checkRateLimit(r.loginAlertLimits, user.Email, r.config.LoginAlertLimit); err != nil {
+		return err
+	}
 	return r.inner.SendLoginAlertEmail(ctx, user, device)
 }
 

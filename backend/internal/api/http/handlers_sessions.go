@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -26,6 +27,18 @@ func (h *Handler) RevokeAllSessions(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "Failed to revoke sessions", err)
 		return
 	}
+
+	// Send session revoked notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err != nil || user == nil {
+			h.logger.Error("Failed to get user for session revoked email", "error", err, "user_id", userID)
+			return
+		}
+		if err := h.emailService.SendSessionRevokedEmail(context.Background(), user, "All sessions revoked by user request"); err != nil {
+			h.logger.Error("Failed to send session revoked email", "error", err, "user_id", userID)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "All sessions revoked successfully"})
 }

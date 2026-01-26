@@ -21,9 +21,23 @@ func NewConsoleService() *ConsoleService {
 	}
 }
 
+// SendEmail logs an email to console (implements EmailSender interface).
+func (s *ConsoleService) SendEmail(to, subject, htmlBody, textBody string) error {
+	s.logger.Info("Email",
+		"to", to,
+		"subject", subject,
+	)
+	fmt.Printf("\n=== EMAIL ===\n")
+	fmt.Printf("To: %s\n", to)
+	fmt.Printf("Subject: %s\n", subject)
+	fmt.Printf("Text Body:\n%s\n", textBody)
+	fmt.Printf("=============\n\n")
+	return nil
+}
+
 // SendVerificationEmail logs a verification email to console.
 func (s *ConsoleService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
-	s.logger.Info("📧 Verification Email",
+	s.logger.Info("Verification Email",
 		"to", user.Email,
 		"subject", "Verify your email address",
 		"token", token,
@@ -40,7 +54,7 @@ func (s *ConsoleService) SendVerificationEmail(ctx context.Context, user *storag
 
 // SendPasswordResetEmail logs a password reset email to console.
 func (s *ConsoleService) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
-	s.logger.Info("📧 Password Reset Email",
+	s.logger.Info("Password Reset Email",
 		"to", user.Email,
 		"subject", "Reset your password",
 		"token", token,
@@ -57,7 +71,7 @@ func (s *ConsoleService) SendPasswordResetEmail(ctx context.Context, user *stora
 
 // SendWelcomeEmail logs a welcome email to console.
 func (s *ConsoleService) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
-	s.logger.Info("📧 Welcome Email",
+	s.logger.Info("Welcome Email",
 		"to", user.Email,
 		"subject", "Welcome to ModernAuth",
 	)
@@ -70,7 +84,7 @@ func (s *ConsoleService) SendWelcomeEmail(ctx context.Context, user *storage.Use
 
 // SendLoginAlertEmail logs a login alert email to console.
 func (s *ConsoleService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
-	s.logger.Info("📧 Login Alert Email",
+	s.logger.Info("Login Alert Email",
 		"to", user.Email,
 		"subject", "New login to your account",
 		"device", device.DeviceName,
@@ -91,7 +105,7 @@ func (s *ConsoleService) SendLoginAlertEmail(ctx context.Context, user *storage.
 
 // SendInvitationEmail logs an invitation email to console.
 func (s *ConsoleService) SendInvitationEmail(ctx context.Context, invitation *InvitationEmail) error {
-	s.logger.Info("📧 Invitation Email",
+	s.logger.Info("Invitation Email",
 		"to", invitation.Email,
 		"subject", fmt.Sprintf("You've been invited to join %s", invitation.TenantName),
 		"inviter", invitation.InviterName,
@@ -109,7 +123,7 @@ func (s *ConsoleService) SendInvitationEmail(ctx context.Context, invitation *In
 
 // SendMFAEnabledEmail logs an MFA enabled notification to console.
 func (s *ConsoleService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
-	s.logger.Info("📧 MFA Enabled Email",
+	s.logger.Info("MFA Enabled Email",
 		"to", user.Email,
 		"subject", "Two-factor authentication enabled",
 	)
@@ -122,7 +136,7 @@ func (s *ConsoleService) SendMFAEnabledEmail(ctx context.Context, user *storage.
 
 // SendPasswordChangedEmail logs a password changed notification to console.
 func (s *ConsoleService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
-	s.logger.Info("📧 Password Changed Email",
+	s.logger.Info("Password Changed Email",
 		"to", user.Email,
 		"subject", "Your password was changed",
 	)
@@ -135,7 +149,7 @@ func (s *ConsoleService) SendPasswordChangedEmail(ctx context.Context, user *sto
 
 // SendSessionRevokedEmail logs a session revoked notification to console.
 func (s *ConsoleService) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
-	s.logger.Info("📧 Session Revoked Email",
+	s.logger.Info("Session Revoked Email",
 		"to", user.Email,
 		"subject", "Your session was terminated",
 		"reason", reason,

@@ -499,3 +499,65 @@ type OAuthStateStorage interface {
 	DeleteOAuthState(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredOAuthStates(ctx context.Context) error
 }
+
+// EmailTemplate represents a customizable email template.
+type EmailTemplate struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  *uuid.UUID `json:"tenant_id,omitempty"`
+	Type      string     `json:"type"`
+	Subject   string     `json:"subject"`
+	HTMLBody  string     `json:"html_body"`
+	TextBody  *string    `json:"text_body,omitempty"`
+	IsActive  bool       `json:"is_active"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// EmailBranding represents email branding settings for a tenant.
+type EmailBranding struct {
+	ID             uuid.UUID  `json:"id"`
+	TenantID       *uuid.UUID `json:"tenant_id,omitempty"`
+	AppName        string     `json:"app_name"`
+	LogoURL        *string    `json:"logo_url,omitempty"`
+	PrimaryColor   string     `json:"primary_color"`
+	SecondaryColor string     `json:"secondary_color"`
+	CompanyName    *string    `json:"company_name,omitempty"`
+	SupportEmail   *string    `json:"support_email,omitempty"`
+	FooterText     *string    `json:"footer_text,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+// EmailTemplateStorage defines email template storage operations.
+type EmailTemplateStorage interface {
+	// Template operations
+	GetEmailTemplate(ctx context.Context, tenantID *uuid.UUID, templateType string) (*EmailTemplate, error)
+	ListEmailTemplates(ctx context.Context, tenantID *uuid.UUID) ([]*EmailTemplate, error)
+	UpsertEmailTemplate(ctx context.Context, template *EmailTemplate) error
+	DeleteEmailTemplate(ctx context.Context, tenantID *uuid.UUID, templateType string) error
+
+	// Branding operations
+	GetEmailBranding(ctx context.Context, tenantID *uuid.UUID) (*EmailBranding, error)
+	UpsertEmailBranding(ctx context.Context, branding *EmailBranding) error
+
+	// Dead letter queue operations
+	CreateEmailDeadLetter(ctx context.Context, dl *EmailDeadLetter) error
+	ListEmailDeadLetters(ctx context.Context, tenantID *uuid.UUID, resolved bool, limit, offset int) ([]*EmailDeadLetter, error)
+	MarkEmailDeadLetterResolved(ctx context.Context, id uuid.UUID) error
+}
+
+// EmailDeadLetter represents a failed email in the dead letter queue.
+type EmailDeadLetter struct {
+	ID           uuid.UUID              `json:"id"`
+	TenantID     *uuid.UUID             `json:"tenant_id,omitempty"`
+	JobType      string                 `json:"job_type"`
+	Recipient    string                 `json:"recipient"`
+	Subject      *string                `json:"subject,omitempty"`
+	Payload      map[string]interface{} `json:"payload"`
+	ErrorMessage string                 `json:"error_message"`
+	Attempts     int                    `json:"attempts"`
+	CreatedAt    time.Time              `json:"created_at"`
+	FailedAt     time.Time              `json:"failed_at"`
+	RetriedAt    *time.Time             `json:"retried_at,omitempty"`
+	Resolved     bool                   `json:"resolved"`
+}

@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -26,7 +27,7 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.authService.VerifyEmail(r.Context(), req.Token)
+	user, err := h.authService.VerifyEmail(r.Context(), req.Token)
 	if err != nil {
 		switch err {
 		case auth.ErrTokenNotFound:
@@ -40,6 +41,13 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Send welcome email after successful verification
+	go func() {
+		if err := h.emailService.SendWelcomeEmail(context.Background(), user); err != nil {
+			h.logger.Error("Failed to send welcome email", "error", err, "user_id", user.ID)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Email verified successfully"})
 }

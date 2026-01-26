@@ -132,7 +132,8 @@ func main() {
 		}
 	}
 
-	// Create base email service based on provider
+	// Create base email sender based on provider
+	var emailSender email.EmailSender
 	switch cfg.Email.Provider {
 	case "smtp":
 		emailConfig := &email.Config{
@@ -144,7 +145,7 @@ func main() {
 			FromName:     cfg.Email.FromName,
 			BaseURL:      cfg.App.BaseURL,
 		}
-		emailService = email.NewSMTPService(emailConfig)
+		emailSender = email.NewSMTPService(emailConfig)
 		slog.Info("Using SMTP email service", "host", cfg.Email.SMTPHost, "port", cfg.Email.SMTPPort)
 
 	case "sendgrid":
@@ -154,15 +155,26 @@ func main() {
 			FromName:  cfg.Email.FromName,
 			BaseURL:   cfg.App.BaseURL,
 		}
-		emailService = email.NewSendGridService(sendgridConfig)
+		emailSender = email.NewSendGridService(sendgridConfig)
 		slog.Info("Using SendGrid email service")
 
 	default:
-		emailService = email.NewConsoleService()
+		emailSender = email.NewConsoleService()
 		slog.Info("Using console email service (development mode)",
 			"provider", cfg.Email.Provider,
 		)
 	}
+
+	// Initialize email template service
+	templateService := email.NewTemplateService(storage)
+
+	// Create template-aware email service (uses DB templates with rich variables)
+	emailService = email.NewTemplateAwareService(&email.TemplateAwareConfig{
+		Sender:          emailSender,
+		TemplateService: templateService,
+		Storage:         storage,
+	})
+	slog.Info("Email template service enabled")
 
 	// Wrap with rate limiting if enabled
 	if cfg.Email.RateLimitEnabled {
@@ -182,8 +194,9 @@ func main() {
 	// Wrap with queue if enabled
 	if cfg.Email.QueueEnabled {
 		queueConfig := &email.QueueConfig{
-			QueueSize:  cfg.Email.QueueSize,
-			MaxRetries: 3,
+			QueueSize:       cfg.Email.QueueSize,
+			MaxRetries:      3,
+			DeadLetterStore: storage,
 		}
 		queuedEmailService = email.NewQueuedService(emailService, queueConfig)
 		emailService = queuedEmailService
@@ -235,6 +248,7 @@ func main() {
 	apiKeyHandler := httpapi.NewAPIKeyHandler(apiKeyService)
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)
 	invitationHandler := httpapi.NewInvitationHandler(invitationService)
+	emailTemplateHandler := httpapi.NewEmailTemplateHandler(storage, templateService)
 
 	// Set handlers on main handler
 	handler.SetTenantHandler(tenantHandler)
@@ -242,6 +256,7 @@ func main() {
 	handler.SetAPIKeyHandler(apiKeyHandler)
 	handler.SetWebhookHandler(webhookHandler)
 	handler.SetInvitationHandler(invitationHandler)
+	handler.SetEmailTemplateHandler(emailTemplateHandler)
 
 	router := handler.Router()
 

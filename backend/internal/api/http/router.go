@@ -127,6 +127,22 @@ func (h *Handler) Router() *chi.Mux {
 			
 			// Permission management
 			r.Get("/permissions", h.ListPermissions)
+
+			// Email template management
+			if h.emailTemplateHandler != nil {
+				r.Route("/email-templates", func(r chi.Router) {
+					r.Get("/", h.emailTemplateHandler.ListTemplates)
+					r.Get("/variables", h.emailTemplateHandler.ListAvailableVariables)
+					r.Get("/{type}", h.emailTemplateHandler.GetTemplate)
+					r.Put("/{type}", h.emailTemplateHandler.UpdateTemplate)
+					r.Delete("/{type}", h.emailTemplateHandler.DeleteTemplate)
+					r.Post("/{type}/preview", h.emailTemplateHandler.PreviewTemplate)
+				})
+				r.Route("/email-branding", func(r chi.Router) {
+					r.Get("/", h.emailTemplateHandler.GetBranding)
+					r.Put("/", h.emailTemplateHandler.UpdateBranding)
+				})
+			}
 		})
 
 		// Tenant Management (requires admin role)

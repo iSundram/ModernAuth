@@ -487,5 +487,17 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send MFA enabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err != nil || user == nil {
+			h.logger.Error("Failed to get user for MFA email", "error", err, "user_id", userID)
+			return
+		}
+		if err := h.emailService.SendMFAEnabledEmail(context.Background(), user); err != nil {
+			h.logger.Error("Failed to send MFA enabled email", "error", err, "user_id", userID)
+		}
+	}()
+
 	writeJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled successfully"})
 }

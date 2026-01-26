@@ -28,6 +28,11 @@ func NewSMTPService(config *Config) *SMTPService {
 	}
 }
 
+// SendEmail sends an email using SMTP (implements EmailSender interface).
+func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
+	return s.sendEmail(to, subject, htmlBody, textBody)
+}
+
 // sendEmail sends an email using SMTP.
 func (s *SMTPService) sendEmail(to, subject, htmlBody, textBody string) error {
 	from := s.config.FromEmail

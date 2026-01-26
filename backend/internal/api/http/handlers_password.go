@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -137,6 +138,18 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Send password changed notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err != nil || user == nil {
+			h.logger.Error("Failed to get user for password changed email", "error", err, "user_id", userID)
+			return
+		}
+		if err := h.emailService.SendPasswordChangedEmail(context.Background(), user); err != nil {
+			h.logger.Error("Failed to send password changed email", "error", err, "user_id", userID)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }

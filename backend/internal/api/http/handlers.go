@@ -29,12 +29,13 @@ type Handler struct {
 	}
 
 	// Specialized handlers
-	tenantHandler     *TenantHandler
-	deviceHandler     *DeviceHandler
-	apiKeyHandler     *APIKeyHandler
-	webhookHandler    *WebhookHandler
-	invitationHandler *InvitationHandler
-	oauthHandler      *OAuthHandler
+	tenantHandler         *TenantHandler
+	deviceHandler         *DeviceHandler
+	apiKeyHandler         *APIKeyHandler
+	webhookHandler        *WebhookHandler
+	invitationHandler     *InvitationHandler
+	oauthHandler          *OAuthHandler
+	emailTemplateHandler  *EmailTemplateHandler
 }
 
 // NewHandler creates a new HTTP handler.
@@ -98,6 +99,11 @@ func (h *Handler) SetInvitationHandler(handler *InvitationHandler) {
 // SetOAuthHandler sets the OAuth handler.
 func (h *Handler) SetOAuthHandler(handler *OAuthHandler) {
 	h.oauthHandler = handler
+}
+
+// SetEmailTemplateHandler sets the email template handler.
+func (h *Handler) SetEmailTemplateHandler(handler *EmailTemplateHandler) {
+	h.emailTemplateHandler = handler
 }
 
 // HealthCheck handles health check requests.

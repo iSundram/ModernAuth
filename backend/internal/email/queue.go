@@ -3,6 +3,7 @@ package email
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -14,6 +15,8 @@ import (
 type EmailJob struct {
 	ID        string
 	Type      string
+	Recipient string
+	Subject   string
 	Payload   interface{}
 	Attempts  int
 	MaxRetry  int
@@ -23,19 +26,21 @@ type EmailJob struct {
 
 // QueuedService wraps an email service with async queue and retry logic.
 type QueuedService struct {
-	inner    Service
-	logger   *slog.Logger
-	queue    chan *EmailJob
-	wg       sync.WaitGroup
-	stopCh   chan struct{}
-	stopped  bool
-	mu       sync.RWMutex
+	inner           Service
+	deadLetterStore storage.EmailTemplateStorage
+	logger          *slog.Logger
+	queue           chan *EmailJob
+	wg              sync.WaitGroup
+	stopCh          chan struct{}
+	stopped         bool
+	mu              sync.RWMutex
 }
 
 // QueueConfig holds queue configuration.
 type QueueConfig struct {
-	QueueSize  int // Buffer size for the job queue
-	MaxRetries int // Maximum retry attempts
+	QueueSize        int                          // Buffer size for the job queue
+	MaxRetries       int                          // Maximum retry attempts
+	DeadLetterStore  storage.EmailTemplateStorage // Storage for dead letters (optional)
 }
 
 // DefaultQueueConfig returns sensible defaults.
@@ -53,10 +58,11 @@ func NewQueuedService(inner Service, cfg *QueueConfig) *QueuedService {
 	}
 
 	qs := &QueuedService{
-		inner:  inner,
-		logger: slog.Default().With("component", "email_queue"),
-		queue:  make(chan *EmailJob, cfg.QueueSize),
-		stopCh: make(chan struct{}),
+		inner:           inner,
+		deadLetterStore: cfg.DeadLetterStore,
+		logger:          slog.Default().With("component", "email_queue"),
+		queue:           make(chan *EmailJob, cfg.QueueSize),
+		stopCh:          make(chan struct{}),
 	}
 
 	// Start worker
@@ -117,6 +123,7 @@ func (q *QueuedService) worker() {
 						"attempts", job.Attempts,
 						"error", err,
 					)
+					q.storeDeadLetter(job, err)
 				}
 			}
 
@@ -138,6 +145,7 @@ func (q *QueuedService) worker() {
 								"attempts", job.Attempts,
 								"error", err,
 							)
+							q.storeDeadLetter(job, err)
 						}
 					}
 				} else {
@@ -162,6 +170,37 @@ func (q *QueuedService) calculateNextRetry(attempt int) time.Time {
 		idx = len(delays) - 1
 	}
 	return time.Now().Add(delays[idx])
+}
+
+// storeDeadLetter stores a permanently failed job in the dead letter queue.
+func (q *QueuedService) storeDeadLetter(job *EmailJob, err error) {
+	if q.deadLetterStore == nil {
+		return
+	}
+
+	// Convert payload to map for storage
+	payloadMap := make(map[string]interface{})
+	if payloadBytes, marshalErr := json.Marshal(job.Payload); marshalErr == nil {
+		json.Unmarshal(payloadBytes, &payloadMap)
+	}
+
+	dl := &storage.EmailDeadLetter{
+		JobType:      job.Type,
+		Recipient:    job.Recipient,
+		Payload:      payloadMap,
+		ErrorMessage: err.Error(),
+		Attempts:     job.Attempts,
+		CreatedAt:    job.CreatedAt,
+	}
+	if job.Subject != "" {
+		dl.Subject = &job.Subject
+	}
+
+	if storeErr := q.deadLetterStore.CreateEmailDeadLetter(context.Background(), dl); storeErr != nil {
+		q.logger.Error("Failed to store dead letter", "job_id", job.ID, "error", storeErr)
+	} else {
+		q.logger.Info("Stored failed email in dead letter queue", "job_id", job.ID, "type", job.Type)
+	}
 }
 
 // drainQueue processes remaining jobs before shutdown.
@@ -265,7 +304,7 @@ func (q *QueuedService) processJob(job *EmailJob) error {
 }
 
 // enqueue adds a job to the queue.
-func (q *QueuedService) enqueue(jobType string, payload interface{}) error {
+func (q *QueuedService) enqueue(jobType string, recipient string, payload interface{}) error {
 	q.mu.RLock()
 	if q.stopped {
 		q.mu.RUnlock()
@@ -276,6 +315,7 @@ func (q *QueuedService) enqueue(jobType string, payload interface{}) error {
 	job := &EmailJob{
 		ID:        generateJobID(),
 		Type:      jobType,
+		Recipient: recipient,
 		Payload:   payload,
 		Attempts:  0,
 		MaxRetry:  3,
@@ -300,35 +340,35 @@ func generateJobID() string {
 // Service interface implementations - all async via queue
 
 func (q *QueuedService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
-	return q.enqueue(jobTypeVerification, &verificationPayload{User: user, Token: token, VerifyURL: verifyURL})
+	return q.enqueue(jobTypeVerification, user.Email, &verificationPayload{User: user, Token: token, VerifyURL: verifyURL})
 }
 
 func (q *QueuedService) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
-	return q.enqueue(jobTypePasswordReset, &passwordResetPayload{User: user, Token: token, ResetURL: resetURL})
+	return q.enqueue(jobTypePasswordReset, user.Email, &passwordResetPayload{User: user, Token: token, ResetURL: resetURL})
 }
 
 func (q *QueuedService) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
-	return q.enqueue(jobTypeWelcome, &welcomePayload{User: user})
+	return q.enqueue(jobTypeWelcome, user.Email, &welcomePayload{User: user})
 }
 
 func (q *QueuedService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
-	return q.enqueue(jobTypeLoginAlert, &loginAlertPayload{User: user, Device: device})
+	return q.enqueue(jobTypeLoginAlert, user.Email, &loginAlertPayload{User: user, Device: device})
 }
 
 func (q *QueuedService) SendInvitationEmail(ctx context.Context, invitation *InvitationEmail) error {
-	return q.enqueue(jobTypeInvitation, &invitationPayload{Invitation: invitation})
+	return q.enqueue(jobTypeInvitation, invitation.Email, &invitationPayload{Invitation: invitation})
 }
 
 func (q *QueuedService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
-	return q.enqueue(jobTypeMFAEnabled, &mfaEnabledPayload{User: user})
+	return q.enqueue(jobTypeMFAEnabled, user.Email, &mfaEnabledPayload{User: user})
 }
 
 func (q *QueuedService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
-	return q.enqueue(jobTypePasswordChanged, &passwordChangedPayload{User: user})
+	return q.enqueue(jobTypePasswordChanged, user.Email, &passwordChangedPayload{User: user})
 }
 
 func (q *QueuedService) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
-	return q.enqueue(jobTypeSessionRevoked, &sessionRevokedPayload{User: user, Reason: reason})
+	return q.enqueue(jobTypeSessionRevoked, user.Email, &sessionRevokedPayload{User: user, Reason: reason})
 }
 
 // Verify QueuedService implements Service interface

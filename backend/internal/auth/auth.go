@@ -700,47 +700,48 @@ type VerifyEmailRequest struct {
 }
 
 // VerifyEmail verifies a user's email using the verification token.
-func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+// Returns the verified user on success.
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) (*storage.User, error) {
 	tokenHash := utils.HashToken(token)
 
 	verificationToken, err := s.storage.GetVerificationTokenByHash(ctx, tokenHash, TokenTypeEmailVerification)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if verificationToken == nil {
-		return ErrTokenNotFound
+		return nil, ErrTokenNotFound
 	}
 
 	if verificationToken.UsedAt != nil {
-		return ErrTokenUsed
+		return nil, ErrTokenUsed
 	}
 
 	if time.Now().After(verificationToken.ExpiresAt) {
-		return ErrTokenExpired
+		return nil, ErrTokenExpired
 	}
 
 	// Mark email as verified
 	user, err := s.storage.GetUserByID(ctx, verificationToken.UserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if user == nil {
-		return ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
 	user.IsEmailVerified = true
 	if err := s.storage.UpdateUser(ctx, user); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Mark token as used
 	if err := s.storage.MarkVerificationTokenUsed(ctx, verificationToken.ID); err != nil {
-		return err
+		return nil, err
 	}
 
 	s.logAuditEvent(ctx, &user.ID, nil, "email_verification.verified", nil, nil, nil)
 
-	return nil
+	return user, nil
 }
 
 // RequestPasswordResetRequest represents a request to reset password.

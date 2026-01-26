@@ -70,6 +70,11 @@ type sendGridContent struct {
 	Value string `json:"value"`
 }
 
+// SendEmail sends an email using SendGrid API v3 (implements EmailSender interface).
+func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) error {
+	return s.sendEmail(to, subject, htmlBody, textBody)
+}
+
 // sendEmail sends an email using SendGrid API v3.
 func (s *SendGridService) sendEmail(to, subject, htmlBody, textBody string) error {
 	req := sendGridRequest{
