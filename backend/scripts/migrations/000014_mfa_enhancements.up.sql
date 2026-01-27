@@ -36,12 +36,12 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
 -- The existing 'phone' column in users table will be used
 
 -- Add system setting for global MFA policy
-INSERT INTO system_settings (key, value, description, updated_at)
-VALUES ('mfa_required', 'false', 'Require MFA for all users', now())
+INSERT INTO system_settings (key, value, category, is_secret, description, updated_at)
+VALUES ('mfa_required', 'false', 'authentication', false, 'Require MFA for all users', now())
 ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO system_settings (key, value, description, updated_at)
-VALUES ('mfa_methods', '["totp","email","webauthn"]', 'Allowed MFA methods', now())
+INSERT INTO system_settings (key, value, category, is_secret, description, updated_at)
+VALUES ('mfa_methods', '["totp","email","webauthn"]', 'authentication', false, 'Allowed MFA methods', now())
 ON CONFLICT (key) DO NOTHING;
 
 -- Indexes
