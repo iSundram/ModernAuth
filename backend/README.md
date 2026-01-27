@@ -17,6 +17,10 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
 - **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords with backup codes.
+- **Email MFA**: Alternative MFA via email verification codes.
+- **WebAuthn/Passkeys**: FIDO2 hardware security key and passkey support.
+- **Device MFA Trust**: Skip MFA on trusted devices for configurable duration.
+- **MFA Policy Enforcement**: Require MFA at system or tenant level.
 - **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers with CSRF protection and PKCE support.
 - **User Invitations**: Token-based invitation system with automatic role assignment.
 - **SMTP Email Service**: Production-ready email with TLS support and HTML templates.

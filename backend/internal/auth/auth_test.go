@@ -462,6 +462,47 @@ func (m *MockStorage) DeleteExpiredInvitations(ctx context.Context) error {
 	return nil
 }
 
+// MFA Enhancement mock methods
+func (m *MockStorage) CreateMFAChallenge(ctx context.Context, challenge *storage.MFAChallenge) error {
+	return nil
+}
+func (m *MockStorage) GetMFAChallenge(ctx context.Context, id uuid.UUID) (*storage.MFAChallenge, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetPendingMFAChallenge(ctx context.Context, userID uuid.UUID, challengeType string) (*storage.MFAChallenge, error) {
+	return nil, nil
+}
+func (m *MockStorage) MarkMFAChallengeVerified(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) DeleteExpiredMFAChallenges(ctx context.Context) error {
+	return nil
+}
+func (m *MockStorage) CreateWebAuthnCredential(ctx context.Context, cred *storage.WebAuthnCredential) error {
+	return nil
+}
+func (m *MockStorage) GetWebAuthnCredentials(ctx context.Context, userID uuid.UUID) ([]*storage.WebAuthnCredential, error) {
+	return nil, nil
+}
+func (m *MockStorage) GetWebAuthnCredentialByID(ctx context.Context, credentialID []byte) (*storage.WebAuthnCredential, error) {
+	return nil, nil
+}
+func (m *MockStorage) UpdateWebAuthnCredentialSignCount(ctx context.Context, credentialID []byte, signCount uint32) error {
+	return nil
+}
+func (m *MockStorage) DeleteWebAuthnCredential(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) SetDeviceMFATrust(ctx context.Context, deviceID uuid.UUID, trustedUntil time.Time, trustToken string) error {
+	return nil
+}
+func (m *MockStorage) ClearDeviceMFATrust(ctx context.Context, deviceID uuid.UUID) error {
+	return nil
+}
+func (m *MockStorage) GetDeviceMFATrust(ctx context.Context, userID uuid.UUID, deviceFingerprint string) (*time.Time, error) {
+	return nil, nil
+}
+
 func setupTestAuthService() (*AuthService, *MockStorage) {
 	mockStorage := NewMockStorage()
 	tokenConfig := &TokenConfig{

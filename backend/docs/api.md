@@ -32,12 +32,39 @@
 ### MFA (Multi-Factor Authentication)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/v1/auth/mfa/status` | Get MFA status and enabled methods (requires auth) |
 | POST | `/v1/auth/mfa/setup` | Setup TOTP MFA (requires auth) |
 | POST | `/v1/auth/mfa/enable` | Enable TOTP MFA (requires auth) |
 | POST | `/v1/auth/mfa/disable` | Disable TOTP MFA (requires auth) |
 | POST | `/v1/auth/mfa/backup-codes` | Generate new backup codes (requires auth) |
 | GET | `/v1/auth/mfa/backup-codes/count` | Get remaining backup code count (requires auth) |
+| POST | `/v1/auth/mfa/preferred` | Set preferred MFA method (requires auth) |
+| POST | `/v1/auth/login/mfa` | Complete login with TOTP code |
 | POST | `/v1/auth/login/mfa/backup` | Login using a backup code |
+
+### Email MFA
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/mfa/email/enable` | Enable email-based MFA (requires auth) |
+| POST | `/v1/auth/mfa/email/disable` | Disable email-based MFA (requires auth) |
+| POST | `/v1/auth/login/mfa/email/send` | Send MFA code to user's email |
+| POST | `/v1/auth/login/mfa/email` | Complete login with email MFA code |
+
+### WebAuthn/Passkeys (FIDO2)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/mfa/webauthn/register/begin` | Begin WebAuthn credential registration (requires auth) |
+| POST | `/v1/auth/mfa/webauthn/register/finish` | Complete WebAuthn credential registration (requires auth) |
+| GET | `/v1/auth/mfa/webauthn/credentials` | List registered WebAuthn credentials (requires auth) |
+| DELETE | `/v1/auth/mfa/webauthn/credentials` | Delete a WebAuthn credential (requires auth) |
+| POST | `/v1/auth/login/mfa/webauthn/begin` | Begin WebAuthn login |
+| POST | `/v1/auth/login/mfa/webauthn/finish` | Complete WebAuthn login |
+
+### Device MFA Trust
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/mfa/trust-device` | Trust device for MFA (skip MFA for N days) (requires auth) |
+| POST | `/v1/auth/mfa/revoke-trust` | Revoke MFA trust from a device (requires auth) |
 
 ### Device & Session Management (requires auth)
 | Method | Endpoint | Description |

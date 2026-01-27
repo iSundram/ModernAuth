@@ -178,3 +178,22 @@ func HashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return base64.RawStdEncoding.EncodeToString(hash[:])
 }
+
+// GenerateNumericCode generates a cryptographically secure numeric code of the specified length.
+func GenerateNumericCode(length int) string {
+	const digits = "0123456789"
+	code := make([]byte, length)
+	for i := 0; i < length; i++ {
+		b := make([]byte, 1)
+		rand.Read(b)
+		code[i] = digits[int(b[0])%len(digits)]
+	}
+	return string(code)
+}
+
+// GenerateRandomToken generates a cryptographically secure random hex token.
+func GenerateRandomToken(length int) string {
+	bytes := make([]byte, length)
+	rand.Read(bytes)
+	return fmt.Sprintf("%x", bytes)
+}

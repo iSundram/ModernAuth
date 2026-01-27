@@ -73,15 +73,39 @@ func (h *Handler) Router() *chi.Mux {
 			// MFA Management (Protected)
 			r.Group(func(r chi.Router) {
 				r.Use(h.Auth)
+				r.Get("/mfa/status", h.GetMFAStatus)
 				r.Post("/mfa/setup", h.SetupMFA)
 				r.Post("/mfa/enable", h.EnableMFA)
 				r.Post("/mfa/disable", h.DisableMFA)
 				r.Post("/mfa/backup-codes", h.GenerateBackupCodes)
 				r.Get("/mfa/backup-codes/count", h.GetBackupCodeCount)
+				r.Post("/mfa/preferred", h.SetPreferredMFA)
+				
+				// Email MFA
+				r.Post("/mfa/email/enable", h.EnableEmailMFA)
+				r.Post("/mfa/email/disable", h.DisableEmailMFA)
+				
+				// Device MFA Trust
+				r.Post("/mfa/trust-device", h.TrustDeviceForMFA)
+				r.Post("/mfa/revoke-trust", h.RevokeMFATrust)
+				
+				// WebAuthn/Passkeys (Protected - registration)
+				r.Post("/mfa/webauthn/register/begin", h.BeginWebAuthnRegistration)
+				r.Post("/mfa/webauthn/register/finish", h.FinishWebAuthnRegistration)
+				r.Get("/mfa/webauthn/credentials", h.ListWebAuthnCredentials)
+				r.Delete("/mfa/webauthn/credentials", h.DeleteWebAuthnCredential)
 			})
 
 			// MFA Login with Backup Code (no auth required)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/backup", h.LoginMFABackup)
+			
+			// Email MFA (no auth required - during login flow)
+			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/email/send", h.SendEmailMFA)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/email", h.LoginEmailMFA)
+			
+			// WebAuthn Login (no auth required - during login flow)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/begin", h.BeginWebAuthnLogin)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/finish", h.FinishWebAuthnLogin)
 
 			// Password Change (Protected)
 			r.With(h.Auth).Post("/change-password", h.ChangePassword)
