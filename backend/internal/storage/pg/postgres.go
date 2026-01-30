@@ -458,6 +458,35 @@ func (s *PostgresStorage) DeleteOldAuditLogs(ctx context.Context, olderThan time
 	return result.RowsAffected(), nil
 }
 
+// ListAuditLogsByTenant retrieves audit logs for a specific tenant.
+func (s *PostgresStorage) ListAuditLogsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+	query := `
+		SELECT id, tenant_id, user_id, actor_id, event_type, ip, user_agent, data, created_at
+		FROM audit_logs
+		WHERE tenant_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*storage.AuditLog
+	for rows.Next() {
+		log := &storage.AuditLog{}
+		if err := rows.Scan(
+			&log.ID, &log.TenantID, &log.UserID, &log.ActorID, &log.EventType,
+			&log.IP, &log.UserAgent, &log.Data, &log.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return logs, nil
+}
+
 // GetMFASettings retrieves MFA settings for a user.
 func (s *PostgresStorage) GetMFASettings(ctx context.Context, userID uuid.UUID) (*storage.MFASettings, error) {
 	query := `

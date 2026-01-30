@@ -10,6 +10,7 @@ import {
   Clock,
   Globe,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, ConfirmDialog } from '../components/ui';
 import { apiKeyService } from '../api/services';
@@ -20,6 +21,7 @@ export function ApiKeysPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [isRotateModalOpen, setIsRotateModalOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<APIKey | null>(null);
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -75,6 +77,25 @@ export function ApiKeysPage() {
     },
     onError: (error: Error) => {
       showToast({ title: 'Error', message: error.message || 'Failed to delete API key', type: 'error' });
+    },
+  });
+
+  // Rotate API key mutation
+  const rotateKeyMutation = useMutation({
+    mutationFn: (id: string) => apiKeyService.rotate(id),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      setNewKeyValue(response.key);
+      showToast({ 
+        title: 'Success', 
+        message: 'API key rotated successfully. Copy the new key now!', 
+        type: 'success' 
+      });
+      setIsRotateModalOpen(false);
+      setSelectedKey(null);
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to rotate API key', type: 'error' });
     },
   });
 
@@ -246,6 +267,18 @@ export function ApiKeysPage() {
                             size="sm"
                             onClick={() => {
                               setSelectedKey(key);
+                              setIsRotateModalOpen(true);
+                            }}
+                            className="text-blue-500 hover:text-blue-600"
+                            title="Rotate Key"
+                          >
+                            <RefreshCw size={16} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedKey(key);
                               setIsRevokeModalOpen(true);
                             }}
                             className="text-red-500 hover:text-red-600"
@@ -347,6 +380,20 @@ export function ApiKeysPage() {
         message={`Are you sure you want to revoke "${selectedKey?.name}"? This will immediately invalidate the key.`}
         confirmText="Revoke"
         variant="danger"
+      />
+
+      {/* Rotate Confirmation */}
+      <ConfirmDialog
+        isOpen={isRotateModalOpen}
+        onClose={() => {
+          setIsRotateModalOpen(false);
+          setSelectedKey(null);
+        }}
+        onConfirm={() => selectedKey && rotateKeyMutation.mutate(selectedKey.id)}
+        title="Rotate API Key"
+        message={`Are you sure you want to rotate "${selectedKey?.name}"? The current key will be invalidated and a new one will be generated.`}
+        confirmText="Rotate"
+        variant="warning"
       />
 
       {/* Delete Confirmation */}

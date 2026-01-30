@@ -384,6 +384,7 @@ type AuditLogStorage interface {
 	CreateAuditLog(ctx context.Context, log *AuditLog) error
 	GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*AuditLog, error)
 	DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error)
+	ListAuditLogsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*AuditLog, error)
 }
 
 // MFAStorage defines MFA-related storage operations.

@@ -18,3 +18,6 @@ export * from './admin/AdminSecurityPage';
 export * from './admin/AdminSettingsPage';
 export * from './admin/AdminUsersPage';
 export * from './admin/AdminTenantsPage';
+export * from './admin/AdminEmailTemplatesPage';
+export * from './admin/AdminEmailBrandingPage';
+export * from './InvitationAcceptPage';

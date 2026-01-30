@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { Button, Input, LoadingBar } from '../components/ui';
-import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
+import { authService } from '../api/services';
 
 export function PasswordLoginPage() {
   const [password, setPassword] = useState('');
@@ -16,6 +18,9 @@ export function PasswordLoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaUserId, setMfaUserId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [mfaMethod, setMfaMethod] = useState<'totp' | 'email' | 'backup' | 'passkey'>('totp');
+  const [emailMfaSent, setEmailMfaSent] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
 
   const { login, loginMfa, isAuthenticated } = useAuth();
   const { showToast } = useToast();
@@ -80,7 +85,12 @@ export function PasswordLoginPage() {
     e.preventDefault();
     setError('');
 
-    if (!mfaCode || mfaCode.length !== 6) {
+    if (mfaMethod === 'backup') {
+      if (!mfaCode || mfaCode.length < 6) {
+        setError('Please enter a valid backup code');
+        return;
+      }
+    } else if (!mfaCode || mfaCode.length !== 6) {
       setError('Please enter a valid 6-digit code');
       return;
     }
@@ -88,7 +98,13 @@ export function PasswordLoginPage() {
     setIsLoading(true);
 
     try {
-      await loginMfa(mfaUserId, mfaCode);
+      if (mfaMethod === 'email') {
+        await authService.verifyEmailMfa(mfaUserId, mfaCode);
+      } else if (mfaMethod === 'backup') {
+        await authService.loginWithBackupCode(mfaUserId, mfaCode);
+      } else {
+        await loginMfa(mfaUserId, mfaCode);
+      }
       
       // Clear session storage
       sessionStorage.removeItem('loginEmail');
@@ -99,6 +115,53 @@ export function PasswordLoginPage() {
        const errorMessage = err instanceof Error ? err.message : 'Invalid MFA code';
        setError(errorMessage);
        showToast({ title: 'MFA Failed', message: errorMessage, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendEmailCode = async () => {
+    setIsLoading(true);
+    try {
+      await authService.sendEmailMfaCode(mfaUserId);
+      setEmailMfaSent(true);
+      showToast({ title: 'Code Sent', message: 'Check your email for the verification code', type: 'success' });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send email code';
+      setError(errorMessage);
+      showToast({ title: 'Error', message: errorMessage, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // Get authentication options (and challenge id) from server
+      const { options, challenge_id } = await authService.webauthnLoginBegin(mfaUserId);
+      
+      // Start WebAuthn authentication in browser
+      const credential = await startAuthentication(options);
+      
+      // Send credential and challenge back to server
+      await authService.webauthnLoginFinish(mfaUserId, challenge_id, credential);
+      
+      // Clear session storage
+      sessionStorage.removeItem('loginEmail');
+      
+      showToast({ title: 'Success', message: 'Successfully logged in!', type: 'success' });
+      navigate('/');
+    } catch (error: any) {
+      if (error.name === 'NotAllowedError') {
+        showToast({ title: 'Cancelled', message: 'Passkey authentication was cancelled', type: 'info' });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'Passkey authentication failed';
+        setError(errorMessage);
+        showToast({ title: 'Error', message: errorMessage, type: 'error' });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -206,40 +269,157 @@ export function PasswordLoginPage() {
                 </Button>
               </form>
             ) : (
-              <form onSubmit={handleMfaSubmit} className="space-y-6">
-                 <Input
-                    label="Authentication Code"
-                    type="text"
-                    placeholder="000000"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    leftIcon={<ShieldCheck size={18} />}
-                    autoComplete="one-time-code"
-                    className="text-center tracking-widest text-lg"
-                    autoFocus
-                  />
-
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="lg"
-                    className="w-full"
-                    isLoading={isLoading}
+              <div className="space-y-6">
+                {/* MFA Method Selector */}
+                <div className="flex gap-2 p-1 bg-[var(--color-surface-hover)] rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => { setMfaMethod('totp'); setMfaCode(''); setError(''); }}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      mfaMethod === 'totp' 
+                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
+                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                    }`}
                   >
-                    Verify Code
-                  </Button>
-                  
+                    <ShieldCheck size={16} />
+                    App
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMfaMethod('email'); setMfaCode(''); setError(''); setEmailMfaSent(false); }}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      mfaMethod === 'email' 
+                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
+                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                    }`}
+                  >
+                    <Mail size={16} />
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMfaMethod('passkey'); setMfaCode(''); setError(''); }}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      mfaMethod === 'passkey' 
+                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
+                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                    }`}
+                  >
+                    <Fingerprint size={16} />
+                    Passkey
+                  </button>
+                </div>
+
+                {/* TOTP / Email Code / Backup Form */}
+                {(mfaMethod === 'totp' || mfaMethod === 'email' || mfaMethod === 'backup') && (
+                  <form onSubmit={handleMfaSubmit} className="space-y-4">
+                    {mfaMethod === 'email' && !emailMfaSent ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-[var(--color-text-secondary)] text-center">
+                          We'll send a verification code to your email address.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="lg"
+                          className="w-full"
+                          onClick={handleSendEmailCode}
+                          isLoading={isLoading}
+                        >
+                          Send Code
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Input
+                          label={mfaMethod === 'backup' ? 'Backup Code' : 'Verification Code'}
+                          type="text"
+                          placeholder={mfaMethod === 'backup' ? 'Enter backup code' : '000000'}
+                          value={mfaCode}
+                          onChange={(e) => setMfaCode(
+                            mfaMethod === 'backup' 
+                              ? e.target.value.toUpperCase().slice(0, 12)
+                              : e.target.value.replace(/\D/g, '').slice(0, 6)
+                          )}
+                          leftIcon={mfaMethod === 'backup' ? <Key size={18} /> : <ShieldCheck size={18} />}
+                          autoComplete="one-time-code"
+                          className={mfaMethod === 'backup' ? 'font-mono' : 'text-center tracking-widest text-lg'}
+                          autoFocus
+                        />
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={trustDevice}
+                            onChange={(e) => setTrustDevice(e.target.checked)}
+                            className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                          />
+                          <span className="text-sm text-[var(--color-text-secondary)]">
+                            Trust this device for 30 days
+                          </span>
+                        </label>
+
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          size="lg"
+                          className="w-full"
+                          isLoading={isLoading}
+                        >
+                          Verify
+                        </Button>
+                      </>
+                    )}
+                  </form>
+                )}
+
+                {/* Passkey Authentication */}
+                {mfaMethod === 'passkey' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
+                      <Fingerprint size={32} className="mx-auto text-blue-500 mb-2" />
+                      <p className="text-sm text-[var(--color-text-secondary)]">
+                        Use your passkey (Face ID, Touch ID, Windows Hello, or security key) to verify.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      className="w-full"
+                      onClick={handlePasskeyLogin}
+                      isLoading={isLoading}
+                    >
+                      <Fingerprint size={18} className="mr-2" />
+                      Use Passkey
+                    </Button>
+                  </div>
+                )}
+
+                {mfaMethod !== 'backup' && (
                   <button 
                     type="button"
-                    onClick={() => {
-                      setMfaRequired(false);
-                      setIsLoading(false);
-                    }}
-                    className="w-full text-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                    onClick={() => { setMfaMethod('backup'); setMfaCode(''); setError(''); }}
+                    className="w-full text-center text-sm text-[var(--color-info)] hover:text-[var(--color-info-dark)]"
                   >
-                    Back to Password
+                    Use a backup code instead
                   </button>
-              </form>
+                )}
+                   
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setMfaRequired(false);
+                    setMfaMethod('totp');
+                    setMfaCode('');
+                    setEmailMfaSent(false);
+                    setIsLoading(false);
+                  }}
+                  className="w-full text-center text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                >
+                  Back to Password
+                </button>
+              </div>
             )}
            </div>
 

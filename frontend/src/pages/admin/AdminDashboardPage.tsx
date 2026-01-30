@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Server,
   Lock,
+  KeyRound,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Badge } from '../../components/ui';
@@ -22,9 +23,10 @@ interface StatCardProps {
   icon: React.ReactNode;
   color?: 'primary' | 'success' | 'warning' | 'error';
   onClick?: () => void;
+  subtitle?: string;
 }
 
-function StatCard({ title, value, icon, color = 'primary', onClick }: StatCardProps) {
+function StatCard({ title, value, icon, color = 'primary', onClick, subtitle }: StatCardProps) {
   const colorClasses = {
     primary: 'from-[#B3B3B3]/30 to-[#D4D4D4]/20',
     success: 'from-green-500/30 to-emerald-500/20',
@@ -38,12 +40,92 @@ function StatCard({ title, value, icon, color = 'primary', onClick }: StatCardPr
         <div>
           <p className="text-sm font-medium text-[var(--color-text-secondary)]">{title}</p>
           <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-2">{value}</p>
+          {subtitle && (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">{subtitle}</p>
+          )}
         </div>
         <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
           {icon}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// Simple bar chart component
+function BarChart({ data, title }: { data: { label: string; value: number; color: string }[]; title: string }) {
+  const maxValue = Math.max(...data.map(d => d.value), 1);
+  
+  return (
+    <div className="space-y-3">
+      <h4 className="text-sm font-medium text-[var(--color-text-secondary)]">{title}</h4>
+      <div className="space-y-2">
+        {data.map((item, index) => (
+          <div key={index} className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-[var(--color-text-secondary)]">{item.label}</span>
+              <span className="font-medium text-[var(--color-text-primary)]">{item.value}</span>
+            </div>
+            <div className="h-2 rounded-full bg-[var(--color-border)] overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${item.color}`}
+                style={{ width: `${(item.value / maxValue) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Donut chart component
+function DonutChart({ data, centerLabel, centerValue }: { 
+  data: { label: string; value: number; color: string }[]; 
+  centerLabel: string;
+  centerValue: number;
+}) {
+  const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+  let cumulativePercent = 0;
+  
+  const segments = data.map(item => {
+    const percent = (item.value / total) * 100;
+    const startPercent = cumulativePercent;
+    cumulativePercent += percent;
+    return { ...item, percent, startPercent };
+  });
+
+  // Create conic gradient
+  const gradient = segments
+    .map(s => `${s.color} ${s.startPercent}% ${s.startPercent + s.percent}%`)
+    .join(', ');
+
+  return (
+    <div className="flex items-center gap-6">
+      <div className="relative w-32 h-32 shrink-0">
+        <div
+          className="w-full h-full rounded-full"
+          style={{
+            background: total > 0 
+              ? `conic-gradient(${gradient})` 
+              : 'var(--color-border)',
+          }}
+        />
+        <div className="absolute inset-3 rounded-full bg-[var(--color-surface)] flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold text-[var(--color-text-primary)]">{centerValue}</span>
+          <span className="text-xs text-[var(--color-text-muted)]">{centerLabel}</span>
+        </div>
+      </div>
+      <div className="flex-1 space-y-2">
+        {data.map((item, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${item.color}`} />
+            <span className="text-sm text-[var(--color-text-secondary)] flex-1">{item.label}</span>
+            <span className="text-sm font-medium text-[var(--color-text-primary)]">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -136,16 +218,55 @@ export function AdminDashboardPage() {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* User Statistics */}
+        {/* User Distribution Chart */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>User Statistics</CardTitle>
+            <CardTitle>User Distribution</CardTitle>
             <Link 
               to="/admin/users" 
               className="text-sm text-[var(--color-info)] hover:underline"
             >
               View all
             </Link>
+          </CardHeader>
+          <CardContent>
+            <DonutChart
+              data={[
+                { label: 'Active', value: activeUsers, color: 'bg-green-500' },
+                { label: 'Suspended', value: systemStats?.users.suspended || 0, color: 'bg-yellow-500' },
+                { label: 'Unverified', value: (systemStats?.users.total || 0) - verifiedUsers, color: 'bg-gray-400' },
+              ]}
+              centerLabel="Total"
+              centerValue={systemStats?.users.total || 0}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Security Overview */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound size={18} />
+              Security Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart
+              title="User Security Status"
+              data={[
+                { label: 'Email Verified', value: verifiedUsers, color: 'bg-green-500' },
+                { label: 'Active Users', value: activeUsers, color: 'bg-blue-500' },
+                { label: 'Admins', value: adminUsers, color: 'bg-purple-500' },
+                { label: 'Regular Users', value: regularUsers, color: 'bg-gray-400' },
+              ]}
+            />
+          </CardContent>
+        </Card>
+
+        {/* User Statistics */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>User Statistics</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center py-2 border-b border-[var(--color-border-light)]">

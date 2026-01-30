@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Input } from '../ui/Input';
+import { DarkModeToggle } from '../ui/DarkModeToggle';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -33,6 +34,9 @@ export function Header() {
 
         {/* Right Side */}
         <div className="flex items-center gap-4">
+          {/* Dark Mode Toggle */}
+          <DarkModeToggle />
+
           {/* Notifications */}
           <button className="relative p-2 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-gray-light)]/20 transition-all duration-200">
             <Bell size={20} />

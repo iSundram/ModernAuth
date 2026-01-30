@@ -11,6 +11,8 @@ import {
   Building2,
   Shield,
   Globe,
+  FileText,
+  Palette,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
@@ -24,6 +26,8 @@ const navItems = [
   { path: '/admin/security', icon: Lock, label: 'Security' },
   { path: '/admin/audit', icon: History, label: 'Audit Logs' },
   { path: '/admin/invitations', icon: Mail, label: 'Invitations' },
+  { path: '/admin/email-templates', icon: FileText, label: 'Email Templates' },
+  { path: '/admin/email-branding', icon: Palette, label: 'Email Branding' },
 ];
 
 const bottomNavItems = [

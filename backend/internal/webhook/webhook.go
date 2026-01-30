@@ -441,3 +441,77 @@ func (s *Service) GetDeliveries(ctx context.Context, webhookID uuid.UUID, limit,
 	}
 	return s.storage.GetWebhookDeliveries(ctx, webhookID, limit, offset)
 }
+
+// TestWebhookResult represents the result of a webhook test.
+type TestWebhookResult struct {
+	Success        bool
+	StatusCode     int
+	ResponseTimeMs int
+	Error          string
+}
+
+// TestWebhook sends a test event to a webhook and returns the result.
+func (s *Service) TestWebhook(ctx context.Context, webhook *storage.Webhook) (*TestWebhookResult, error) {
+	// Build test payload
+	testEvent := &Event{
+		ID:        uuid.New(),
+		Type:      "webhook.test",
+		TenantID:  webhook.TenantID,
+		Timestamp: time.Now(),
+		Data: map[string]interface{}{
+			"message":    "This is a test event from ModernAuth",
+			"webhook_id": webhook.ID.String(),
+			"test":       true,
+		},
+	}
+
+	payload, err := json.Marshal(s.buildPayload(testEvent))
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Webhook-ID", webhook.ID.String())
+	req.Header.Set("X-Event-ID", testEvent.ID.String())
+	req.Header.Set("X-Event-Type", "webhook.test")
+	req.Header.Set("X-Signature", s.signPayload(payload, webhook.Secret))
+
+	// Add custom headers
+	for key, value := range webhook.Headers {
+		if strValue, ok := value.(string); ok {
+			req.Header.Set(key, strValue)
+		}
+	}
+
+	// Send request with timeout
+	client := &http.Client{
+		Timeout: time.Duration(webhook.TimeoutSeconds) * time.Second,
+	}
+	start := time.Now()
+	resp, err := client.Do(req)
+	duration := int(time.Since(start).Milliseconds())
+
+	if err != nil {
+		return &TestWebhookResult{
+			Success:        false,
+			ResponseTimeMs: duration,
+			Error:          err.Error(),
+		}, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	s.logger.Info("Webhook test completed", "webhook_id", webhook.ID, "status", resp.StatusCode, "duration_ms", duration)
+
+	return &TestWebhookResult{
+		Success:        resp.StatusCode >= 200 && resp.StatusCode < 300,
+		StatusCode:     resp.StatusCode,
+		ResponseTimeMs: duration,
+	}, nil
+}

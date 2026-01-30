@@ -4,6 +4,7 @@ import { ArrowLeft, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { Button, Input, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
+import { PasswordStrength } from '../components/security';
 
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -111,6 +112,10 @@ export function ResetPasswordPage() {
                   }
                   required
                 />
+
+                {password && (
+                  <PasswordStrength password={password} />
+                )}
 
                 <Input
                   label="Confirm Password"

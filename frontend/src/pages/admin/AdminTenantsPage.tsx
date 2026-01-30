@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -12,6 +13,7 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, ConfirmDialog } from '../../components/ui';
 import { tenantService, userService } from '../../api/services';
@@ -92,6 +94,7 @@ function TenantStats({ tenantId }: { tenantId: string }) {
 }
 
 export function AdminTenantsPage() {
+  const navigate = useNavigate();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -319,6 +322,14 @@ export function AdminTenantsPage() {
                         title="Edit"
                       >
                         <Edit size={16} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/admin/tenants/${tenant.id}`)}
+                        title="View Details"
+                      >
+                        <ExternalLink size={16} />
                       </Button>
                       <Button
                         variant="ghost"

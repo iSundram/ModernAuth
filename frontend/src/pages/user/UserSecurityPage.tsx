@@ -2,13 +2,21 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import QRCode from "react-qr-code";
 import { 
-  Shield, Smartphone, Key, CheckCircle, AlertCircle, LogOut, 
-  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe
+  Smartphone, Key, CheckCircle, AlertCircle, LogOut, 
+  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe, Fingerprint, Mail
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, LoadingBar, Badge, ConfirmDialog, Modal } from '../../components/ui';
 import { useToast } from '../../components/ui/Toast';
 import { deviceService, sessionService, authService } from '../../api/services';
+import { 
+  PasskeySetup, 
+  PasskeyList, 
+  EmailMFASetup, 
+  MFAStatusOverview,
+  MFAPreferencesSelector,
+  PasswordStrength 
+} from '../../components/security';
 import type { UserDevice, Session } from '../../types';
 
 export function UserSecurityPage() {
@@ -61,6 +69,13 @@ export function UserSecurityPage() {
     queryFn: () => deviceService.getLoginHistory({ limit: 20 }),
   });
 
+  // Fetch MFA status
+  const { data: mfaStatus, refetch: refetchMfaStatus } = useQuery({
+    queryKey: ['mfa-status'],
+    queryFn: () => authService.getMfaStatus(),
+    retry: false,
+  });
+
   // Fetch backup code count - this also tells us if MFA is enabled
   const { data: backupCodeCountData, refetch: refetchBackupCount, error: backupCodeError } = useQuery({
     queryKey: ['backup-code-count'],
@@ -71,13 +86,19 @@ export function UserSecurityPage() {
   useEffect(() => {
     if (backupCodeCountData) {
       setBackupCodeCount(backupCodeCountData.remaining_codes);
-      setIsMfaEnabled(true);
     } else if (backupCodeError) {
-      // If we get an error (like 404 or MFA not setup), MFA is not enabled
-      setIsMfaEnabled(false);
       setBackupCodeCount(null);
     }
   }, [backupCodeCountData, backupCodeError]);
+
+  // Check if TOTP (Authenticator App) is specifically enabled
+  useEffect(() => {
+    if (mfaStatus) {
+      // Only show "MFA Enabled" for TOTP (Authenticator App) in this section
+      // Email MFA is shown separately in MFAStatusOverview
+      setIsMfaEnabled(mfaStatus.totp_enabled);
+    }
+  }, [mfaStatus]);
 
   // Revoke all sessions mutation
   const revokeAllSessionsMutation = useMutation({
@@ -258,14 +279,46 @@ export function UserSecurityPage() {
         </p>
       </div>
 
+      {/* MFA Status Overview */}
+      <MFAStatusOverview />
+
+      {/* MFA Preferences - show only if multiple methods enabled */}
+      {mfaStatus && (
+        (mfaStatus.totp_enabled ? 1 : 0) + 
+        (mfaStatus.email_enabled ? 1 : 0) + 
+        (mfaStatus.webauthn_enabled ? 1 : 0)
+      ) >= 2 && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-[var(--color-text-primary)]">Preferred MFA Method</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  Choose which method to use by default when signing in
+                </p>
+              </div>
+              <MFAPreferencesSelector
+                currentPreferred={mfaStatus?.preferred_method || null}
+                enabledMethods={{
+                  totp: mfaStatus?.totp_enabled || false,
+                  email: mfaStatus?.email_enabled || false,
+                  webauthn: mfaStatus?.webauthn_enabled || false,
+                }}
+                onSuccess={() => refetchMfaStatus()}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* MFA Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
-              <Shield size={20} className="text-[#D4D4D4]" />
+              <Smartphone size={20} className="text-[#D4D4D4]" />
             </div>
-            <CardTitle>Two-Factor Authentication</CardTitle>
+            <CardTitle>Authenticator App</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -274,9 +327,9 @@ export function UserSecurityPage() {
               <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
                 <CheckCircle size={32} className="text-green-500" />
               </div>
-              <h3 className="text-lg font-medium text-[var(--color-text-primary)]">MFA is Enabled</h3>
+              <h3 className="text-lg font-medium text-[var(--color-text-primary)]">Authenticator Enabled</h3>
               <p className="text-[var(--color-text-secondary)] mt-2 mb-4">
-                Your account is secured with two-factor authentication.
+                Your account is secured with an authenticator app (TOTP).
               </p>
               {backupCodeCount !== null && (
                 <p className="text-sm text-[var(--color-text-secondary)] mb-4">
@@ -289,7 +342,7 @@ export function UserSecurityPage() {
                   onClick={() => setShowDisableMfa(true)}
                   className="flex-1"
                 >
-                  Disable MFA
+                  Disable Authenticator
                 </Button>
                 <Button 
                   variant="outline" 
@@ -304,21 +357,21 @@ export function UserSecurityPage() {
           ) : !isSettingUpMfa ? (
             <div className="space-y-4">
               <p className="text-[var(--color-text-secondary)]">
-                Add an extra layer of security to your account by enabling Two-Factor Authentication (MFA).
+                Add an extra layer of security by setting up an authenticator app like Google Authenticator or Authy.
               </p>
               
               <div className="flex items-start gap-3 p-4 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
                 <Smartphone className="mt-1 text-[var(--color-text-muted)]" size={20} />
                 <div>
-                  <p className="font-medium text-[var(--color-text-primary)]">Authenticator App</p>
+                  <p className="font-medium text-[var(--color-text-primary)]">How it works</p>
                   <p className="text-sm text-[var(--color-text-secondary)]">
-                    Use an app like Google Authenticator or Authy to generate verification codes.
+                    Scan a QR code with your authenticator app to generate time-based verification codes.
                   </p>
                 </div>
               </div>
 
               <Button onClick={handleStartMfaSetup} className="w-full">
-                Setup MFA
+                Setup Authenticator
               </Button>
             </div>
           ) : (
@@ -391,6 +444,130 @@ export function UserSecurityPage() {
         </CardContent>
       </Card>
 
+      {/* Passkeys Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
+                <Fingerprint size={20} className="text-[#D4D4D4]" />
+              </div>
+              <div>
+                <CardTitle>Passkeys</CardTitle>
+                <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                  Use biometrics or security keys for passwordless login
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <PasskeyList />
+          <PasskeySetup onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['webauthn-credentials'] });
+            queryClient.invalidateQueries({ queryKey: ['mfa-status'] });
+          }} />
+        </CardContent>
+      </Card>
+
+      {/* Email MFA Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
+              <Mail size={20} className="text-[#D4D4D4]" />
+            </div>
+            <CardTitle>Email Authentication</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <EmailMFASetup 
+            isEnabled={mfaStatus?.email_enabled || false} 
+            onSuccess={() => refetchMfaStatus()}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Backup Codes Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
+              <Key size={20} className="text-[#D4D4D4]" />
+            </div>
+            <div>
+              <CardTitle>Backup Codes</CardTitle>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                Emergency codes for account recovery
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {backupCodeCount !== null && backupCodeCount > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    backupCodeCount > 5 ? 'bg-green-500/10' : backupCodeCount > 2 ? 'bg-yellow-500/10' : 'bg-red-500/10'
+                  }`}>
+                    <span className={`text-lg font-bold ${
+                      backupCodeCount > 5 ? 'text-green-500' : backupCodeCount > 2 ? 'text-yellow-500' : 'text-red-500'
+                    }`}>
+                      {backupCodeCount}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-medium text-[var(--color-text-primary)]">
+                      {backupCodeCount} backup code{backupCodeCount !== 1 ? 's' : ''} remaining
+                    </p>
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      {backupCodeCount <= 2 
+                        ? 'Consider generating new codes soon' 
+                        : 'Use these if you lose access to your MFA device'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => generateBackupCodesMutation.mutate()}
+                disabled={generateBackupCodesMutation.isPending}
+              >
+                {generateBackupCodesMutation.isPending ? 'Generating...' : 'Generate New Backup Codes'}
+              </Button>
+              
+              <p className="text-xs text-[var(--color-text-muted)] text-center">
+                Generating new codes will invalidate all existing backup codes
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <AlertCircle size={20} className="text-yellow-500 shrink-0" />
+                <div>
+                  <p className="font-medium text-[var(--color-text-primary)]">No backup codes</p>
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    Generate backup codes to ensure you can access your account if you lose your MFA device.
+                  </p>
+                </div>
+              </div>
+              
+              <Button 
+                variant="primary" 
+                className="w-full"
+                onClick={() => generateBackupCodesMutation.mutate()}
+                disabled={generateBackupCodesMutation.isPending}
+              >
+                {generateBackupCodesMutation.isPending ? 'Generating...' : 'Generate Backup Codes'}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Password Management */}
         <Card>
@@ -446,6 +623,9 @@ export function UserSecurityPage() {
                     </button>
                   }
                 />
+                {passwordData.newPassword && (
+                  <PasswordStrength password={passwordData.newPassword} />
+                )}
                 <Input
                   label="Confirm New Password"
                   type={showPasswords.confirm ? 'text' : 'password'}

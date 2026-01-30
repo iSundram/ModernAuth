@@ -322,6 +322,55 @@ export interface TenantSecurityStats {
   mfa_enabled_users: number;
 }
 
+export interface TenantAPIKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes?: string[];
+  expires_at?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface CreateAPIKeyRequest {
+  name: string;
+  scopes?: string[];
+  expires_in?: number; // seconds
+}
+
+export interface CreateAPIKeyResponse extends TenantAPIKey {
+  key: string; // Full key, only shown once
+}
+
+export interface DomainVerificationResult {
+  domain: string;
+  txt_record: string;
+  status: 'pending' | 'verified' | 'failed';
+  verified_at?: string;
+}
+
+export interface BulkUserEntry {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  role_ids?: string[];
+}
+
+export interface BulkImportResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors?: Array<{ email: string; reason: string }>;
+}
+
+export interface TenantFeatures {
+  sso_enabled: boolean;
+  api_access_enabled: boolean;
+  webhooks_enabled: boolean;
+  mfa_required: boolean;
+  custom_branding: boolean;
+}
+
 // ============================================================================
 // Audit Log Types
 // ============================================================================
@@ -414,4 +463,94 @@ export interface UpdateUserRequest {
   status?: UserStatus;
   is_active?: boolean;
   metadata?: Record<string, any>;
+}
+
+// ============================================================================
+// MFA Types
+// ============================================================================
+
+export interface MFAStatus {
+  totp_enabled: boolean;
+  email_enabled: boolean;
+  webauthn_enabled: boolean;
+  backup_codes_remaining: number;
+  preferred_method: 'totp' | 'email' | 'webauthn' | null;
+  methods: string[];
+}
+
+export interface WebAuthnCredential {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at?: string;
+  credential_id: string;
+}
+
+export interface WebAuthnRegistrationOptions {
+  publicKey: PublicKeyCredentialCreationOptions;
+}
+
+export interface WebAuthnAuthenticationOptions {
+  publicKey: PublicKeyCredentialRequestOptions;
+}
+
+// ============================================================================
+// OAuth Linking Types
+// ============================================================================
+
+export interface LinkedOAuthProvider {
+  provider: string;
+  provider_user_id: string;
+  email?: string;
+  name?: string;
+  avatar_url?: string;
+  linked_at: string;
+}
+
+// ============================================================================
+// Email Template Types
+// ============================================================================
+
+export interface EmailTemplateSummary {
+  type: string;
+  description: string;
+  has_custom: boolean;
+  is_active: boolean;
+}
+
+export interface EmailTemplate {
+  id: string;
+  tenant_id?: string;
+  type: string;
+  subject: string;
+  html_body: string;
+  text_body?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailTemplateVariableItem {
+  name: string;
+  description: string;
+}
+
+export interface EmailTemplateVariables {
+  branding: EmailTemplateVariableItem[];
+  user: EmailTemplateVariableItem[];
+  context: Record<string, EmailTemplateVariableItem[]>;
+}
+
+export interface EmailBranding {
+  id?: string;
+  tenant_id?: string;
+  app_name?: string;
+  logo_url?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  company_name?: string;
+  support_email?: string;
+  footer_text?: string;
+  created_at?: string;
+  updated_at?: string;
 }

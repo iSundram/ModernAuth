@@ -11,10 +11,11 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { LoadingBar, Badge } from '../components/ui';
+import { OnboardingWizard } from '../components/onboarding';
 import { useAuth } from '../hooks/useAuth';
-import { deviceService, auditService } from '../api/services';
+import { deviceService, auditService, sessionService, authService } from '../api/services';
 import { Link } from 'react-router-dom';
-import type { AuditLog, Session } from '../types';
+import type { AuditLog, Session, MFAStatus } from '../types';
 
 interface StatCardProps {
   title: string;
@@ -59,8 +60,11 @@ export function DashboardPage() {
     queryFn: () => deviceService.list(),
   });
 
-  // Note: Backend doesn't have a sessions list endpoint yet
-  const sessions: Session[] = [];
+  // Active sessions
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: ['sessions', 'dashboard'],
+    queryFn: () => sessionService.list({ limit: 20, offset: 0 }),
+  });
 
   // Fetch recent audit logs
   const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
@@ -68,11 +72,17 @@ export function DashboardPage() {
     queryFn: () => auditService.listLogs({ limit: 5, offset: 0 }),
   });
 
-  const isLoading = devicesLoading || auditLoading;
+  // Fetch MFA status for security score
+  const { data: mfaStatus } = useQuery<MFAStatus>({
+    queryKey: ['mfa-status', 'dashboard'],
+    queryFn: () => authService.getMfaStatus(),
+    retry: false,
+  });
+
+  const isLoading = devicesLoading || auditLoading || sessionsLoading;
 
   // Calculate stats
-  // Note: Sessions endpoint not available yet
-  const activeSessions = 0;
+  const activeSessions = sessions.length;
   const trustedDevices = devices.filter(d => d.is_trusted).length;
   const isEmailVerified = user?.is_email_verified ?? false;
   const lastLogin = user?.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never';
@@ -83,7 +93,10 @@ export function DashboardPage() {
     if (isEmailVerified) score += 25;
     if (trustedDevices > 0) score += 25;
     if (activeSessions > 0) score += 25;
-    // MFA would add 25 more, but we'd need to check MFA status from backend
+    const hasMfa =
+      !!mfaStatus &&
+      (mfaStatus.totp_enabled || mfaStatus.email_enabled || mfaStatus.webauthn_enabled);
+    if (hasMfa) score += 25;
     return Math.min(score, 100);
   };
 
@@ -92,6 +105,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <OnboardingWizard />
       <LoadingBar isLoading={isLoading} message="Loading dashboard..." />
       
       {/* Page Header */}

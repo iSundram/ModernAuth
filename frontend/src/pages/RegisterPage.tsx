@@ -5,6 +5,7 @@ import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
+import { PasswordStrength } from '../components/security';
 
 export function RegisterPage() {
   const { settings } = useAuth();
@@ -149,6 +150,10 @@ export function RegisterPage() {
                 autoComplete="new-password"
                 required
               />
+
+              {formData.password && (
+                <PasswordStrength password={formData.password} />
+              )}
 
               <Input
                 label="Confirm Password"

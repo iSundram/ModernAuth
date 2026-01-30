@@ -8,6 +8,7 @@ import {
   Key,
   Webhook,
   Mail,
+  Link2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
@@ -15,6 +16,7 @@ import { useAuth } from '../../hooks/useAuth';
 const navItems = [
   { path: '/user', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/user/security', icon: Lock, label: 'Security' },
+  { path: '/user/connected-accounts', icon: Link2, label: 'Connected Accounts' },
   { path: '/user/api-keys', icon: Key, label: 'API Keys' },
   { path: '/user/webhooks', icon: Webhook, label: 'Webhooks' },
   { path: '/user/invitations', icon: Mail, label: 'Invitations' },

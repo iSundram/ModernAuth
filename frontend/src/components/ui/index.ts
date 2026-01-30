@@ -13,4 +13,5 @@ export { EmptyState } from './EmptyState';
 export { Select } from './Select';
 export { ProgressLoader } from './ProgressLoader';
 export { CommandPalette } from './CommandPalette';
+export { DarkModeToggle } from './DarkModeToggle';
 export * from './EmailVerificationBanner';

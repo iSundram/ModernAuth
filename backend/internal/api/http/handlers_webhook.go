@@ -32,6 +32,7 @@ func (h *WebhookHandler) WebhookRoutes() chi.Router {
 	r.Put("/{id}", h.UpdateWebhook)
 	r.Delete("/{id}", h.DeleteWebhook)
 	r.Get("/{id}/deliveries", h.GetDeliveries)
+	r.Post("/{id}/test", h.TestWebhook)
 
 	return r
 }
@@ -301,4 +302,45 @@ func (h *WebhookHandler) toDeliveryResponse(d *storage.WebhookDelivery) WebhookD
 		resp.CompletedAt = &ca
 	}
 	return resp
+}
+
+// TestWebhook sends a test event to a webhook endpoint.
+func (h *WebhookHandler) TestWebhook(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid webhook ID", err)
+		return
+	}
+
+	// Get the webhook
+	wh, err := h.webhookService.GetWebhook(r.Context(), id)
+	if err != nil {
+		if err == webhook.ErrWebhookNotFound {
+			writeError(w, http.StatusNotFound, "Webhook not found", err)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to get webhook", err)
+		return
+	}
+
+	// Send a test event
+	result, err := h.webhookService.TestWebhook(r.Context(), wh)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":      false,
+			"error":        err.Error(),
+			"webhook_id":   wh.ID.String(),
+			"webhook_name": wh.Name,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":       true,
+		"status_code":   result.StatusCode,
+		"response_time": result.ResponseTimeMs,
+		"webhook_id":    wh.ID.String(),
+		"webhook_name":  wh.Name,
+	})
 }

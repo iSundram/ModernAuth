@@ -10,6 +10,7 @@ import {
   Clock,
   Eye,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, ConfirmDialog } from '../components/ui';
 import { webhookService } from '../api/services';
@@ -22,6 +23,7 @@ export function WebhooksPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeliveriesModalOpen, setIsDeliveriesModalOpen] = useState(false);
   const [selectedWebhook, setSelectedWebhook] = useState<Webhook | null>(null);
+  const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -79,6 +81,36 @@ export function WebhooksPage() {
       showToast({ title: 'Error', message: error.message || 'Failed to delete webhook', type: 'error' });
     },
   });
+
+  // Test webhook mutation
+  const testWebhookMutation = useMutation({
+    mutationFn: (id: string) => webhookService.test(id),
+    onSuccess: (result) => {
+      setTestingWebhookId(null);
+      if (result.success) {
+        showToast({ 
+          title: 'Test Successful', 
+          message: `Webhook responded with status ${result.status_code} in ${result.response_time}ms`, 
+          type: 'success' 
+        });
+      } else {
+        showToast({ 
+          title: 'Test Failed', 
+          message: result.error || 'Webhook endpoint did not respond successfully', 
+          type: 'error' 
+        });
+      }
+    },
+    onError: (error: Error) => {
+      setTestingWebhookId(null);
+      showToast({ title: 'Test Failed', message: error.message || 'Failed to test webhook', type: 'error' });
+    },
+  });
+
+  const handleTestWebhook = (webhook: Webhook) => {
+    setTestingWebhookId(webhook.id);
+    testWebhookMutation.mutate(webhook.id);
+  };
 
   const activeWebhooks = webhooks.filter(w => w.is_active).length;
   const totalDeliveries = webhooks.reduce((sum, w) => sum + (w.retry_count || 0), 0);
@@ -217,6 +249,20 @@ export function WebhooksPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleTestWebhook(webhook)}
+                        disabled={testingWebhookId === webhook.id || !webhook.is_active}
+                        title="Send Test Event"
+                        className="text-yellow-500 hover:text-yellow-600"
+                      >
+                        {testingWebhookId === webhook.id ? (
+                          <RefreshCw size={16} className="animate-spin" />
+                        ) : (
+                          <Zap size={16} />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

@@ -217,22 +217,18 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 		return nil, ErrInvalidCredentials
 	}
 
-	// Check if MFA is enabled for this user
-	mfaSettings, err := s.storage.GetMFASettings(ctx, user.ID)
+	// Check MFA policy (system-wide and tenant-specific) including trusted device logic.
+	needMFA, err := s.CheckMFAPolicy(ctx, user.ID, req.Fingerprint)
 	if err != nil {
-		s.logger.Error("Failed to get MFA settings", "error", err, "user_id", user.ID)
-		// Continue without MFA if settings can't be retrieved? 
-		// For high security, we should probably fail.
+		s.logger.Error("Failed to evaluate MFA policy", "error", err, "user_id", user.ID)
 	}
-
-	if mfaSettings != nil && mfaSettings.IsTOTPEnabled {
+	if needMFA {
 		// Log MFA requirement
-		s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_required", &req.IP, &req.UserAgent, nil)
-		
+		_ = s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_required", &req.IP, &req.UserAgent, nil)
+
 		return &LoginResult{
 			User:        user,
 			MFARequired: true,
-			// In a full implementation, we'd create an mfa_challenge record here
 		}, nil
 	}
 
@@ -1629,22 +1625,49 @@ func (s *AuthService) CheckMFAPolicy(ctx context.Context, userID uuid.UUID, devi
 		return false, err
 	}
 
-	if !status.IsEnabled {
-		// Check if MFA is required by system policy
-		setting, err := s.storage.GetSetting(ctx, "mfa_required")
-		if err == nil && setting != nil {
-			if required, ok := setting.Value.(bool); ok && required {
-				// MFA is required but not enabled for user
-				return true, nil
-			}
-			if requiredStr, ok := setting.Value.(string); ok && requiredStr == "true" {
-				return true, nil
+	// Helper to see if any MFA method is configured
+	hasAnyMFA := status != nil && status.IsEnabled
+
+	// Determine whether MFA is required by system or tenant policy.
+	mfaRequired := false
+
+	// 1) System-wide policy via settings key "mfa_required"
+	if setting, err := s.storage.GetSetting(ctx, "mfa_required"); err == nil && setting != nil {
+		if required, ok := setting.Value.(bool); ok && required {
+			mfaRequired = true
+		}
+		if requiredStr, ok := setting.Value.(string); ok && requiredStr == "true" {
+			mfaRequired = true
+		}
+	}
+
+	// 2) Tenant-specific policy via tenant settings.features.mfa_required
+	if user, err := s.storage.GetUserByID(ctx, userID); err == nil && user != nil && user.TenantID != nil {
+		if tenant, err := s.storage.GetTenantByID(ctx, *user.TenantID); err == nil && tenant != nil {
+			if tenant.Settings != nil {
+				if featuresRaw, ok := tenant.Settings["features"].(map[string]interface{}); ok {
+					if v, ok := featuresRaw["mfa_required"].(bool); ok && v {
+						mfaRequired = true
+					}
+					if vs, ok := featuresRaw["mfa_required"].(string); ok && vs == "true" {
+						mfaRequired = true;
+					}
+				}
 			}
 		}
+	}
+
+	// If no policy requires MFA and user has no MFA, nothing to do.
+	if !mfaRequired {
 		return false, nil
 	}
 
-	// MFA is enabled, check if device is trusted
+	// Policy requires MFA but user has none configured.
+	if !hasAnyMFA {
+		return true, nil
+	}
+
+	// MFA is configured; apply device trust.
 	if deviceFingerprint != "" {
 		trusted, err := s.IsDeviceMFATrusted(ctx, userID, deviceFingerprint)
 		if err != nil {
@@ -1655,7 +1678,8 @@ func (s *AuthService) CheckMFAPolicy(ctx context.Context, userID uuid.UUID, devi
 		}
 	}
 
-	return true, nil // MFA required
+	// MFA is required and user has MFA configured, and device is not trusted.
+	return true, nil
 }
 
 // NotifyLowBackupCodes sends a notification when backup codes are running low.

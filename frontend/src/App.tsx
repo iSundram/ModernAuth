@@ -35,9 +35,15 @@ import {
   WebhooksPage,
   InvitationsPage,
   AdminTenantsPage,
+  AdminEmailTemplatesPage,
+  AdminEmailBrandingPage,
 } from './pages';
+import { TenantDetailPage } from './pages/admin/TenantDetailPage';
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { UserSecurityPage } from './pages/user/UserSecurityPage';
 import { UserSettingsPage } from './pages/user/UserSettingsPage';
+import { UserConnectedAccountsPage } from './pages/user/UserConnectedAccountsPage';
+import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
 import type { UserRole } from './types';
 
 // Protected Route wrapper
@@ -119,6 +125,8 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+      <Route path="/invitation/accept" element={<InvitationAcceptPage />} />
       
       <Route
         path="/admin/*"
@@ -139,6 +147,9 @@ function AppRoutes() {
         <Route path="audit" element={<AdminAuditPage />} />
         <Route path="invitations" element={<InvitationsPage />} />
         <Route path="tenants" element={<AdminTenantsPage />} />
+        <Route path="tenants/:id" element={<TenantDetailPage />} />
+        <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
+        <Route path="email-branding" element={<AdminEmailBrandingPage />} />
       </Route>
 
       <Route
@@ -154,6 +165,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="security" element={<UserSecurityPage />} />
         <Route path="settings" element={<UserSettingsPage />} />
+        <Route path="connected-accounts" element={<UserConnectedAccountsPage />} />
         <Route path="audit" element={<UserAuditPage />} />
         <Route path="api-keys" element={<ApiKeysPage />} />
         <Route path="webhooks" element={<WebhooksPage />} />

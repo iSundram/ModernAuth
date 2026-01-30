@@ -9,6 +9,7 @@ import {
   Clock,
   User,
   Copy,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, ConfirmDialog } from '../components/ui';
 import { invitationService } from '../api/services';
@@ -55,6 +56,18 @@ export function InvitationsPage() {
     },
     onError: (error: Error) => {
       showToast({ title: 'Error', message: error.message || 'Failed to delete invitation', type: 'error' });
+    },
+  });
+
+  // Resend invitation mutation
+  const resendInvitationMutation = useMutation({
+    mutationFn: (id: string) => invitationService.resend(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+      showToast({ title: 'Success', message: 'Invitation email resent successfully', type: 'success' });
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to resend invitation', type: 'error' });
     },
   });
 
@@ -246,6 +259,18 @@ export function InvitationsPage() {
                             ) : (
                               <Copy size={16} />
                             )}
+                          </Button>
+                        )}
+                        {!invitation.accepted_at && new Date(invitation.expires_at) > new Date() && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                            isLoading={resendInvitationMutation.isPending}
+                            className="text-blue-500 hover:text-blue-600"
+                            title="Resend Invitation"
+                          >
+                            <RefreshCw size={16} />
                           </Button>
                         )}
                         {!invitation.accepted_at && (
