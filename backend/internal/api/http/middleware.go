@@ -67,6 +67,7 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 }
 
 // RateLimit middleware limits the number of requests from a single IP.
+// Returns standard rate limit headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After
 func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,11 +98,37 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 				return
 			}
 
-			if count == 1 {
-				h.rdb.Expire(ctx, key, window)
+			// Get TTL for reset time calculation
+			ttl, err := h.rdb.TTL(ctx, key).Result()
+			if err != nil || ttl < 0 {
+				ttl = window
 			}
 
+			if count == 1 {
+				h.rdb.Expire(ctx, key, window)
+				ttl = window
+			}
+
+			// Calculate remaining requests and reset time
+			remaining := int64(limit) - count
+			if remaining < 0 {
+				remaining = 0
+			}
+			resetTime := time.Now().Add(ttl).Unix()
+
+			// Set rate limit headers on all responses
+			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limit))
+			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetTime))
+
 			if count > int64(limit) {
+				// Add Retry-After header when rate limited
+				retryAfter := int(ttl.Seconds())
+				if retryAfter < 1 {
+					retryAfter = 1
+				}
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+				
 				h.logger.Warn("Rate limit exceeded", "ip", ip, "path", r.URL.Path)
 				h.writeError(w, http.StatusTooManyRequests, "Rate limit exceeded", nil)
 				return

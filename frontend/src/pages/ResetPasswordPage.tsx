@@ -94,6 +94,13 @@ export function ResetPasswordPage() {
 
             {!isSuccess ? (
               <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="p-3 bg-blue-500/10 rounded-lg text-sm text-blue-600 dark:text-blue-400">
+                  <p className="font-medium">Password Policy</p>
+                  <ul className="mt-1 list-disc list-inside text-xs">
+                    <li>Minimum 8 characters</li>
+                    <li>Cannot reuse your last 5 passwords</li>
+                  </ul>
+                </div>
                 <Input
                   label="New Password"
                   type={showPassword ? 'text' : 'password'}

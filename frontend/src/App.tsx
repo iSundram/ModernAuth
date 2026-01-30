@@ -18,6 +18,8 @@ import { AdminLayout, UserLayout } from './components/layout';
 import {
   EmailLoginPage,
   PasswordLoginPage,
+  MagicLinkLoginPage,
+  MagicLinkVerifyPage,
   RegisterPage,
   DashboardPage,
   AdminDashboardPage,
@@ -39,6 +41,7 @@ import {
   AdminEmailBrandingPage,
 } from './pages';
 import { TenantDetailPage } from './pages/admin/TenantDetailPage';
+import { AdminImpersonationPage } from './pages/admin/AdminImpersonationPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { UserSecurityPage } from './pages/user/UserSecurityPage';
 import { UserSettingsPage } from './pages/user/UserSettingsPage';
@@ -121,6 +124,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<EmailLoginPage />} />
       <Route path="/login/password" element={<PasswordLoginPage />} />
+      <Route path="/login/magic-link" element={<MagicLinkLoginPage />} />
+      <Route path="/auth/magic-link" element={<MagicLinkVerifyPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -145,6 +150,7 @@ function AppRoutes() {
         <Route path="security" element={<AdminSecurityPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
         <Route path="audit" element={<AdminAuditPage />} />
+        <Route path="impersonation" element={<AdminImpersonationPage />} />
         <Route path="invitations" element={<InvitationsPage />} />
         <Route path="tenants" element={<AdminTenantsPage />} />
         <Route path="tenants/:id" element={<TenantDetailPage />} />

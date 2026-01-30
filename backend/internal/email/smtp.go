@@ -351,6 +351,65 @@ func (s *SMTPService) SendSessionRevokedEmail(ctx context.Context, user *storage
 	return s.sendEmail(user.Email, subject, htmlBody, textBody)
 }
 
+// SendMagicLink sends a magic link email for passwordless authentication.
+func (s *SMTPService) SendMagicLink(email string, magicLinkURL string) error {
+	subject := "Sign in to your account"
+
+	// Extract name from email for personalization
+	emailName := email
+	if parts := strings.Split(email, "@"); len(parts) > 0 {
+		emailName = parts[0]
+	}
+
+	data := map[string]string{
+		"Name":         emailName,
+		"MagicLinkURL": magicLinkURL,
+	}
+
+	htmlBody, err := s.renderTemplate(magicLinkEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(
+		"Hi %s,\n\nClick the link below to sign in to your account:\n\n%s\n\nThis link will expire in 15 minutes.\n\nIf you didn't request this, you can safely ignore this email.\n\nThanks,\nThe ModernAuth Team",
+		emailName, magicLinkURL,
+	)
+
+	s.logger.Info("Sending magic link email", "to", email)
+	return s.sendEmail(email, subject, htmlBody, textBody)
+}
+
+// Magic link email HTML template
+const magicLinkEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Sign in to your account</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Sign In</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.Name}},</p>
+        <p>Click the button below to sign in to your account:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.MagicLinkURL}}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Sign In</a>
+        </div>
+        <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes.</p>
+        <p style="color: #666; font-size: 14px;">If you didn't request this, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #999; font-size: 12px; text-align: center;">
+            If the button doesn't work, copy and paste this link:<br>
+            <a href="{{.MagicLinkURL}}" style="color: #667eea;">{{.MagicLinkURL}}</a>
+        </p>
+    </div>
+</body>
+</html>
+`
+
 // renderTemplate renders an HTML template with the given data.
 func (s *SMTPService) renderTemplate(templateStr string, data map[string]string) (string, error) {
 	tmpl, err := template.New("email").Parse(templateStr)

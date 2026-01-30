@@ -154,6 +154,22 @@ export function UserSecurityPage() {
     },
   });
 
+  // Revoke MFA trust mutation (removes "remember this device for MFA" trust)
+  const revokeMfaTrustMutation = useMutation({
+    mutationFn: (deviceFingerprint: string) => authService.revokeMfaTrust(deviceFingerprint),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] });
+      showToast({ 
+        title: 'Success', 
+        message: 'MFA trust revoked. This device will require MFA on next login.', 
+        type: 'success' 
+      });
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to revoke MFA trust', type: 'error' });
+    },
+  });
+
   const handleStartMfaSetup = async () => {
     setIsLoading(true);
     try {
@@ -591,6 +607,13 @@ export function UserSecurityPage() {
               </div>
             ) : (
               <form onSubmit={handleChangePassword} className="space-y-4">
+                <div className="p-3 bg-blue-500/10 rounded-lg text-sm text-blue-600 dark:text-blue-400">
+                  <p className="font-medium">Password Policy</p>
+                  <ul className="mt-1 list-disc list-inside text-xs">
+                    <li>Minimum 8 characters</li>
+                    <li>Cannot reuse your last 5 passwords</li>
+                  </ul>
+                </div>
                 <Input
                   label="Current Password"
                   type={showPasswords.current ? 'text' : 'password'}
@@ -883,6 +906,19 @@ export function UserSecurityPage() {
                           disabled={untrustDeviceMutation.isPending}
                         >
                           Untrust
+                        </Button>
+                      )}
+                      {/* MFA Trust Revocation - when MFA is enabled and device has fingerprint */}
+                      {isMfaEnabled && device.device_fingerprint && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => revokeMfaTrustMutation.mutate(device.device_fingerprint!)}
+                          disabled={revokeMfaTrustMutation.isPending}
+                          title="Revoke MFA Trust - require MFA on next login"
+                        >
+                          <Key size={14} className="mr-1" />
+                          Revoke MFA
                         </Button>
                       )}
                       {!device.is_current && (

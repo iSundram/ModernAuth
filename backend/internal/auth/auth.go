@@ -232,6 +232,14 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 		}, nil
 	}
 
+	// Enforce session limits (max 5 concurrent sessions, revoke oldest if exceeded)
+	const maxConcurrentSessions = 5
+	if err := s.EnforceSessionLimit(ctx, user.ID, maxConcurrentSessions, SessionLimitActionRevokeOldest); err != nil {
+		// With SessionLimitActionRevokeOldest, this will only happen on storage errors
+		// For stricter enforcement (reject new logins), use SessionLimitActionRejectNew
+		s.logger.Warn("Session limit enforcement failed", "error", err)
+	}
+
 	// Create a new session
 	now := time.Now()
 	session := &storage.Session{
@@ -807,6 +815,7 @@ type ResetPasswordRequest struct {
 }
 
 // ResetPassword resets a user's password using a reset token.
+// Includes password history check to prevent reuse of recent passwords.
 func (s *AuthService) ResetPassword(ctx context.Context, req *ResetPasswordRequest) error {
 	tokenHash := utils.HashToken(req.Token)
 
@@ -833,6 +842,33 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *ResetPasswordReque
 	}
 	if user == nil {
 		return ErrUserNotFound
+	}
+
+	// Check if new password is the same as current password
+	sameAsCurrent, err := utils.VerifyPassword(req.NewPassword, user.HashedPassword)
+	if err != nil {
+		return err
+	}
+	if sameAsCurrent {
+		s.logAuditEvent(ctx, &user.ID, nil, "password_reset.failed", nil, nil, map[string]interface{}{
+			"reason": "password_reused",
+		})
+		return ErrPasswordReused
+	}
+
+	// Check password history (prevent reuse of last 5 passwords)
+	const passwordHistoryDepth = 5
+	if err := s.CheckPasswordHistory(ctx, user.ID, req.NewPassword, passwordHistoryDepth); err != nil {
+		s.logAuditEvent(ctx, &user.ID, nil, "password_reset.failed", nil, nil, map[string]interface{}{
+			"reason": "password_reused",
+		})
+		return err
+	}
+
+	// Add current password to history before changing
+	if err := s.AddToPasswordHistory(ctx, user.ID, user.HashedPassword, passwordHistoryDepth); err != nil {
+		s.logger.Warn("Failed to add password to history", "error", err)
+		// Continue anyway - don't block password reset
 	}
 
 	// Hash the new password
@@ -903,6 +939,7 @@ type ChangePasswordRequest struct {
 }
 
 // ChangePassword changes a user's password after verifying the current one.
+// Includes password history check to prevent reuse of recent passwords.
 func (s *AuthService) ChangePassword(ctx context.Context, req *ChangePasswordRequest) error {
 	user, err := s.storage.GetUserByID(ctx, req.UserID)
 	if err != nil {
@@ -922,6 +959,33 @@ func (s *AuthService) ChangePassword(ctx context.Context, req *ChangePasswordReq
 			"reason": "invalid_current_password",
 		})
 		return ErrInvalidCredentials
+	}
+
+	// Check if new password is the same as current password
+	sameAsCurrent, err := utils.VerifyPassword(req.NewPassword, user.HashedPassword)
+	if err != nil {
+		return err
+	}
+	if sameAsCurrent {
+		s.logAuditEvent(ctx, &req.UserID, nil, "password_change.failed", &req.IP, &req.UserAgent, map[string]interface{}{
+			"reason": "password_reused",
+		})
+		return ErrPasswordReused
+	}
+
+	// Check password history (prevent reuse of last 5 passwords)
+	const passwordHistoryDepth = 5
+	if err := s.CheckPasswordHistory(ctx, req.UserID, req.NewPassword, passwordHistoryDepth); err != nil {
+		s.logAuditEvent(ctx, &req.UserID, nil, "password_change.failed", &req.IP, &req.UserAgent, map[string]interface{}{
+			"reason": "password_reused",
+		})
+		return err
+	}
+
+	// Add current password to history before changing
+	if err := s.AddToPasswordHistory(ctx, req.UserID, user.HashedPassword, passwordHistoryDepth); err != nil {
+		s.logger.Warn("Failed to add password to history", "error", err)
+		// Continue anyway - don't block password change
 	}
 
 	// Hash new password

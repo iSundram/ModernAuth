@@ -29,6 +29,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Password Hashing**: Argon2id with secure parameters (64MB memory, 3 iterations, parallelism 2)
 - **Password Requirements**: Minimum 8 characters, maximum 128 characters
 - **Password Strength Validation**: Configurable policies with common password blocking
+- **Password History**: Prevents reuse of recent passwords (default last 5)
 - **Password Change**: Authenticated endpoint requiring current password verification
 
 ### OAuth2 Social Login
@@ -47,6 +48,8 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 ### Session Security
 - **Token Reuse Detection**: Automatic session revocation on refresh token reuse (potential theft indicator)
 - **Session Revocation**: Revoke individual sessions or all sessions at once
+- **Concurrent Session Limits**: Configurable limit on active sessions per user (default 5)
+- **User Impersonation**: Secure admin impersonation for support with full audit logging
 
 ### Role-Based Access Control (RBAC)
 - **Roles**: Predefined roles (admin, user) with extensible role system
@@ -61,11 +64,14 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **MFA Lockout**: Separate brute-force protection for MFA attempts
   - 5 failed TOTP/backup code attempts triggers 5-minute lockout
   - Prevents brute-forcing of 6-digit TOTP codes
+- **Risk Assessment**: Adaptive authentication based on IP, location, device, and velocity
 - **Rate Limiting**: Redis-backed rate limiting on sensitive endpoints
   - Registration: 5 requests/hour
   - Login: 10 requests/15 minutes
+  - Magic Link: 3 requests/hour
   - Token refresh: 100 requests/15 minutes
   - Password reset: 5 requests/hour
+- **Rate Limit Headers**: Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`
 - **Request Size Limits**: Maximum 1MB request body to prevent DoS attacks
 
 ### MFA (Multi-Factor Authentication)
@@ -89,15 +95,17 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Trusted Devices**: Users can mark specific devices as trusted to reduce MFA friction
 - **Login History**: Full audit trail of IPs, locations, and user agents for every login attempt
 
-### Email Verification & Password Reset
+### Email Verification, Password Reset & Magic Links
 - **Verification Tokens**: Secure random tokens (32 bytes), stored as SHA-256 hashes
-- **Token Expiry**: Email verification (24 hours), Password reset (1 hour)
+- **Token Expiry**: Email verification (24h), Password reset (1h), Magic link (15m)
 - **Single Use**: Tokens are marked as used after consumption
+- **Magic Links**: Passwordless authentication via secure, time-limited email links
 - **Email Rate Limiting**: Per-user rate limits prevent abuse
   - Verification emails: 3 per hour per user
   - Password reset emails: 5 per hour per user
+  - Magic link emails: 3 per hour per user
 - **Async Delivery**: Emails are queued with automatic retry on failure
-- **No Enumeration**: Password reset always returns success to prevent email enumeration
+- **No Enumeration**: Password reset and Magic link requests always return success to prevent email enumeration
 
 ### HTTP Security Headers
 All responses include security headers to protect against common web vulnerabilities:

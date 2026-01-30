@@ -127,6 +127,11 @@ export function EmailLoginPage() {
                   Sign up
                 </Link>
               </p>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-2">
+                <Link to="/login/magic-link" className="text-[var(--color-info)] hover:underline">
+                  Sign in with Magic Link
+                </Link>
+              </p>
             </div>
           </div>
 

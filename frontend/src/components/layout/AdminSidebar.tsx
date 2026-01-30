@@ -13,6 +13,7 @@ import {
   Globe,
   FileText,
   Palette,
+  UserCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,6 +26,7 @@ const navItems = [
   { path: '/admin/oauth', icon: Globe, label: 'OAuth' },
   { path: '/admin/security', icon: Lock, label: 'Security' },
   { path: '/admin/audit', icon: History, label: 'Audit Logs' },
+  { path: '/admin/impersonation', icon: UserCheck, label: 'Impersonation' },
   { path: '/admin/invitations', icon: Mail, label: 'Invitations' },
   { path: '/admin/email-templates', icon: FileText, label: 'Email Templates' },
   { path: '/admin/email-branding', icon: Palette, label: 'Email Branding' },

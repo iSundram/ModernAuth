@@ -162,5 +162,20 @@ func (s *ConsoleService) SendSessionRevokedEmail(ctx context.Context, user *stor
 	return nil
 }
 
+// SendMagicLink logs a magic link email to console.
+func (s *ConsoleService) SendMagicLink(email string, magicLinkURL string) error {
+	s.logger.Info("Magic Link Email",
+		"to", email,
+		"subject", "Sign in to your account",
+		"url", magicLinkURL,
+	)
+	fmt.Printf("\n=== MAGIC LINK EMAIL ===\n")
+	fmt.Printf("To: %s\n", email)
+	fmt.Printf("Subject: Sign in to your account\n")
+	fmt.Printf("Magic Link URL: %s\n", magicLinkURL)
+	fmt.Printf("========================\n\n")
+	return nil
+}
+
 // Verify ConsoleService implements Service interface
 var _ Service = (*ConsoleService)(nil)

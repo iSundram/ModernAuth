@@ -554,3 +554,105 @@ export interface EmailBranding {
   created_at?: string;
   updated_at?: string;
 }
+
+// ============================================================================
+// Magic Link Authentication
+// ============================================================================
+
+export interface MagicLinkSendRequest {
+  email: string;
+}
+
+export interface MagicLinkVerifyRequest {
+  token: string;
+  allow_registration?: boolean;
+}
+
+export interface MagicLinkVerifyResponse {
+  user: User;
+  tokens: TokensResponse;
+  is_new_user: boolean;
+}
+
+// ============================================================================
+// Impersonation
+// ============================================================================
+
+export interface ImpersonateRequest {
+  reason?: string;
+}
+
+export interface ImpersonationSession {
+  id: string;
+  session_id: string;
+  admin_user_id: string;
+  target_user_id: string;
+  reason?: string;
+  started_at: string;
+  ended_at?: string;
+  ip_address?: string;
+  user_agent?: string;
+}
+
+export interface ImpersonationStatus {
+  is_impersonation: boolean;
+  admin_user_id?: string;
+  admin_user_email?: string;
+}
+
+export interface ImpersonationResult {
+  session: Session;
+  tokens: TokensResponse;
+  message: string;
+  expires_at: string;
+}
+
+// ============================================================================
+// Bulk User Import/Export
+// ============================================================================
+
+export interface BulkUserRecord {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  phone?: string;
+  roles?: string;
+  password?: string;
+  active?: boolean;
+}
+
+export interface UserBulkImportError {
+  row: number;
+  email: string;
+  field?: string;
+  message: string;
+}
+
+export interface UserBulkImportResult {
+  total_records: number;
+  success_count: number;
+  failure_count: number;
+  skipped_count: number;
+  errors?: UserBulkImportError[];
+  created_users?: string[];
+  validate_only: boolean;
+}
+
+export interface UserBulkImportRequest {
+  users: BulkUserRecord[];
+  send_welcome?: boolean;
+  skip_existing?: boolean;
+  validate_only?: boolean;
+}
+
+// ============================================================================
+// Rate Limit
+// ============================================================================
+
+export interface RateLimitInfo {
+  limit: number;
+  remaining: number;
+  reset: number;
+  retryAfter?: number;
+}

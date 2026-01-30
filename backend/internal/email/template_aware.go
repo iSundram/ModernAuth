@@ -3,6 +3,7 @@ package email
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -183,6 +184,49 @@ func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user
 
 	s.logger.Info("Sending session revoked email", "to", user.Email)
 	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+// SendMagicLink sends a magic link email for passwordless authentication.
+func (s *TemplateAwareService) SendMagicLink(email string, magicLinkURL string) error {
+	// Magic links don't need tenant-specific templates for now
+	// Delegate to underlying sender which has basic implementation
+	s.logger.Info("Sending magic link email", "to", email)
+	
+	subject := "Sign in to your account"
+	
+	// Extract name from email
+	emailName := email
+	if idx := len(email) - 1; idx >= 0 {
+		for i := 0; i < len(email); i++ {
+			if email[i] == '@' {
+				emailName = email[:i]
+				break
+			}
+		}
+	}
+	
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Sign in</title></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Sign In</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi %s,</p>
+        <p>Click the button below to sign in to your account:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="%s" style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Sign In</a>
+        </div>
+        <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes.</p>
+    </div>
+</body>
+</html>`, emailName, magicLinkURL)
+
+	textBody := fmt.Sprintf("Hi %s,\n\nClick the link below to sign in:\n\n%s\n\nThis link will expire in 15 minutes.\n\nThanks,\nThe ModernAuth Team", emailName, magicLinkURL)
+
+	return s.sender.SendEmail(email, subject, htmlBody, textBody)
 }
 
 // Verify TemplateAwareService implements Service interface

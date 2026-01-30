@@ -150,6 +150,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const setTokensExternal = (accessToken: string, refreshToken: string) => {
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('refresh_token', refreshToken);
+    setToken(accessToken);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -161,6 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         loginMfa,
         logout,
+        setUser,
+        setTokens: setTokensExternal,
       }}
     >
       {children}

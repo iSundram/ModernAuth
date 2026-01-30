@@ -178,6 +178,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		case auth.ErrUserNotFound:
 			authFailureTotal.WithLabelValues("login", "invalid_credentials").Inc()
 			h.writeError(w, http.StatusUnauthorized, "Invalid email or password", err)
+		case auth.ErrSessionLimitExceeded:
+			authFailureTotal.WithLabelValues("login", "session_limit").Inc()
+			h.writeError(w, http.StatusTooManyRequests, "Maximum concurrent sessions exceeded. Please log out from another device.", err)
 		default:
 			h.writeError(w, http.StatusInternalServerError, "Login failed", err)
 		}

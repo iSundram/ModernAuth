@@ -211,5 +211,10 @@ func (r *RateLimitedService) SendSessionRevokedEmail(ctx context.Context, user *
 	return r.inner.SendSessionRevokedEmail(ctx, user, reason)
 }
 
+// SendMagicLink sends a magic link email (no rate limiting - handled by auth service).
+func (r *RateLimitedService) SendMagicLink(email string, magicLinkURL string) error {
+	return r.inner.SendMagicLink(email, magicLinkURL)
+}
+
 // Verify RateLimitedService implements Service interface
 var _ Service = (*RateLimitedService)(nil)

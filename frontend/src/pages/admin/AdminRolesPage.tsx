@@ -8,11 +8,12 @@ import {
   Lock,
   CheckCircle,
   Key,
+  Users,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Modal, Input, ConfirmDialog, LoadingBar } from '../../components/ui';
-import { adminService } from '../../api/services';
+import { adminService, userService } from '../../api/services';
 import { useToast } from '../../components/ui/Toast';
-import type { Role } from '../../types';
+import type { Role, Permission } from '../../types';
 
 export function AdminRolesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -28,10 +29,16 @@ export function AdminRolesPage() {
     queryFn: () => adminService.listRoles(),
   });
 
+  // Fetch all permissions for the permission modal
   const { data: permissions = [] } = useQuery({
     queryKey: ['permissions'],
     queryFn: () => adminService.listPermissions(),
-    enabled: isPermissionsModalOpen && selectedRole !== null,
+  });
+
+  // Fetch all users to count users per role
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => userService.list(),
   });
 
   const { data: rolePermissions = [] } = useQuery({
@@ -39,6 +46,12 @@ export function AdminRolesPage() {
     queryFn: () => selectedRole ? adminService.getRolePermissions(selectedRole.id) : Promise.resolve([]),
     enabled: isPermissionsModalOpen && selectedRole !== null,
   });
+
+  // Note: This counts by role name matching user.role which may be 'admin' or 'user'
+  // For custom RBAC roles, a dedicated endpoint would be needed
+  const getUserCountForRole = (roleName: string) => {
+    return users.filter(u => u.role === roleName).length;
+  };
 
   const createRoleMutation = useMutation({
     mutationFn: (data: { name: string; description?: string; tenant_id?: string }) =>
@@ -124,6 +137,43 @@ export function AdminRolesPage() {
         </Button>
       </div>
 
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="p-3 rounded-xl bg-blue-500/10">
+              <Shield size={24} className="text-blue-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[var(--color-text-primary)]">{roles.length}</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">Total Roles</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="p-3 rounded-xl bg-purple-500/10">
+              <Key size={24} className="text-purple-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[var(--color-text-primary)]">{permissions.length}</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">Permissions</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="p-3 rounded-xl bg-green-500/10">
+              <Users size={24} className="text-green-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[var(--color-text-primary)]">{users.length}</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">Total Users</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 gap-6">
         {roles.map((role) => (
           <Card key={role.id}>
@@ -189,7 +239,11 @@ export function AdminRolesPage() {
                   </p>
                 </div>
                 
-                <div className="flex items-center gap-6 pt-4 border-t border-[var(--color-border-light)]">
+                <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-[var(--color-border-light)]">
+                  <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                    <Users size={16} />
+                    <span className="font-medium">{getUserCountForRole(role.name)}</span> users
+                  </div>
                   <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
                     <Lock size={16} />
                     Role ID: <span className="font-mono text-xs">{role.id}</span>
@@ -205,6 +259,30 @@ export function AdminRolesPage() {
           </Card>
         ))}
       </div>
+
+      {/* Available Permissions Reference */}
+      {permissions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Available Permissions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {permissions.map((permission: Permission) => (
+                <div
+                  key={permission.id}
+                  className="p-2 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)] text-sm"
+                >
+                  <span className="font-mono text-[var(--color-text-primary)]">{permission.name}</span>
+                  {permission.description && (
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">{permission.description}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create Role Modal */}
       <CreateRoleModal

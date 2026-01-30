@@ -18,7 +18,7 @@ func (h *Handler) Router() *chi.Mux {
 	corsOptions := cors.Options{
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Tenant-ID"},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}
@@ -67,8 +67,19 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RateLimit(5, time.Hour)).Post("/forgot-password", h.ForgotPassword)
 			r.With(h.RateLimit(5, time.Hour)).Post("/reset-password", h.ResetPassword)
 
+			// Magic Link Authentication (Passwordless)
+			r.With(h.RateLimit(3, time.Hour)).Post("/magic-link/send", h.SendMagicLink)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/magic-link/verify", h.VerifyMagicLink)
+
 			// Session Management (Protected)
 			r.With(h.Auth).Post("/revoke-all-sessions", h.RevokeAllSessions)
+
+			// Impersonation (Protected)
+			r.Group(func(r chi.Router) {
+				r.Use(h.Auth)
+				r.Get("/impersonation/status", h.GetImpersonationStatus)
+				r.Post("/impersonation/end", h.EndImpersonation)
+			})
 
 			// MFA Management (Protected)
 			r.Group(func(r chi.Router) {
@@ -138,6 +149,15 @@ func (h *Handler) Router() *chi.Mux {
 			r.Patch("/settings/{key}", h.UpdateSetting)
 			r.Post("/users/{id}/roles", h.AssignUserRole)
 			r.Delete("/users/{id}/roles/{roleId}", h.RemoveUserRole)
+			
+			// User impersonation
+			r.With(h.RequirePermission("users:impersonate")).Post("/users/{id}/impersonate", h.ImpersonateUser)
+			r.Get("/impersonation-sessions", h.ListImpersonationSessions)
+			
+			// Bulk user operations
+			r.Post("/users/import", h.ImportUsersJSON)
+			r.Post("/users/import/csv", h.ImportUsersCSV)
+			r.Get("/users/export", h.ExportUsers)
 			
 			// Role management
 			r.Get("/roles", h.ListRoles)

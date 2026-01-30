@@ -4,7 +4,8 @@ import { Link2, Unlink, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button, Badge, ConfirmDialog } from '../ui';
 import { useToast } from '../ui/Toast';
-import { oauthService, authService } from '../../api/services';
+import { authService } from '../../api/services';
+import type { LinkedOAuthProvider } from '../../types';
 
 // Provider icons and colors
 const providerConfig: Record<string, { name: string; color: string; icon: string }> = {
@@ -32,7 +33,7 @@ export function LinkedAccounts() {
   // Keep this query as a simple empty list to avoid network calls.
   const { data: linkedProviders = [], isLoading } = useQuery({
     queryKey: ['linked-providers'],
-    queryFn: async () => [],
+    queryFn: async (): Promise<LinkedOAuthProvider[]> => [],
   });
 
   // Unlink mutation
@@ -60,7 +61,7 @@ export function LinkedAccounts() {
   };
 
   const availableProviders = providersData?.providers || [];
-  const linkedProviderNames = linkedProviders.map(p => p.provider);
+  const linkedProviderNames = linkedProviders.map((p: LinkedOAuthProvider) => p.provider);
   const unlinkedProviders = availableProviders.filter(p => !linkedProviderNames.includes(p));
 
   return (
@@ -91,7 +92,7 @@ export function LinkedAccounts() {
                 <h4 className="text-sm font-medium text-[var(--color-text-primary)]">
                   Linked Accounts
                 </h4>
-                {linkedProviders.map((linked) => {
+                {linkedProviders.map((linked: LinkedOAuthProvider) => {
                   const config = providerConfig[linked.provider] || { 
                     name: linked.provider, 
                     color: '#666', 

@@ -24,10 +24,22 @@
 | POST | `/v1/auth/reset-password` | Reset password with token |
 | POST | `/v1/auth/change-password` | Change password (requires auth) |
 
+### Magic Link Authentication (Passwordless)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/magic-link/send` | Request a magic link email for passwordless login |
+| POST | `/v1/auth/magic-link/verify` | Verify magic link token and create session |
+
 ### Session Management
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/v1/auth/revoke-all-sessions` | Revoke all user sessions (requires auth) |
+
+### Impersonation (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/auth/impersonation/status` | Check if current session is an impersonation session |
+| POST | `/v1/auth/impersonation/end` | End the current impersonation session |
 
 ### MFA (Multi-Factor Authentication)
 | Method | Endpoint | Description |
@@ -163,6 +175,19 @@ Query parameters for `/v1/audit/logs`:
 |--------|----------|-------------|
 | POST | `/v1/admin/users/{id}/roles` | Assign role to user |
 | DELETE | `/v1/admin/users/{id}/roles/{roleId}` | Remove role from user |
+
+### User Impersonation (requires `admin` role + `users:impersonate` permission)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/admin/users/{id}/impersonate` | Start impersonation session as another user |
+| GET | `/v1/admin/impersonation-sessions` | List impersonation sessions (for audit) |
+
+### Bulk User Operations (requires `admin` role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/admin/users/import` | Import users from JSON |
+| POST | `/v1/admin/users/import/csv` | Import users from CSV file |
+| GET | `/v1/admin/users/export` | Export users (supports `?format=csv` or `?format=json`) |
 
 ### Tenant Management (requires `admin` role)
 | Method | Endpoint | Description |
@@ -383,4 +408,83 @@ Response:
   "offset": 0,
   "count": 1
 }
+```
+
+---
+
+## Rate Limiting
+
+The API implements rate limiting on authentication endpoints. Rate limit information is provided in response headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Maximum number of requests allowed in the time window |
+| `X-RateLimit-Remaining` | Number of requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the rate limit window resets |
+| `Retry-After` | Seconds to wait before retrying (only on 429 responses) |
+
+### Rate Limits by Endpoint
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/v1/auth/register` | 5 | 1 hour |
+| `/v1/auth/login` | 10 | 15 minutes |
+| `/v1/auth/magic-link/send` | 3 | 1 hour |
+| `/v1/auth/forgot-password` | 5 | 1 hour |
+| `/v1/auth/refresh` | 100 | 15 minutes |
+
+---
+
+## New Features
+
+### Magic Link Authentication
+Passwordless login via email. Users receive a secure, time-limited link that logs them in without a password.
+
+```bash
+# Request magic link
+curl -X POST http://localhost:8080/v1/auth/magic-link/send \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+
+# Verify magic link
+curl -X POST http://localhost:8080/v1/auth/magic-link/verify \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<magic_link_token>", "allow_registration": false}'
+```
+
+### User Impersonation
+Administrators can impersonate users for support purposes. All impersonation sessions are logged.
+
+```bash
+# Start impersonation (requires admin role + users:impersonate permission)
+curl -X POST http://localhost:8080/v1/admin/users/{user_id}/impersonate \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Support ticket #12345"}'
+
+# End impersonation
+curl -X POST http://localhost:8080/v1/auth/impersonation/end \
+  -H "Authorization: Bearer <impersonation_access_token>"
+```
+
+### Bulk User Operations
+Import and export users in bulk.
+
+```bash
+# Export users as CSV
+curl -X GET "http://localhost:8080/v1/admin/users/export?format=csv" \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -o users.csv
+
+# Import users from JSON
+curl -X POST http://localhost:8080/v1/admin/users/import \
+  -H "Authorization: Bearer <admin_access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "users": [
+      {"email": "user1@example.com", "first_name": "User", "last_name": "One"},
+      {"email": "user2@example.com", "first_name": "User", "last_name": "Two"}
+    ],
+    "send_welcome": true,
+    "skip_existing": true
+  }'
 ```

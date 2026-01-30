@@ -11,8 +11,12 @@ import {
   XCircle,
   Edit,
   Key,
+  UserMinus,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { Button, Input, Card, CardContent, CardHeader, Modal, Badge, ConfirmDialog, Select } from '../../components/ui';
+import { BulkUserImport, BulkUserExport, ImpersonateUserModal } from '../../components/admin';
 import type { User, UserRole, Role } from '../../types';
 import { userService, adminService } from '../../api/services';
 import { useAuth } from '../../hooks/useAuth';
@@ -58,6 +62,9 @@ export function AdminUsersPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImpersonateModalOpen, setIsImpersonateModalOpen] = useState(false);
 
   // Fetch users
   const { data: users = [], isLoading: usersLoading } = useQuery({
@@ -149,9 +156,17 @@ export function AdminUsersPage() {
             Manage user accounts, roles, and permissions
           </p>
         </div>
-        <Button leftIcon={<Plus size={18} />} onClick={() => setIsCreateModalOpen(true)}>
-          Add User
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" leftIcon={<Upload size={18} />} onClick={() => setIsImportModalOpen(true)}>
+            Import
+          </Button>
+          <Button variant="outline" leftIcon={<Download size={18} />} onClick={() => setIsExportModalOpen(true)}>
+            Export
+          </Button>
+          <Button leftIcon={<Plus size={18} />} onClick={() => setIsCreateModalOpen(true)}>
+            Add User
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -352,6 +367,20 @@ export function AdminUsersPage() {
                           >
                             <Key size={16} />
                           </Button>
+                          {user.id !== currentUser?.id && user.role !== 'admin' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setIsImpersonateModalOpen(true);
+                              }}
+                              className="text-amber-500 hover:text-amber-600"
+                              title="Impersonate User"
+                            >
+                              <UserMinus size={16} />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -387,6 +416,22 @@ export function AdminUsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Bulk Operations Modals */}
+      <BulkUserImport
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['users'] })}
+      />
+      <BulkUserExport
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
+      <ImpersonateUserModal
+        isOpen={isImpersonateModalOpen}
+        onClose={() => { setIsImpersonateModalOpen(false); setSelectedUser(null); }}
+        user={selectedUser}
+      />
 
       {/* Create User Modal */}
       <CreateUserModal

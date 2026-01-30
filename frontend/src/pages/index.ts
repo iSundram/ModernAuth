@@ -1,5 +1,7 @@
 export * from './EmailLoginPage';
 export * from './PasswordLoginPage';
+export * from './MagicLinkLoginPage';
+export * from './MagicLinkVerifyPage';
 export * from './DashboardPage';
 export * from './UsersPage';
 export * from './RegisterPage';

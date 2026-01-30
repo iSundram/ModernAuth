@@ -2401,3 +2401,273 @@ func (s *PostgresStorage) MarkEmailDeadLetterResolved(ctx context.Context, id uu
 	_, err := s.pool.Exec(ctx, query, time.Now(), id)
 	return err
 }
+
+// ========== Password History Storage ==========
+
+// AddPasswordHistory adds a password hash to user's password history.
+func (s *PostgresStorage) AddPasswordHistory(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	query := `INSERT INTO password_history (user_id, password_hash) VALUES ($1, $2)`
+	_, err := s.pool.Exec(ctx, query, userID, passwordHash)
+	return err
+}
+
+// GetPasswordHistory retrieves the user's password history.
+func (s *PostgresStorage) GetPasswordHistory(ctx context.Context, userID uuid.UUID, limit int) ([]*storage.PasswordHistory, error) {
+	query := `
+		SELECT id, user_id, password_hash, created_at
+		FROM password_history
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`
+
+	rows, err := s.pool.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []*storage.PasswordHistory
+	for rows.Next() {
+		h := &storage.PasswordHistory{}
+		if err := rows.Scan(&h.ID, &h.UserID, &h.PasswordHash, &h.CreatedAt); err != nil {
+			return nil, err
+		}
+		history = append(history, h)
+	}
+	return history, rows.Err()
+}
+
+// CleanupOldPasswordHistory removes old password history entries beyond the keep count.
+func (s *PostgresStorage) CleanupOldPasswordHistory(ctx context.Context, userID uuid.UUID, keepCount int) error {
+	query := `
+		DELETE FROM password_history
+		WHERE user_id = $1 AND id NOT IN (
+			SELECT id FROM password_history
+			WHERE user_id = $1
+			ORDER BY created_at DESC
+			LIMIT $2
+		)`
+	_, err := s.pool.Exec(ctx, query, userID, keepCount)
+	return err
+}
+
+// ========== Magic Link Storage ==========
+
+// CreateMagicLink creates a new magic link.
+func (s *PostgresStorage) CreateMagicLink(ctx context.Context, link *storage.MagicLink) error {
+	query := `
+		INSERT INTO magic_links (id, user_id, email, token_hash, expires_at, ip_address, user_agent, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := s.pool.Exec(ctx, query, link.ID, link.UserID, link.Email, link.TokenHash,
+		link.ExpiresAt, link.IPAddress, link.UserAgent, link.CreatedAt)
+	return err
+}
+
+// GetMagicLinkByHash retrieves a magic link by its token hash.
+func (s *PostgresStorage) GetMagicLinkByHash(ctx context.Context, tokenHash string) (*storage.MagicLink, error) {
+	query := `
+		SELECT id, user_id, email, token_hash, expires_at, used_at, ip_address, user_agent, created_at
+		FROM magic_links
+		WHERE token_hash = $1`
+
+	link := &storage.MagicLink{}
+	err := s.pool.QueryRow(ctx, query, tokenHash).Scan(
+		&link.ID, &link.UserID, &link.Email, &link.TokenHash, &link.ExpiresAt,
+		&link.UsedAt, &link.IPAddress, &link.UserAgent, &link.CreatedAt)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return link, nil
+}
+
+// MarkMagicLinkUsed marks a magic link as used.
+func (s *PostgresStorage) MarkMagicLinkUsed(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE magic_links SET used_at = $1 WHERE id = $2`
+	_, err := s.pool.Exec(ctx, query, time.Now(), id)
+	return err
+}
+
+// DeleteExpiredMagicLinks removes expired magic links.
+func (s *PostgresStorage) DeleteExpiredMagicLinks(ctx context.Context) error {
+	query := `DELETE FROM magic_links WHERE expires_at < $1 OR used_at IS NOT NULL`
+	_, err := s.pool.Exec(ctx, query, time.Now())
+	return err
+}
+
+// CountRecentMagicLinks counts magic links created for an email since a given time.
+func (s *PostgresStorage) CountRecentMagicLinks(ctx context.Context, email string, since time.Time) (int, error) {
+	query := `SELECT COUNT(*) FROM magic_links WHERE email = $1 AND created_at > $2`
+	var count int
+	err := s.pool.QueryRow(ctx, query, email, since).Scan(&count)
+	return count, err
+}
+
+// ========== Impersonation Storage ==========
+
+// CreateImpersonationSession creates a new impersonation session.
+func (s *PostgresStorage) CreateImpersonationSession(ctx context.Context, session *storage.ImpersonationSession) error {
+	query := `
+		INSERT INTO impersonation_sessions (id, session_id, admin_user_id, target_user_id, reason, started_at, ip_address, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := s.pool.Exec(ctx, query, session.ID, session.SessionID, session.AdminUserID,
+		session.TargetUserID, session.Reason, session.StartedAt, session.IPAddress, session.UserAgent)
+	return err
+}
+
+// GetImpersonationSession retrieves an impersonation session by session ID.
+func (s *PostgresStorage) GetImpersonationSession(ctx context.Context, sessionID uuid.UUID) (*storage.ImpersonationSession, error) {
+	query := `
+		SELECT id, session_id, admin_user_id, target_user_id, reason, started_at, ended_at, ip_address, user_agent
+		FROM impersonation_sessions
+		WHERE session_id = $1`
+
+	session := &storage.ImpersonationSession{}
+	err := s.pool.QueryRow(ctx, query, sessionID).Scan(
+		&session.ID, &session.SessionID, &session.AdminUserID, &session.TargetUserID,
+		&session.Reason, &session.StartedAt, &session.EndedAt, &session.IPAddress, &session.UserAgent)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return session, nil
+}
+
+// EndImpersonationSession ends an impersonation session.
+func (s *PostgresStorage) EndImpersonationSession(ctx context.Context, sessionID uuid.UUID) error {
+	query := `UPDATE impersonation_sessions SET ended_at = $1 WHERE session_id = $2 AND ended_at IS NULL`
+	_, err := s.pool.Exec(ctx, query, time.Now(), sessionID)
+	return err
+}
+
+// ListImpersonationSessions lists impersonation sessions with optional filters.
+func (s *PostgresStorage) ListImpersonationSessions(ctx context.Context, adminUserID *uuid.UUID, targetUserID *uuid.UUID, limit, offset int) ([]*storage.ImpersonationSession, error) {
+	query := `
+		SELECT id, session_id, admin_user_id, target_user_id, reason, started_at, ended_at, ip_address, user_agent
+		FROM impersonation_sessions
+		WHERE ($1::uuid IS NULL OR admin_user_id = $1)
+		AND ($2::uuid IS NULL OR target_user_id = $2)
+		ORDER BY started_at DESC
+		LIMIT $3 OFFSET $4`
+
+	rows, err := s.pool.Query(ctx, query, adminUserID, targetUserID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*storage.ImpersonationSession
+	for rows.Next() {
+		session := &storage.ImpersonationSession{}
+		if err := rows.Scan(&session.ID, &session.SessionID, &session.AdminUserID, &session.TargetUserID,
+			&session.Reason, &session.StartedAt, &session.EndedAt, &session.IPAddress, &session.UserAgent); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}
+
+// ========== Risk Assessment Storage ==========
+
+// CreateRiskAssessment creates a new risk assessment record.
+func (s *PostgresStorage) CreateRiskAssessment(ctx context.Context, assessment *storage.RiskAssessment) error {
+	query := `
+		INSERT INTO risk_assessments (id, user_id, session_id, risk_score, risk_level, factors, action_taken, ip_address, user_agent, location_country, location_city, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+	_, err := s.pool.Exec(ctx, query, assessment.ID, assessment.UserID, assessment.SessionID,
+		assessment.RiskScore, assessment.RiskLevel, assessment.Factors, assessment.ActionTaken,
+		assessment.IPAddress, assessment.UserAgent, assessment.LocationCountry, assessment.LocationCity, assessment.CreatedAt)
+	return err
+}
+
+// GetRecentRiskAssessments retrieves recent risk assessments for a user.
+func (s *PostgresStorage) GetRecentRiskAssessments(ctx context.Context, userID uuid.UUID, limit int) ([]*storage.RiskAssessment, error) {
+	query := `
+		SELECT id, user_id, session_id, risk_score, risk_level, factors, action_taken, ip_address, user_agent, location_country, location_city, created_at
+		FROM risk_assessments
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`
+
+	rows, err := s.pool.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assessments []*storage.RiskAssessment
+	for rows.Next() {
+		a := &storage.RiskAssessment{}
+		if err := rows.Scan(&a.ID, &a.UserID, &a.SessionID, &a.RiskScore, &a.RiskLevel, &a.Factors,
+			&a.ActionTaken, &a.IPAddress, &a.UserAgent, &a.LocationCountry, &a.LocationCity, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		assessments = append(assessments, a)
+	}
+	return assessments, rows.Err()
+}
+
+// GetRiskAssessmentStats retrieves risk assessment statistics for a user.
+func (s *PostgresStorage) GetRiskAssessmentStats(ctx context.Context, userID uuid.UUID, since time.Time) (map[string]int, error) {
+	query := `
+		SELECT risk_level, COUNT(*) as count
+		FROM risk_assessments
+		WHERE user_id = $1 AND created_at > $2
+		GROUP BY risk_level`
+
+	rows, err := s.pool.Query(ctx, query, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[string]int)
+	for rows.Next() {
+		var level string
+		var count int
+		if err := rows.Scan(&level, &count); err != nil {
+			return nil, err
+		}
+		stats[level] = count
+	}
+	return stats, rows.Err()
+}
+
+// ========== Session Count ==========
+
+// CountActiveUserSessions counts active (non-revoked, non-expired) sessions for a user.
+func (s *PostgresStorage) CountActiveUserSessions(ctx context.Context, userID uuid.UUID) (int, error) {
+	query := `
+		SELECT COUNT(*) FROM sessions
+		WHERE user_id = $1 AND revoked = false AND expires_at > $2`
+	var count int
+	err := s.pool.QueryRow(ctx, query, userID, time.Now()).Scan(&count)
+	return count, err
+}
+
+// GetOldestActiveSession retrieves the oldest active session for a user.
+func (s *PostgresStorage) GetOldestActiveSession(ctx context.Context, userID uuid.UUID) (*storage.Session, error) {
+	query := `
+		SELECT id, user_id, tenant_id, device_id, fingerprint, created_at, expires_at, revoked, metadata
+		FROM sessions
+		WHERE user_id = $1 AND revoked = false AND expires_at > $2
+		ORDER BY created_at ASC
+		LIMIT 1`
+
+	session := &storage.Session{}
+	err := s.pool.QueryRow(ctx, query, userID, time.Now()).Scan(
+		&session.ID, &session.UserID, &session.TenantID, &session.DeviceID,
+		&session.Fingerprint, &session.CreatedAt, &session.ExpiresAt, &session.Revoked, &session.Metadata)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return session, nil
+}

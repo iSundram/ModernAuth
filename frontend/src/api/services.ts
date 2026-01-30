@@ -14,7 +14,9 @@ import type {
   SystemStats, ServiceStatus, SystemSetting,
   TokensResponse,
   MFAStatus, WebAuthnCredential, LinkedOAuthProvider,
-  EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailBranding
+  EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailBranding,
+  MagicLinkVerifyResponse, ImpersonationStatus, ImpersonationSession, ImpersonationResult,
+  UserBulkImportResult, UserBulkImportRequest
 } from '../types';
 
 // ============================================================================
@@ -171,6 +173,29 @@ export const authService = {
       device_fingerprint: deviceFingerprint,
       trust_days: trustDays,
     }),
+
+  // Revoke MFA Trust from a device
+  revokeMfaTrust: (deviceFingerprint: string) =>
+    apiClient.post<{ message: string }>('/v1/auth/mfa/revoke-trust', {
+      device_fingerprint: deviceFingerprint,
+    }),
+
+  // Magic Link Authentication (Passwordless)
+  sendMagicLink: (email: string) =>
+    apiClient.post<{ message: string }>('/v1/auth/magic-link/send', { email }),
+
+  verifyMagicLink: (token: string, allowRegistration: boolean = false) =>
+    apiClient.post<MagicLinkVerifyResponse>('/v1/auth/magic-link/verify', {
+      token,
+      allow_registration: allowRegistration,
+    }),
+
+  // Impersonation Status
+  getImpersonationStatus: () =>
+    apiClient.get<ImpersonationStatus>('/v1/auth/impersonation/status'),
+
+  endImpersonation: () =>
+    apiClient.post<{ message: string }>('/v1/auth/impersonation/end'),
 };
 
 // ============================================================================
@@ -549,6 +574,60 @@ export const adminService = {
 
   updateEmailBranding: (data: EmailBranding) =>
     apiClient.put<EmailBranding>('/v1/admin/email-branding', data),
+
+  // User Impersonation
+  impersonateUser: (userId: string, reason?: string) =>
+    apiClient.post<ImpersonationResult>(`/v1/admin/users/${userId}/impersonate`, { reason }),
+
+  listImpersonationSessions: (params?: { admin_user_id?: string; target_user_id?: string; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.admin_user_id) searchParams.append('admin_user_id', params.admin_user_id);
+    if (params?.target_user_id) searchParams.append('target_user_id', params.target_user_id);
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+    if (params?.offset) searchParams.append('offset', params.offset.toString());
+    return apiClient.get<{ sessions: ImpersonationSession[]; limit: number; offset: number }>(`/v1/admin/impersonation-sessions?${searchParams.toString()}`);
+  },
+
+  // Bulk User Operations
+  importUsersJSON: (data: UserBulkImportRequest) =>
+    apiClient.post<UserBulkImportResult>('/v1/admin/users/import', data),
+
+  importUsersCSV: async (file: File, options?: { skip_existing?: boolean; validate_only?: boolean; send_welcome?: boolean }): Promise<UserBulkImportResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.skip_existing) formData.append('skip_existing', 'true');
+    if (options?.validate_only) formData.append('validate_only', 'true');
+    if (options?.send_welcome) formData.append('send_welcome', 'true');
+    
+    const token = localStorage.getItem('access_token');
+    const response = await fetch('/v1/admin/users/import/csv', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to import users');
+    }
+    return response.json();
+  },
+
+  exportUsers: async (format: 'csv' | 'json' = 'json', activeOnly: boolean = false): Promise<Blob> => {
+    const token = localStorage.getItem('access_token');
+    const params = new URLSearchParams();
+    params.append('format', format);
+    if (activeOnly) params.append('active_only', 'true');
+    
+    const response = await fetch(`/v1/admin/users/export?${params.toString()}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error('Failed to export users');
+    return response.blob();
+  },
 };
 
 // ============================================================================

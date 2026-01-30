@@ -32,6 +32,9 @@ type Service interface {
 
 	// SendSessionRevokedEmail sends notification about session revocation.
 	SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error
+
+	// SendMagicLink sends a magic link email for passwordless authentication.
+	SendMagicLink(email string, magicLinkURL string) error
 }
 
 // DeviceInfo contains device information for login alerts.

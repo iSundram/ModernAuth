@@ -15,7 +15,7 @@ import { OnboardingWizard } from '../components/onboarding';
 import { useAuth } from '../hooks/useAuth';
 import { deviceService, auditService, sessionService, authService } from '../api/services';
 import { Link } from 'react-router-dom';
-import type { AuditLog, Session, MFAStatus } from '../types';
+import type { AuditLog, MFAStatus } from '../types';
 
 interface StatCardProps {
   title: string;

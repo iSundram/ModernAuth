@@ -371,5 +371,11 @@ func (q *QueuedService) SendSessionRevokedEmail(ctx context.Context, user *stora
 	return q.enqueue(jobTypeSessionRevoked, user.Email, &sessionRevokedPayload{User: user, Reason: reason})
 }
 
+// SendMagicLink sends a magic link email (synchronously - no queue for time-sensitive emails).
+func (q *QueuedService) SendMagicLink(email string, magicLinkURL string) error {
+	// Magic links are time-sensitive, so we send them directly without queuing
+	return q.inner.SendMagicLink(email, magicLinkURL)
+}
+
 // Verify QueuedService implements Service interface
 var _ Service = (*QueuedService)(nil)

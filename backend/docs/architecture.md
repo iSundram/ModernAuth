@@ -30,6 +30,11 @@
 ### Auth Service (`/internal/auth`)
 - **AuthService**: Core authentication logic (register, login, logout, MFA, password management)
 - **TokenService**: JWT access token and refresh token generation/validation
+- **MagicLink**: Passwordless authentication via time-limited secure email links
+- **Impersonation**: Secure admin impersonation of users for support with full audit logging
+- **SessionLimits**: Enforce maximum concurrent sessions per user
+- **PasswordHistory**: Prevent reuse of recent passwords (default last 5)
+- **RiskAssessment**: Risk-based authentication (unusual IP, location, device, or velocity)
 - **AccountLockout**: Brute-force protection with configurable policies
 - **TokenBlacklist**: Immediate token revocation via Redis
 - **RBAC**: Role and permission management
@@ -51,8 +56,8 @@
 - **SMTP**: Production-ready SMTP with TLS support (STARTTLS and implicit TLS)
 - **SendGrid**: SendGrid API v3 integration (no SDK dependency)
 - **Queue**: Async email delivery with exponential backoff retry (1min → 5min → 15min)
-- **Rate Limiting**: Per-user rate limits (3 verification/hr, 5 password reset/hr)
-- **Templates**: HTML email templates for verification, reset, welcome, alerts
+- **Rate Limiting**: Per-user rate limits (3 verification/hr, 5 password reset/hr, 3 magic link/hr)
+- **Templates**: HTML email templates for verification, reset, magic link, welcome, alerts
 
 ### Tenant Service (`/internal/tenant`)
 - **Service**: Core multi-tenancy logic (tenant creation, isolation, settings)
@@ -69,7 +74,7 @@
 
 ### Storage Layer (`/internal/storage`)
 - **Interfaces**: Clean separation between business logic and data access
-- **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens, roles, permissions
+- **PostgreSQL**: Users, sessions, refresh tokens, audit logs, MFA settings, verification tokens, roles, permissions, password history, magic links, impersonation sessions, risk assessments
 - **Redis**: Rate limiting, session blacklist, token blacklist, account lockout
 
 ### Security Features
@@ -78,7 +83,13 @@
 - Refresh token rotation with reuse detection
 - TOTP-based MFA
 - Email verification and password reset flows
+- **Passwordless Magic Links**
+- **Admin Impersonation** (audited)
+- **Risk-based Authentication**
+- **Password History Enforcement**
+- **Concurrent Session Limits**
 - Account lockout after failed attempts
 - Role-Based Access Control (RBAC)
 - OAuth state validation (CSRF protection)
 - PKCE support for OAuth flows
+- **Response-based Rate Limiting** with standard headers

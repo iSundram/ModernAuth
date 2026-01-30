@@ -90,6 +90,8 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusGone, "Reset token has expired", err)
 		case auth.ErrTokenUsed:
 			h.writeError(w, http.StatusConflict, "Reset token has already been used", err)
+		case auth.ErrPasswordReused:
+			h.writeError(w, http.StatusBadRequest, "Password was recently used. Please choose a different password.", err)
 		default:
 			h.writeError(w, http.StatusInternalServerError, "Password reset failed", err)
 		}
@@ -133,6 +135,8 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case auth.ErrInvalidCredentials:
 			h.writeError(w, http.StatusUnauthorized, "Current password is incorrect", err)
+		case auth.ErrPasswordReused:
+			h.writeError(w, http.StatusBadRequest, "Password was recently used. Please choose a different password.", err)
 		default:
 			h.writeError(w, http.StatusInternalServerError, "Failed to change password", err)
 		}

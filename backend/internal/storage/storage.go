@@ -614,3 +614,84 @@ type EmailDeadLetter struct {
 	RetriedAt    *time.Time             `json:"retried_at,omitempty"`
 	Resolved     bool                   `json:"resolved"`
 }
+
+// PasswordHistory represents a password history entry for preventing reuse.
+type PasswordHistory struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"user_id"`
+	PasswordHash string    `json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// MagicLink represents a passwordless magic link token.
+type MagicLink struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    *uuid.UUID `json:"user_id,omitempty"`
+	Email     string     `json:"email"`
+	TokenHash string     `json:"-"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at,omitempty"`
+	IPAddress *string    `json:"ip_address,omitempty"`
+	UserAgent *string    `json:"user_agent,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// ImpersonationSession represents an admin impersonation session.
+type ImpersonationSession struct {
+	ID           uuid.UUID  `json:"id"`
+	SessionID    uuid.UUID  `json:"session_id"`
+	AdminUserID  uuid.UUID  `json:"admin_user_id"`
+	TargetUserID uuid.UUID  `json:"target_user_id"`
+	Reason       *string    `json:"reason,omitempty"`
+	StartedAt    time.Time  `json:"started_at"`
+	EndedAt      *time.Time `json:"ended_at,omitempty"`
+	IPAddress    *string    `json:"ip_address,omitempty"`
+	UserAgent    *string    `json:"user_agent,omitempty"`
+}
+
+// RiskAssessment represents a login risk assessment.
+type RiskAssessment struct {
+	ID              uuid.UUID              `json:"id"`
+	UserID          uuid.UUID              `json:"user_id"`
+	SessionID       *uuid.UUID             `json:"session_id,omitempty"`
+	RiskScore       int                    `json:"risk_score"`
+	RiskLevel       string                 `json:"risk_level"` // low, medium, high
+	Factors         map[string]interface{} `json:"factors"`
+	ActionTaken     string                 `json:"action_taken"` // allowed, mfa_required, blocked, warned
+	IPAddress       *string                `json:"ip_address,omitempty"`
+	UserAgent       *string                `json:"user_agent,omitempty"`
+	LocationCountry *string                `json:"location_country,omitempty"`
+	LocationCity    *string                `json:"location_city,omitempty"`
+	CreatedAt       time.Time              `json:"created_at"`
+}
+
+// PasswordHistoryStorage defines password history storage operations.
+type PasswordHistoryStorage interface {
+	AddPasswordHistory(ctx context.Context, userID uuid.UUID, passwordHash string) error
+	GetPasswordHistory(ctx context.Context, userID uuid.UUID, limit int) ([]*PasswordHistory, error)
+	CleanupOldPasswordHistory(ctx context.Context, userID uuid.UUID, keepCount int) error
+}
+
+// MagicLinkStorage defines magic link storage operations.
+type MagicLinkStorage interface {
+	CreateMagicLink(ctx context.Context, link *MagicLink) error
+	GetMagicLinkByHash(ctx context.Context, tokenHash string) (*MagicLink, error)
+	MarkMagicLinkUsed(ctx context.Context, id uuid.UUID) error
+	DeleteExpiredMagicLinks(ctx context.Context) error
+	CountRecentMagicLinks(ctx context.Context, email string, since time.Time) (int, error)
+}
+
+// ImpersonationStorage defines impersonation storage operations.
+type ImpersonationStorage interface {
+	CreateImpersonationSession(ctx context.Context, session *ImpersonationSession) error
+	GetImpersonationSession(ctx context.Context, sessionID uuid.UUID) (*ImpersonationSession, error)
+	EndImpersonationSession(ctx context.Context, sessionID uuid.UUID) error
+	ListImpersonationSessions(ctx context.Context, adminUserID *uuid.UUID, targetUserID *uuid.UUID, limit, offset int) ([]*ImpersonationSession, error)
+}
+
+// RiskAssessmentStorage defines risk assessment storage operations.
+type RiskAssessmentStorage interface {
+	CreateRiskAssessment(ctx context.Context, assessment *RiskAssessment) error
+	GetRecentRiskAssessments(ctx context.Context, userID uuid.UUID, limit int) ([]*RiskAssessment, error)
+	GetRiskAssessmentStats(ctx context.Context, userID uuid.UUID, since time.Time) (map[string]int, error)
+}
