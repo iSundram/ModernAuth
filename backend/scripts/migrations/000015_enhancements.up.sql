@@ -81,7 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_password_breach_cache_checked_at ON password_brea
 -- Additional system settings for new features
 INSERT INTO system_settings (key, value, category, is_secret, description) VALUES
     ('max_concurrent_sessions', '5', 'security', false, 'Maximum number of concurrent sessions per user'),
-    ('session_limit_action', 'revoke_oldest', 'security', false, 'Action when session limit exceeded: revoke_oldest, reject_new'),
+    ('session_limit_action', '"revoke_oldest"', 'security', false, 'Action when session limit exceeded: revoke_oldest, reject_new'),
     ('password_history_depth', '5', 'security', false, 'Number of previous passwords to check against'),
     ('magic_link_expiry_minutes', '15', 'security', false, 'Magic link expiration time in minutes'),
     ('magic_link_rate_limit', '3', 'security', false, 'Maximum magic link requests per email per hour'),
