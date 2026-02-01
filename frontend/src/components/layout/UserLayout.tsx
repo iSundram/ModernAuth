@@ -3,14 +3,24 @@ import { UserSidebar } from './UserSidebar';
 import { Header } from './Header';
 import { EmailVerificationBanner } from '../ui';
 import { ImpersonationBanner } from './ImpersonationBanner';
+import { SidebarProvider, useSidebar } from '../../context/SidebarContext';
 
-export function UserLayout() {
+function UserLayoutContent() {
+  const { isCollapsed, collapse } = useSidebar();
+
+  // Collapse sidebar when clicking on main content (only if expanded)
+  const handleContentClick = () => {
+    if (!isCollapsed) {
+      collapse();
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <ImpersonationBanner />
       <div className="flex-1 flex overflow-hidden">
         <UserSidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden" onClick={handleContentClick}>
           <Header />
           <EmailVerificationBanner />
           <main className="flex-1 overflow-auto bg-[var(--color-background)] p-6">
@@ -19,5 +29,13 @@ export function UserLayout() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function UserLayout() {
+  return (
+    <SidebarProvider storageKey="userSidebarCollapsed" defaultCollapsed={true}>
+      <UserLayoutContent />
+    </SidebarProvider>
   );
 }

@@ -11,8 +11,8 @@ import {
   Link2,
   Clock,
 } from 'lucide-react';
-import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useSidebar } from '../../context/SidebarContext';
 
 const navItems = [
   { path: '/user', icon: LayoutDashboard, label: 'Dashboard' },
@@ -30,18 +30,14 @@ const bottomNavItems = [
 
 export function UserSidebar() {
   const { settings } = useAuth();
-  const [collapsed, setCollapsed] = useState(() => {
-    // Load collapsed state from localStorage, default to true
-    const saved = localStorage.getItem('userSidebarCollapsed');
-    return saved ? JSON.parse(saved) : true;
-  });
+  const { isCollapsed: collapsed, toggle: toggleCollapsed, collapse } = useSidebar();
   const location = useLocation();
 
-  // Save collapsed state to localStorage
-  const toggleCollapsed = () => {
-    const newState = !collapsed;
-    setCollapsed(newState);
-    localStorage.setItem('userSidebarCollapsed', JSON.stringify(newState));
+  // Handle nav item click - collapse sidebar when expanded
+  const handleNavClick = () => {
+    if (!collapsed) {
+      collapse();
+    }
   };
 
   return (
@@ -81,6 +77,7 @@ export function UserSidebar() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={handleNavClick}
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-lg
                   transition-colors duration-200 outline-none focus:outline-none
@@ -113,6 +110,7 @@ export function UserSidebar() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={handleNavClick}
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-lg
                   transition-colors duration-200 outline-none focus:outline-none

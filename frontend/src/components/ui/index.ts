@@ -5,6 +5,7 @@ export { Modal } from './Modal';
 export { Badge } from './Badge';
 export { Table } from './Table';
 export { LoadingBar } from './LoadingBar';
+export { GlobalProgressBar } from './GlobalProgressBar';
 export { LoadingSkeleton, DashboardSkeleton } from './LoadingSkeleton';
 export { ConfirmDialog } from './ConfirmDialog';
 export type { Toast } from './Toast';

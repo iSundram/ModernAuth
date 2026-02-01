@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
-import { ToastProvider, LoadingBar } from './components/ui';
+import { ToastProvider, LoadingBar, GlobalProgressBar } from './components/ui';
 import { useAuth } from './hooks/useAuth';
 
 const queryClient = new QueryClient({
@@ -200,6 +200,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+            <GlobalProgressBar />
             <AppRoutes />
           </ToastProvider>
         </AuthProvider>

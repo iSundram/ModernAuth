@@ -258,6 +258,11 @@ func main() {
 	handler.SetInvitationHandler(invitationHandler)
 	handler.SetEmailTemplateHandler(emailTemplateHandler)
 
+	// Initialize analytics service and handler
+	analyticsService := httpapi.NewAnalyticsService(storage, rdb)
+	analyticsHandler := httpapi.NewAnalyticsHandler(analyticsService)
+	handler.SetAnalyticsHandler(analyticsHandler)
+
 	router := handler.Router()
 
 	// Create HTTP server
