@@ -18,9 +18,9 @@ function UserLayoutContent() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <ImpersonationBanner />
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-h-0">
         <UserSidebar />
-        <div className="flex-1 flex flex-col overflow-hidden" onClick={handleContentClick}>
+        <div className="flex-1 flex flex-col min-h-0" onClick={handleContentClick}>
           <Header />
           <EmailVerificationBanner />
           <main className="flex-1 overflow-auto bg-[var(--color-background)] p-6">

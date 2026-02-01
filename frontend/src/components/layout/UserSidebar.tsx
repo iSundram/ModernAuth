@@ -43,15 +43,15 @@ export function UserSidebar() {
   return (
     <aside
       className={`
-        h-full flex flex-col
+        h-full flex-shrink-0 flex flex-col
         bg-[var(--color-surface)]
         border-r border-[var(--color-border-light)]
         transition-all duration-300
         ${collapsed ? 'w-20' : 'w-64'}
       `}
     >
-      {/* Logo */}
-      <div className="h-16 flex items-center justify-center border-b border-[var(--color-border-light)]">
+      {/* Logo - fixed */}
+      <div className="flex-shrink-0 h-16 flex items-center justify-center border-b border-[var(--color-border-light)]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#B3B3B3] to-[#D4D4D4] flex items-center justify-center shadow-lg overflow-hidden p-1">
             <img src="/logo.svg" alt="ModernAuth Logo" className="w-full h-full object-contain" />
@@ -64,8 +64,8 @@ export function UserSidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-4 overflow-y-auto">
+      {/* Navigation - scrollable */}
+      <nav className="flex-1 py-4 overflow-y-auto min-h-0">
         <div className="px-3 space-y-1">
           {navItems.map((item) => {
             // Exact match for dashboard, path-based match for others
@@ -101,8 +101,8 @@ export function UserSidebar() {
         </div>
       </nav>
 
-      {/* Bottom Navigation */}
-      <div className="py-4 border-t border-[var(--color-border-light)]">
+      {/* Bottom Navigation - fixed */}
+      <div className="flex-shrink-0 py-4 border-t border-[var(--color-border-light)]">
         <div className="px-3 space-y-1">
           {bottomNavItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -134,8 +134,8 @@ export function UserSidebar() {
         </div>
       </div>
 
-      {/* Collapse Button */}
-      <div className="p-3 border-t border-[var(--color-border-light)]">
+      {/* Collapse Button - fixed */}
+      <div className="flex-shrink-0 p-3 border-t border-[var(--color-border-light)]">
         <button
           onClick={toggleCollapsed}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg

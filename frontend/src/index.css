@@ -5,6 +5,14 @@
 /* Poppins Font Import */
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
+/* Full height layout - ensure content fits viewport */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 :root {
   /* --- User Defined Palette --- */
   --color-white: #FFFFFF;
