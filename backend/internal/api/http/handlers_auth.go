@@ -196,10 +196,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if result.MFARequired {
 		authSuccessTotal.WithLabelValues("login_partial").Inc()
-		writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		resp := map[string]interface{}{
 			"mfa_required": true,
 			"user_id":      result.User.ID.String(),
-		})
+		}
+		if mfaStatus, err := h.authService.GetMFAStatus(r.Context(), result.User.ID); err == nil && mfaStatus != nil {
+			resp["preferred_method"] = mfaStatus.PreferredMethod
+			resp["methods"] = mfaStatus.Methods
+		}
+		writeJSON(w, http.StatusAccepted, resp)
 		return
 	}
 

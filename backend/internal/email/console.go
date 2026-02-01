@@ -130,7 +130,37 @@ func (s *ConsoleService) SendMFAEnabledEmail(ctx context.Context, user *storage.
 	fmt.Printf("\n=== MFA ENABLED EMAIL ===\n")
 	fmt.Printf("To: %s\n", user.Email)
 	fmt.Printf("Subject: Two-factor authentication enabled\n")
-	fmt.Printf("=========================\n\n")
+	fmt.Printf("=========================\n")
+	return nil
+}
+
+// SendMFACodeEmail logs an MFA code email to console.
+func (s *ConsoleService) SendMFACodeEmail(ctx context.Context, userID, code string) error {
+	s.logger.Info("MFA Code Email",
+		"user_id", userID,
+		"subject", "Your verification code",
+		"code", "***", // Masked for security
+	)
+	fmt.Printf("\n=== MFA CODE EMAIL ===\n")
+	fmt.Printf("To User ID: %s\n", userID)
+	fmt.Printf("Subject: Your verification code\n")
+	fmt.Printf("Code: %s\n", code)
+	fmt.Printf("=====================\n")
+	return nil
+}
+
+// SendLowBackupCodesEmail logs a low backup codes notification to console.
+func (s *ConsoleService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
+	s.logger.Info("Low Backup Codes Email",
+		"to", user.Email,
+		"subject", "Action Required: Low backup codes remaining",
+		"remaining", remaining,
+	)
+	fmt.Printf("\n=== LOW BACKUP CODES EMAIL ===\n")
+	fmt.Printf("To: %s\n", user.Email)
+	fmt.Printf("Subject: Action Required: Low backup codes remaining\n")
+	fmt.Printf("Remaining Codes: %d\n", remaining)
+	fmt.Printf("==============================\n\n")
 	return nil
 }
 

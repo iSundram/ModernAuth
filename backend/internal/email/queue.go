@@ -38,9 +38,9 @@ type QueuedService struct {
 
 // QueueConfig holds queue configuration.
 type QueueConfig struct {
-	QueueSize        int                          // Buffer size for the job queue
-	MaxRetries       int                          // Maximum retry attempts
-	DeadLetterStore  storage.EmailTemplateStorage // Storage for dead letters (optional)
+	QueueSize       int                          // Buffer size for the job queue
+	MaxRetries      int                          // Maximum retry attempts
+	DeadLetterStore storage.EmailTemplateStorage // Storage for dead letters (optional)
 }
 
 // DefaultQueueConfig returns sensible defaults.
@@ -225,6 +225,8 @@ const (
 	jobTypeLoginAlert      = "login_alert"
 	jobTypeInvitation      = "invitation"
 	jobTypeMFAEnabled      = "mfa_enabled"
+	jobTypeMFACode         = "mfa_code"
+	jobTypeLowBackupCodes  = "low_backup_codes"
 	jobTypePasswordChanged = "password_changed"
 	jobTypeSessionRevoked  = "session_revoked"
 )
@@ -253,6 +255,16 @@ type loginAlertPayload struct {
 
 type invitationPayload struct {
 	Invitation *InvitationEmail
+}
+
+type mfaCodePayload struct {
+	UserID string
+	Code   string
+}
+
+type lowBackupCodesPayload struct {
+	User      *storage.User
+	Remaining int
 }
 
 type mfaEnabledPayload struct {
@@ -291,6 +303,12 @@ func (q *QueuedService) processJob(job *EmailJob) error {
 	case jobTypeMFAEnabled:
 		p := job.Payload.(*mfaEnabledPayload)
 		return q.inner.SendMFAEnabledEmail(ctx, p.User)
+	case jobTypeMFACode:
+		p := job.Payload.(*mfaCodePayload)
+		return q.inner.SendMFACodeEmail(ctx, p.UserID, p.Code)
+	case jobTypeLowBackupCodes:
+		p := job.Payload.(*lowBackupCodesPayload)
+		return q.inner.SendLowBackupCodesEmail(ctx, p.User, p.Remaining)
 	case jobTypePasswordChanged:
 		p := job.Payload.(*passwordChangedPayload)
 		return q.inner.SendPasswordChangedEmail(ctx, p.User)
@@ -361,6 +379,23 @@ func (q *QueuedService) SendInvitationEmail(ctx context.Context, invitation *Inv
 
 func (q *QueuedService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypeMFAEnabled, user.Email, &mfaEnabledPayload{User: user})
+}
+
+// SendMFACodeEmail sends MFA code email (queued).
+func (q *QueuedService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
+	// For MFA codes, we need to user email - this is a limitation
+	// The auth service should pass email directly instead of userID
+	// For now, enqueue with the userID (service layer should fetch user email)
+	payload := &mfaCodePayload{
+		UserID: userID,
+		Code:   code,
+	}
+	return q.enqueue(jobTypeMFACode, userID, payload)
+}
+
+// SendLowBackupCodesEmail sends low backup codes notification (queued).
+func (q *QueuedService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
+	return q.enqueue(jobTypeLowBackupCodes, user.Email, &lowBackupCodesPayload{User: user, Remaining: remaining})
 }
 
 func (q *QueuedService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {

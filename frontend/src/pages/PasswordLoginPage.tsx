@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { Button, Input, LoadingBar } from '../components/ui';
-import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key } from 'lucide-react';
+import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Clock } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
@@ -19,10 +19,30 @@ export function PasswordLoginPage() {
   const [mfaUserId, setMfaUserId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'totp' | 'email' | 'backup' | 'passkey'>('totp');
+  const [mfaAvailableMethods, setMfaAvailableMethods] = useState<string[]>([]); // from backend when mfa_required
   const [emailMfaSent, setEmailMfaSent] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
+  const [totpCountdown, setTotpCountdown] = useState(30);
 
-  const { login, loginMfa, isAuthenticated } = useAuth();
+  // TOTP countdown timer - 30 second window
+  useEffect(() => {
+    if (!mfaRequired || mfaMethod !== 'totp') return;
+
+    const calculateRemainingTime = () => {
+      const now = Math.floor(Date.now() / 1000);
+      return 30 - (now % 30);
+    };
+
+    setTotpCountdown(calculateRemainingTime());
+
+    const interval = setInterval(() => {
+      setTotpCountdown(calculateRemainingTime());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [mfaRequired, mfaMethod]);
+
+  const { login, loginMfa, completeLogin, isAuthenticated } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -59,6 +79,12 @@ export function PasswordLoginPage() {
       if (result && result.mfa_required) {
         setMfaRequired(true);
         setMfaUserId(result.user_id);
+        const methods = result.methods ?? ['totp', 'email', 'webauthn'];
+        setMfaAvailableMethods(methods);
+        // Map backend preferred_method (webauthn) to UI (passkey); default to totp if preferred not available
+        const preferred = result.preferred_method ?? 'totp';
+        const preferredUi = preferred === 'webauthn' ? 'passkey' : preferred;
+        setMfaMethod(methods.includes(preferred) ? preferredUi : (methods.includes('totp') ? 'totp' : methods.includes('email') ? 'email' : 'passkey'));
         setIsLoading(false);
         return;
       }
@@ -86,8 +112,9 @@ export function PasswordLoginPage() {
     setError('');
 
     if (mfaMethod === 'backup') {
-      if (!mfaCode || mfaCode.length < 6) {
-        setError('Please enter a valid backup code');
+      const normalized = mfaCode?.trim().replace(/-/g, '').toLowerCase() ?? '';
+      if (normalized.length < 8) {
+        setError('Backup code must be 8 characters (e.g. xxxx-xxxx)');
         return;
       }
     } else if (!mfaCode || mfaCode.length !== 6) {
@@ -99,9 +126,12 @@ export function PasswordLoginPage() {
 
     try {
       if (mfaMethod === 'email') {
-        await authService.verifyEmailMfa(mfaUserId, mfaCode);
+        const res = await authService.verifyEmailMfa(mfaUserId, mfaCode);
+        completeLogin(res);
       } else if (mfaMethod === 'backup') {
-        await authService.loginWithBackupCode(mfaUserId, mfaCode);
+        const backupCodeNormalized = mfaCode.trim().replace(/-/g, '').toLowerCase();
+        const res = await authService.loginWithBackupCode(mfaUserId, backupCodeNormalized);
+        completeLogin(res);
       } else {
         await loginMfa(mfaUserId, mfaCode);
       }
@@ -143,11 +173,22 @@ export function PasswordLoginPage() {
       // Get authentication options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnLoginBegin(mfaUserId);
       
-      // Start WebAuthn authentication in browser
-      const credential = await startAuthentication(options);
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns { options }
+      const credential = await startAuthentication({ optionsJSON: options });
       
-      // Send credential and challenge back to server
-      await authService.webauthnLoginFinish(mfaUserId, challenge_id, credential);
+      // Backend expects credential with authenticatorData, clientDataJSON, signature at top level
+      const credentialForBackend = {
+        id: credential.id,
+        rawId: credential.rawId,
+        type: credential.type,
+        authenticatorData: credential.response.authenticatorData,
+        clientDataJSON: credential.response.clientDataJSON,
+        signature: credential.response.signature,
+        userHandle: credential.response.userHandle ?? '',
+      };
+      
+      const res = await authService.webauthnLoginFinish(mfaUserId, challenge_id, credentialForBackend);
+      completeLogin(res);
       
       // Clear session storage
       sessionStorage.removeItem('loginEmail');
@@ -270,46 +311,7 @@ export function PasswordLoginPage() {
               </form>
             ) : (
               <div className="space-y-6">
-                {/* MFA Method Selector */}
-                <div className="flex gap-2 p-1 bg-[var(--color-surface-hover)] rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => { setMfaMethod('totp'); setMfaCode(''); setError(''); }}
-                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                      mfaMethod === 'totp' 
-                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
-                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                    }`}
-                  >
-                    <ShieldCheck size={16} />
-                    App
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setMfaMethod('email'); setMfaCode(''); setError(''); setEmailMfaSent(false); }}
-                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                      mfaMethod === 'email' 
-                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
-                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                    }`}
-                  >
-                    <Mail size={16} />
-                    Email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setMfaMethod('passkey'); setMfaCode(''); setError(''); }}
-                    className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                      mfaMethod === 'passkey' 
-                        ? 'bg-white text-[var(--color-text-primary)] shadow-sm' 
-                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                    }`}
-                  >
-                    <Fingerprint size={16} />
-                    Passkey
-                  </button>
-                </div>
-
+                {/* Preferred method form shown first; "Try another way" switches method */}
                 {/* TOTP / Email Code / Backup Form */}
                 {(mfaMethod === 'totp' || mfaMethod === 'email' || mfaMethod === 'backup') && (
                   <form onSubmit={handleMfaSubmit} className="space-y-4">
@@ -331,21 +333,30 @@ export function PasswordLoginPage() {
                       </div>
                     ) : (
                       <>
-                        <Input
-                          label={mfaMethod === 'backup' ? 'Backup Code' : 'Verification Code'}
-                          type="text"
-                          placeholder={mfaMethod === 'backup' ? 'Enter backup code' : '000000'}
-                          value={mfaCode}
-                          onChange={(e) => setMfaCode(
-                            mfaMethod === 'backup' 
-                              ? e.target.value.toUpperCase().slice(0, 12)
-                              : e.target.value.replace(/\D/g, '').slice(0, 6)
+                        <div className="space-y-4">
+                          <Input
+                            label={mfaMethod === 'backup' ? 'Backup Code' : 'Verification Code'}
+                            type="text"
+                            placeholder={mfaMethod === 'backup' ? 'Enter backup code' : '000000'}
+                            value={mfaCode}
+                            onChange={(e) => setMfaCode(
+                              mfaMethod === 'backup' 
+                                ? e.target.value.toUpperCase().slice(0, 12)
+                                : e.target.value.replace(/\D/g, '').slice(0, 6)
+                            )}
+                            leftIcon={mfaMethod === 'backup' ? <Key size={18} /> : <ShieldCheck size={18} />}
+                            autoComplete="one-time-code"
+                            className={mfaMethod === 'backup' ? 'font-mono' : 'text-center tracking-widest text-lg'}
+                            autoFocus
+                          />
+
+                          {mfaMethod === 'totp' && (
+                            <div className={`flex items-center justify-center gap-2 text-sm transition-colors ${totpCountdown <= 10 ? 'text-[var(--color-error)] animate-pulse' : 'text-[var(--color-text-secondary)]'}`}>
+                              <Clock size={14} />
+                              <span>Code expires in {totpCountdown}s</span>
+                            </div>
                           )}
-                          leftIcon={mfaMethod === 'backup' ? <Key size={18} /> : <ShieldCheck size={18} />}
-                          autoComplete="one-time-code"
-                          className={mfaMethod === 'backup' ? 'font-mono' : 'text-center tracking-widest text-lg'}
-                          autoFocus
-                        />
+                        </div>
 
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -395,6 +406,62 @@ export function PasswordLoginPage() {
                     </Button>
                   </div>
                 )}
+
+                {/* Try another way: show only methods the user has enabled */}
+                {(() => {
+                  const showMethod = (key: string) => {
+                    if (mfaAvailableMethods.length === 0) return true;
+                    const backendKey = key === 'passkey' ? 'webauthn' : key;
+                    return mfaAvailableMethods.includes(backendKey);
+                  };
+                  const hasOtherMethods = (showMethod('totp') && mfaMethod !== 'totp') || (showMethod('email') && mfaMethod !== 'email') || (showMethod('webauthn') && mfaMethod !== 'passkey');
+                  if (!hasOtherMethods) return null;
+                  return (
+                    <>
+                      <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
+                        Try another way
+                      </p>
+                      <div className="flex gap-2 p-1 bg-[var(--color-surface-hover)] rounded-lg">
+                        {showMethod('totp') && (
+                          <button
+                            type="button"
+                            onClick={() => { setMfaMethod('totp'); setMfaCode(''); setError(''); }}
+                            className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                              mfaMethod === 'totp' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                            }`}
+                          >
+                            <ShieldCheck size={16} />
+                            App
+                          </button>
+                        )}
+                        {showMethod('email') && (
+                          <button
+                            type="button"
+                            onClick={() => { setMfaMethod('email'); setMfaCode(''); setError(''); setEmailMfaSent(false); }}
+                            className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                              mfaMethod === 'email' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                            }`}
+                          >
+                            <Mail size={16} />
+                            Email
+                          </button>
+                        )}
+                        {showMethod('webauthn') && (
+                          <button
+                            type="button"
+                            onClick={() => { setMfaMethod('passkey'); setMfaCode(''); setError(''); }}
+                            className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                              mfaMethod === 'passkey' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                            }`}
+                          >
+                            <Fingerprint size={16} />
+                            Passkey
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {mfaMethod !== 'backup' && (
                   <button 

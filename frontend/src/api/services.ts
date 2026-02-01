@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import type { 
-  User, LoginRequest, LoginResponse, AuditLog, AuditLogQuery,
+  User, LoginRequest, LoginResponse, LoginMfaRequiredResponse, AuditLog, AuditLogQuery,
   RegisterRequest, LoginMFARequest, SetupMFAResponse, EnableMFARequest, 
   ResetPasswordRequest, ChangePasswordRequest, UpdateUserRequest,
   Role,
@@ -28,7 +28,7 @@ export const authService = {
     apiClient.post<LoginResponse>('/v1/auth/register', data),
 
   login: (credentials: LoginRequest) =>
-    apiClient.post<LoginResponse | { mfa_required: boolean; user_id: string }>('/v1/auth/login', credentials),
+    apiClient.post<LoginResponse | LoginMfaRequiredResponse>('/v1/auth/login', credentials),
 
   loginMfa: (data: LoginMFARequest) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa', data),
@@ -128,9 +128,9 @@ export const authService = {
   verifyEmailMfa: (userId: string, code: string) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa/email', { user_id: userId, code }),
 
-  // Backup Code Login
-  loginWithBackupCode: (userId: string, code: string) =>
-    apiClient.post<LoginResponse>('/v1/auth/login/mfa/backup', { user_id: userId, code }),
+  // Backup Code Login (backend expects backup_code, not code)
+  loginWithBackupCode: (userId: string, backupCode: string) =>
+    apiClient.post<LoginResponse>('/v1/auth/login/mfa/backup', { user_id: userId, backup_code: backupCode }),
 
   // WebAuthn/Passkeys
   // Begin registration – returns { options, challenge_id }
@@ -225,7 +225,7 @@ export const userService = {
 
 export const deviceService = {
   list: () =>
-    apiClient.get<{ data: UserDevice[] }>('/v1/devices').then(res => res.data || []),
+    apiClient.get<UserDevice[]>('/v1/devices').then(res => (Array.isArray(res) ? res : [])),
 
   get: (id: string) =>
     apiClient.get<UserDevice>(`/v1/devices/${id}`),
@@ -243,7 +243,9 @@ export const deviceService = {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     if (params?.offset) searchParams.append('offset', params.offset.toString());
-    return apiClient.get<{ data: LoginHistory[] }>(`/v1/sessions/history?${searchParams.toString()}`).then(res => res.data || []);
+    return apiClient.get<LoginHistory[] | { data: LoginHistory[] }>(`/v1/sessions/history?${searchParams.toString()}`).then(res =>
+      Array.isArray(res) ? res : (res && 'data' in res ? res.data : [])
+    );
   },
 };
 
@@ -256,8 +258,12 @@ export const sessionService = {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     if (params?.offset) searchParams.append('offset', params.offset.toString());
-    return apiClient.get<{ data: Session[] }>(`/v1/sessions?${searchParams.toString()}`).then(res => res.data || []);
+    return apiClient.get<Session[] | { data: Session[] }>(`/v1/sessions?${searchParams.toString()}`).then(res =>
+      Array.isArray(res) ? res : (res && 'data' in res ? res.data : [])
+    );
   },
+  revoke: (sessionId: string) =>
+    apiClient.delete<void>(`/v1/sessions/${sessionId}`),
   revokeAll: () =>
     apiClient.post<void>('/v1/auth/revoke-all-sessions'),
 };
@@ -271,7 +277,9 @@ export const apiKeyService = {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     if (params?.offset) searchParams.append('offset', params.offset.toString());
-    return apiClient.get<{ data: APIKey[] }>(`/v1/api-keys?${searchParams.toString()}`).then(res => res.data || []);
+    return apiClient.get<APIKey[] | { data: APIKey[] }>(`/v1/api-keys?${searchParams.toString()}`).then(res =>
+      Array.isArray(res) ? res : (res && 'data' in res ? res.data : [])
+    );
   },
 
   get: (id: string) =>

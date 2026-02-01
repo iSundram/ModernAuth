@@ -27,6 +27,12 @@ type Service interface {
 	// SendMFAEnabledEmail sends notification that MFA was enabled.
 	SendMFAEnabledEmail(ctx context.Context, user *storage.User) error
 
+	// SendMFACodeEmail sends an MFA verification code to user's email.
+	SendMFACodeEmail(ctx context.Context, userID string, code string) error
+
+	// SendLowBackupCodesEmail sends notification when backup codes are running low.
+	SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error
+
 	// SendPasswordChangedEmail sends notification that password was changed.
 	SendPasswordChangedEmail(ctx context.Context, user *storage.User) error
 

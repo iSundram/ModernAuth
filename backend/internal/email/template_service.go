@@ -23,6 +23,8 @@ const (
 	TemplateLoginAlert      TemplateType = "login_alert"
 	TemplateInvitation      TemplateType = "invitation"
 	TemplateMFAEnabled      TemplateType = "mfa_enabled"
+	TemplateMFACode         TemplateType = "mfa_code"
+	TemplateLowBackupCodes  TemplateType = "low_backup_codes"
 	TemplatePasswordChanged TemplateType = "password_changed"
 	TemplateSessionRevoked  TemplateType = "session_revoked"
 )
@@ -36,6 +38,7 @@ func AllTemplateTypes() []TemplateType {
 		TemplateLoginAlert,
 		TemplateInvitation,
 		TemplateMFAEnabled,
+		TemplateLowBackupCodes,
 		TemplatePasswordChanged,
 		TemplateSessionRevoked,
 	}
@@ -243,6 +246,22 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 			return "", "", "", err
 		}
 		textBody = "Hi " + vars.FullName + ",\n\nTwo-factor authentication has been enabled on your account. Your account is now more secure.\n\nIf you didn't do this, please contact support immediately.\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateMFACode:
+		subject = "Your Verification Code"
+		htmlBody, err = s.renderString(mfaCodeEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nUse the following verification code to complete your login:\n\n" + vars.MFACode + "\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email or contact support if you're concerned.\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateLowBackupCodes:
+		subject = "Action Required: Low backup codes remaining"
+		htmlBody, err = s.renderString(lowBackupCodesEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nYou have only " + vars.RemainingCodes + " backup codes remaining for two-factor authentication.\n\nWe recommend generating new backup codes as soon as possible to avoid being locked out of your account.\n\nTo generate new backup codes, go to your account security settings.\n\nThanks,\nThe " + vars.AppName + " Team"
 
 	case TemplatePasswordChanged:
 		subject = "Your password was changed"

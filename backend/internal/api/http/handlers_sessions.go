@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
 )
 
@@ -107,4 +109,32 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 		"count":  len(response),
 	})
+}
+
+// RevokeSession revokes a single session by ID (must belong to current user).
+func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	sessionIDStr := chi.URLParam(r, "id")
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid session ID", err)
+		return
+	}
+
+	err = h.authService.RevokeSession(r.Context(), userID, sessionID)
+	if err != nil {
+		if err == auth.ErrSessionRevoked {
+			h.writeError(w, http.StatusNotFound, "Session not found or already revoked", err)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "Failed to revoke session", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Session revoked successfully"})
 }

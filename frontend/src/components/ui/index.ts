@@ -13,7 +13,6 @@ export { EmptyState } from './EmptyState';
 export { Select } from './Select';
 export { ProgressLoader } from './ProgressLoader';
 export { CommandPalette } from './CommandPalette';
-export { DarkModeToggle } from './DarkModeToggle';
 export * from './EmailVerificationBanner';
 export { RateLimitNotice, useRateLimitInfo } from './RateLimitNotice';
 export type { RateLimitInfo } from './RateLimitNotice';

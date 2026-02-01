@@ -5,6 +5,7 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"encoding/base64"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,12 +14,12 @@ import (
 
 // WebAuthnRegistrationOptions represents the options for WebAuthn registration.
 type WebAuthnRegistrationOptions struct {
-	Challenge        string                  `json:"challenge"`
-	RelyingParty     WebAuthnRelyingParty    `json:"rp"`
-	User             WebAuthnUser            `json:"user"`
-	PubKeyCredParams []WebAuthnCredParam     `json:"pubKeyCredParams"`
-	Timeout          int                     `json:"timeout"`
-	Attestation      string                  `json:"attestation"`
+	Challenge              string                          `json:"challenge"`
+	RelyingParty           WebAuthnRelyingParty            `json:"rp"`
+	User                   WebAuthnUser                    `json:"user"`
+	PubKeyCredParams       []WebAuthnCredParam             `json:"pubKeyCredParams"`
+	Timeout                int                             `json:"timeout"`
+	Attestation            string                          `json:"attestation"`
 	AuthenticatorSelection *WebAuthnAuthenticatorSelection `json:"authenticatorSelection,omitempty"`
 }
 
@@ -87,6 +88,11 @@ func (s *AuthService) BeginWebAuthnRegistration(ctx context.Context, userID uuid
 	}
 
 	// Build registration options
+	rpID := os.Getenv("WEBAUTHN_RP_ID")
+	if rpID == "" {
+		rpID = "localhost"
+	}
+
 	displayName := user.Email
 	if user.FirstName != nil && user.LastName != nil {
 		displayName = *user.FirstName + " " + *user.LastName
@@ -95,7 +101,7 @@ func (s *AuthService) BeginWebAuthnRegistration(ctx context.Context, userID uuid
 	options := &WebAuthnRegistrationOptions{
 		Challenge: challenge,
 		RelyingParty: WebAuthnRelyingParty{
-			ID:   "localhost", // Should be configured per environment
+			ID:   rpID,
 			Name: "ModernAuth",
 		},
 		User: WebAuthnUser{
@@ -197,11 +203,11 @@ func (s *AuthService) FinishWebAuthnRegistration(ctx context.Context, userID uui
 
 // WebAuthnLoginOptions represents the options for WebAuthn login.
 type WebAuthnLoginOptions struct {
-	Challenge        string                      `json:"challenge"`
-	Timeout          int                         `json:"timeout"`
-	RpID             string                      `json:"rpId"`
-	AllowCredentials []WebAuthnAllowCredential   `json:"allowCredentials,omitempty"`
-	UserVerification string                      `json:"userVerification"`
+	Challenge        string                    `json:"challenge"`
+	Timeout          int                       `json:"timeout"`
+	RpID             string                    `json:"rpId"`
+	AllowCredentials []WebAuthnAllowCredential `json:"allowCredentials,omitempty"`
+	UserVerification string                    `json:"userVerification"`
 }
 
 // WebAuthnAllowCredential represents an allowed credential for login.
@@ -268,10 +274,15 @@ func (s *AuthService) BeginWebAuthnLogin(ctx context.Context, userID uuid.UUID) 
 		}
 	}
 
+	rpID := os.Getenv("WEBAUTHN_RP_ID")
+	if rpID == "" {
+		rpID = "localhost"
+	}
+
 	options := &WebAuthnLoginOptions{
 		Challenge:        challenge,
 		Timeout:          60000,
-		RpID:             "localhost",
+		RpID:             rpID,
 		AllowCredentials: allowCreds,
 		UserVerification: "preferred",
 	}

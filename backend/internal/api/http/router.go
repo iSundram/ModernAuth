@@ -209,6 +209,7 @@ func (h *Handler) Router() *chi.Mux {
 			r.Route("/sessions", func(r chi.Router) {
 				r.Use(h.Auth)
 				r.Get("/", h.ListSessions)
+				r.Delete("/{id}", h.RevokeSession)
 				r.Mount("/", h.deviceHandler.SessionRoutes())
 			})
 		}

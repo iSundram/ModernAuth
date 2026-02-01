@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pquerna/otp/totp"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/iSundram/ModernAuth/internal/utils"
+	"github.com/pquerna/otp/totp"
 )
 
 const (
@@ -98,6 +98,13 @@ func (s *AuthService) VerifyBackupCode(ctx context.Context, userID uuid.UUID, co
 			s.logAuditEvent(ctx, &userID, nil, "mfa.backup_code_used", nil, nil, map[string]interface{}{
 				"remaining_codes": len(settings.BackupCodes),
 			})
+
+			// Check if backup codes are running low and send notification
+			if len(settings.BackupCodes) <= 2 {
+				if err := s.NotifyLowBackupCodes(ctx, userID, len(settings.BackupCodes)); err != nil {
+					s.logger.Error("Failed to notify low backup codes", "error", err, "user_id", userID)
+				}
+			}
 
 			return true, nil
 		}

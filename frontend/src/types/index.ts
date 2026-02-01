@@ -82,6 +82,14 @@ export interface LoginResponse {
   tokens: TokensResponse;
 }
 
+/** Response when login succeeds but MFA is required. */
+export interface LoginMfaRequiredResponse {
+  mfa_required: true;
+  user_id: string;
+  preferred_method?: 'totp' | 'email' | 'webauthn';
+  methods?: string[];
+}
+
 // ============================================================================
 // RBAC Types
 // ============================================================================

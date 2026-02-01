@@ -26,11 +26,19 @@ export function PasskeySetup({ onSuccess }: PasskeySetupProps) {
       // Get registration options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnRegisterBegin(passkeyName);
       
-      // Start WebAuthn registration in browser
-      const credential = await startRegistration(options);
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns { options }
+      const credential = await startRegistration({ optionsJSON: options });
       
-      // Send credential and challenge back to server
-      await authService.webauthnRegisterFinish(challenge_id, passkeyName, credential);
+      // Backend expects credential with attestationObject, clientDataJSON at top level
+      const credentialForBackend = {
+        id: credential.id,
+        rawId: credential.rawId,
+        type: credential.type,
+        attestationObject: credential.response.attestationObject,
+        clientDataJSON: credential.response.clientDataJSON,
+      };
+      
+      await authService.webauthnRegisterFinish(challenge_id, passkeyName, credentialForBackend);
       
       showToast({ title: 'Success', message: 'Passkey registered successfully!', type: 'success' });
       setIsOpen(false);

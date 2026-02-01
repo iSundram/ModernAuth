@@ -116,6 +116,18 @@ export function UserSecurityPage() {
     },
   });
 
+  // Revoke single session mutation
+  const revokeSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => sessionService.revoke(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      showToast({ title: 'Success', message: 'Session revoked', type: 'success' });
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to revoke session', type: 'error' });
+    },
+  });
+
 
   // Trust device mutation
   const trustDeviceMutation = useMutation({
@@ -709,8 +721,8 @@ export function UserSecurityPage() {
                   <div className="space-y-2">
                     {activeSessions.map((session: Session) => (
                       <div key={session.id} className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               {session.is_current && (
                                 <Badge variant="success" size="sm">Current Session</Badge>
@@ -730,6 +742,17 @@ export function UserSecurityPage() {
                               </div>
                             </div>
                           </div>
+                          {!session.is_current && !session.revoked && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                              onClick={() => revokeSessionMutation.mutate(session.id)}
+                              disabled={revokeSessionMutation.isPending}
+                            >
+                              Revoke
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}

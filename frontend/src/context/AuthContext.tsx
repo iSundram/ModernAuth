@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { User, LoginRequest } from '../types';
+import type { User, LoginRequest, LoginResponse, LoginMfaRequiredResponse } from '../types';
 import { AuthContext } from './AuthContextDef';
 import { authService } from '../api/services';
 export type { AuthContextType } from './AuthContextDef';
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrapAuth();
   }, []);
 
-  const login = async (credentials: LoginRequest): Promise<{ mfa_required: boolean; user_id: string } | void> => {
+  const login = async (credentials: LoginRequest): Promise<LoginMfaRequiredResponse | void | any> => {
     setIsLoading(true);
     try {
       const response = await authService.login(credentials);
@@ -137,6 +137,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const completeLogin = (response: LoginResponse): void => {
+    const tokens = response.tokens;
+    if (!tokens?.access_token || !tokens?.refresh_token) {
+      throw new Error('Invalid response: missing tokens');
+    }
+    localStorage.setItem('access_token', tokens.access_token);
+    localStorage.setItem('refresh_token', tokens.refresh_token);
+    setToken(tokens.access_token);
+    setUser(response.user);
+  };
+
   const logout = async () => {
     try {
       await authService.logout();
@@ -166,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         loginMfa,
+        completeLogin,
         logout,
         setUser,
         setTokens: setTokensExternal,

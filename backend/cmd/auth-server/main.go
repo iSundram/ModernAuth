@@ -102,13 +102,10 @@ func main() {
 	// Initialize token blacklist
 	tokenBlacklist := auth.NewTokenBlacklist(rdb)
 
-	// Initialize auth service
-	authService := auth.NewAuthService(storage, tokenService, cfg.Auth.SessionTTL)
-
 	// Initialize email service
 	var emailService email.Service
-	var queuedEmailService *email.QueuedService  // Track for graceful shutdown
-	var rateLimitedEmailService *email.RateLimitedService  // Track for cleanup
+	var queuedEmailService *email.QueuedService           // Track for graceful shutdown
+	var rateLimitedEmailService *email.RateLimitedService // Track for cleanup
 
 	// Validate provider configuration
 	switch cfg.Email.Provider {
@@ -203,6 +200,9 @@ func main() {
 		slog.Info("Email queue enabled", "queue_size", cfg.Email.QueueSize)
 	}
 
+	// Initialize auth service (now after email service is created)
+	authService := auth.NewAuthService(storage, tokenService, emailService, cfg.Auth.SessionTTL)
+
 	// Initialize tenant service
 	tenantService := tenant.NewService(storage)
 
@@ -224,16 +224,16 @@ func main() {
 	auditCleanupService := audit.NewCleanupService(storage, cfg.Audit.RetentionPeriod, cfg.Audit.CleanupInterval)
 	auditCleanupService.Start(ctx)
 	defer auditCleanupService.Stop()
-	slog.Info("Audit cleanup service started", 
+	slog.Info("Audit cleanup service started",
 		"retention_period", cfg.Audit.RetentionPeriod,
 		"cleanup_interval", cfg.Audit.CleanupInterval)
 
 	// Initialize HTTP handler
 	handler := httpapi.NewHandler(authService, tokenService, storage, rdb, accountLockout, tokenBlacklist, emailService)
-	
+
 	// Set database pool for health checks
 	handler.SetDBPool(pool)
-	
+
 	// Configure CORS
 	if len(cfg.App.CORSOrigins) > 0 {
 		handler.SetCORSOrigins(cfg.App.CORSOrigins)
@@ -265,7 +265,7 @@ func main() {
 		Addr:           ":" + cfg.App.Port,
 		Handler:        router,
 		ReadTimeout:    15 * time.Second,
-		WriteTimeout:  15 * time.Second,
+		WriteTimeout:   15 * time.Second,
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}

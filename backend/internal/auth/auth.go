@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base32"
 	"errors"
 	"log/slog"
 	"time"
@@ -54,18 +55,20 @@ var (
 type AuthService struct {
 	storage      storage.Storage
 	tokenService *TokenService
+	emailService interface{}
 	sessionTTL   time.Duration
 	logger       *slog.Logger
 }
 
 // NewAuthService creates a new authentication service.
-func NewAuthService(store storage.Storage, tokenService *TokenService, sessionTTL time.Duration) *AuthService {
+func NewAuthService(store storage.Storage, tokenService *TokenService, emailService interface{}, sessionTTL time.Duration) *AuthService {
 	if sessionTTL == 0 {
 		sessionTTL = 7 * 24 * time.Hour // Default 7 days
 	}
 	return &AuthService{
 		storage:      store,
 		tokenService: tokenService,
+		emailService: emailService,
 		sessionTTL:   sessionTTL,
 		logger:       slog.Default().With("component", "auth_service"),
 	}
@@ -311,8 +314,8 @@ func (s *AuthService) Refresh(ctx context.Context, req *RefreshRequest) (*TokenP
 	// Check if token was already replaced (reuse detection)
 	if refreshToken.ReplacedBy != nil {
 		// Potential token theft - revoke the entire session
-		s.logger.Warn("Refresh token reuse detected!", 
-			"session_id", refreshToken.SessionID, 
+		s.logger.Warn("Refresh token reuse detected!",
+			"session_id", refreshToken.SessionID,
 			"token_id", refreshToken.ID,
 			"ip", req.IP)
 		s.storage.RevokeSession(ctx, refreshToken.SessionID)
@@ -443,11 +446,11 @@ type ListUsersRequest struct {
 
 // ListUsersResult represents the result of listing users.
 type ListUsersResult struct {
-	Users      []*storage.User `json:"users"`
-	Total      int             `json:"total"`
-	Limit      int             `json:"limit"`
-	Offset     int             `json:"offset"`
-	HasMore    bool            `json:"has_more"`
+	Users   []*storage.User `json:"users"`
+	Total   int             `json:"total"`
+	Limit   int             `json:"limit"`
+	Offset  int             `json:"offset"`
+	HasMore bool            `json:"has_more"`
 }
 
 // ListUsers retrieves users with pagination.
@@ -504,6 +507,30 @@ func (s *AuthService) SetupTOTP(ctx context.Context, userID uuid.UUID) (*SetupTO
 		return nil, ErrUserNotFound
 	}
 
+	// Get existing MFA settings to check for unverified TOTP secret
+	existingSettings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var secret string
+	if existingSettings != nil && existingSettings.TOTPSecret != nil && !existingSettings.IsTOTPEnabled {
+		// TOTP secret exists but hasn't been verified yet
+		// Return existing secret to prevent regeneration without verification
+		secret = *existingSettings.TOTPSecret
+		secretBytes, _ := base32.StdEncoding.DecodeString(secret)
+		key, _ := totp.Generate(totp.GenerateOpts{
+			Issuer:      "ModernAuth",
+			AccountName: user.Email,
+			Secret:      secretBytes,
+		})
+		return &SetupTOTPResult{
+			Secret: secret,
+			URL:    key.URL(),
+		}, nil
+	}
+
+	// Generate new TOTP secret
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "ModernAuth",
 		AccountName: user.Email,
@@ -512,7 +539,7 @@ func (s *AuthService) SetupTOTP(ctx context.Context, userID uuid.UUID) (*SetupTO
 		return nil, err
 	}
 
-	secret := key.Secret()
+	secret = key.Secret()
 	settings := &storage.MFASettings{
 		UserID:     userID,
 		TOTPSecret: &secret,
@@ -549,12 +576,57 @@ func (s *AuthService) EnableTOTP(ctx context.Context, req *EnableTOTPRequest) er
 		return ErrInvalidMFACode
 	}
 
+	// Check TOTP code replay protection
+	if s.isTOTPCodeUsed(ctx, req.UserID, req.Code) {
+		s.logger.Warn("TOTP code already used", "user_id", req.UserID, "code", "***")
+		return ErrInvalidMFACode
+	}
+
 	settings.IsTOTPEnabled = true
 	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
 		return err
 	}
 
 	s.logAuditEvent(ctx, &req.UserID, nil, "mfa.totp_enabled", nil, nil, nil)
+	return nil
+}
+
+// isTOTPCodeUsed checks if a TOTP code was recently used (replay protection).
+func (s *AuthService) isTOTPCodeUsed(ctx context.Context, userID uuid.UUID, code string) bool {
+	settings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return false
+	}
+
+	if settings.UsedTOTPCodes == nil {
+		return false
+	}
+
+	// Check if code was used
+	if used, ok := settings.UsedTOTPCodes[code]; ok && used {
+		return true
+	}
+
+	return false
+}
+
+// recordTOTPCodeUsed records that a TOTP code was used.
+func (s *AuthService) recordTOTPCodeUsed(ctx context.Context, userID uuid.UUID, code string) error {
+	settings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if settings.UsedTOTPCodes == nil {
+		settings.UsedTOTPCodes = make(map[string]bool)
+	}
+
+	settings.UsedTOTPCodes[code] = true
+	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
+		return err
+	}
+
+	s.logger.Debug("TOTP code recorded as used", "user_id", userID, "code", "***")
 	return nil
 }
 
@@ -585,10 +657,21 @@ func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest
 		return nil, ErrMFANotSetup
 	}
 
+	// Check TOTP code replay protection
+	if s.isTOTPCodeUsed(ctx, req.UserID, req.Code) {
+		s.logger.Warn("TOTP code already used", "user_id", req.UserID)
+		return nil, ErrInvalidMFACode
+	}
+
 	valid := totp.Validate(req.Code, *settings.TOTPSecret)
 	if !valid {
 		s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_failed", &req.IP, &req.UserAgent, nil)
 		return nil, ErrInvalidMFACode
+	}
+
+	// Record code as used before proceeding
+	if err := s.recordTOTPCodeUsed(ctx, req.UserID, req.Code); err != nil {
+		s.logger.Error("Failed to record TOTP code usage", "error", err)
 	}
 
 	// MFA verified, create session and tokens
@@ -929,6 +1012,21 @@ func (s *AuthService) GetUserSessions(ctx context.Context, userID uuid.UUID, lim
 	return s.storage.GetUserSessions(ctx, userID, limit, offset)
 }
 
+// RevokeSession revokes a single session if it belongs to the user.
+func (s *AuthService) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {
+	session, err := s.storage.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session == nil || session.UserID != userID {
+		return ErrSessionRevoked
+	}
+	if err := s.storage.RevokeSessionRefreshTokens(ctx, sessionID); err != nil {
+		return err
+	}
+	return s.storage.RevokeSession(ctx, sessionID)
+}
+
 // ChangePasswordRequest represents a request to change password.
 type ChangePasswordRequest struct {
 	UserID          uuid.UUID `json:"user_id"`
@@ -1162,7 +1260,7 @@ func (s *AuthService) CreateRole(ctx context.Context, req *CreateRoleRequest) (*
 	}
 
 	s.logAuditEvent(ctx, nil, nil, "role.created", nil, nil, map[string]interface{}{
-		"role_id": role.ID.String(),
+		"role_id":   role.ID.String(),
 		"role_name": role.Name,
 	})
 
@@ -1203,7 +1301,7 @@ func (s *AuthService) UpdateRole(ctx context.Context, roleID uuid.UUID, req *Upd
 	}
 
 	s.logAuditEvent(ctx, nil, nil, "role.updated", nil, nil, map[string]interface{}{
-		"role_id": role.ID.String(),
+		"role_id":   role.ID.String(),
 		"role_name": role.Name,
 	})
 
@@ -1228,7 +1326,7 @@ func (s *AuthService) DeleteRole(ctx context.Context, roleID uuid.UUID) error {
 	}
 
 	s.logAuditEvent(ctx, nil, nil, "role.deleted", nil, nil, map[string]interface{}{
-		"role_id": roleID.String(),
+		"role_id":   roleID.String(),
 		"role_name": role.Name,
 	})
 
@@ -1258,7 +1356,7 @@ func (s *AuthService) AssignPermissionToRole(ctx context.Context, roleID, permis
 	}
 
 	s.logAuditEvent(ctx, nil, nil, "role.permission.assigned", nil, nil, map[string]interface{}{
-		"role_id": roleID.String(),
+		"role_id":       roleID.String(),
 		"permission_id": permissionID.String(),
 	})
 
@@ -1280,7 +1378,7 @@ func (s *AuthService) RemovePermissionFromRole(ctx context.Context, roleID, perm
 	}
 
 	s.logAuditEvent(ctx, nil, nil, "role.permission.removed", nil, nil, map[string]interface{}{
-		"role_id": roleID.String(),
+		"role_id":       roleID.String(),
 		"permission_id": permissionID.String(),
 	})
 
@@ -1494,10 +1592,10 @@ func (s *AuthService) SendEmailMFACode(ctx context.Context, userID uuid.UUID) er
 		return err
 	}
 
+	// Log that email MFA code was generated (code not logged for security)
+	s.logger.Info("Email MFA code generated", "user_id", userID)
 	// TODO: Send email with code via email service
-	// For now, log the code (in production, this should be removed)
-	s.logger.Info("Email MFA code generated", "user_id", userID, "code", code)
-
+	// For now, code is stored in MFA challenge for verification
 	s.logAuditEvent(ctx, &userID, nil, "mfa.email_code_sent", nil, nil, nil)
 	return nil
 }
@@ -1714,20 +1812,21 @@ func (s *AuthService) CheckMFAPolicy(ctx context.Context, userID uuid.UUID, devi
 						mfaRequired = true
 					}
 					if vs, ok := featuresRaw["mfa_required"].(string); ok && vs == "true" {
-						mfaRequired = true;
+						mfaRequired = true
 					}
 				}
 			}
 		}
 	}
 
-	// If no policy requires MFA and user has no MFA, nothing to do.
-	if !mfaRequired {
+	// MFA is required if: (1) policy requires it, or (2) user has MFA enabled (they must complete it at login).
+	needMFA := mfaRequired || hasAnyMFA
+	if !needMFA {
 		return false, nil
 	}
 
 	// Policy requires MFA but user has none configured.
-	if !hasAnyMFA {
+	if mfaRequired && !hasAnyMFA {
 		return true, nil
 	}
 
@@ -1773,7 +1872,17 @@ func (s *AuthService) NotifyLowBackupCodes(ctx context.Context, userID uuid.UUID
 		return err
 	}
 
-	// TODO: Send email notification via email service
+	// Send email notification via email service
+	if s.emailService != nil {
+		if emailService, ok := s.emailService.(interface {
+			SendLowBackupCodesEmail(context.Context, *storage.User, int) error
+		}); ok {
+			if err := emailService.SendLowBackupCodesEmail(ctx, user, remaining); err != nil {
+				s.logger.Error("Failed to send low backup codes email", "error", err, "user_id", userID, "remaining", remaining)
+			}
+		}
+	}
+
 	s.logger.Warn("User has low backup codes", "user_id", userID, "email", user.Email, "remaining", remaining)
 
 	s.logAuditEvent(ctx, &userID, nil, "mfa.low_backup_codes_warning", nil, nil, map[string]interface{}{

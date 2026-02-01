@@ -201,6 +201,16 @@ func (r *RateLimitedService) SendMFAEnabledEmail(ctx context.Context, user *stor
 	return r.inner.SendMFAEnabledEmail(ctx, user)
 }
 
+// SendMFACodeEmail sends MFA code with rate limiting.
+func (r *RateLimitedService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
+	return r.inner.SendMFACodeEmail(ctx, userID, code)
+}
+
+// SendLowBackupCodesEmail sends low backup codes notification (no rate limiting - system triggered).
+func (r *RateLimitedService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
+	return r.inner.SendLowBackupCodesEmail(ctx, user, remaining)
+}
+
 // SendPasswordChangedEmail sends password changed notification (no rate limiting - system triggered).
 func (r *RateLimitedService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	return r.inner.SendPasswordChangedEmail(ctx, user)

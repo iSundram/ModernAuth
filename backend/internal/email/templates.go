@@ -187,6 +187,60 @@ const mfaEnabledEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+const mfaCodeEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Your Verification Code</h1>
+    </div>
+    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi,</p>
+        <p>Use the following verification code to complete your login:</p>
+        <div style="background: #f5f5f5; padding: 25px; border-radius: 10px; margin: 25px 0; text-align: center; border: 2px dashed #667eea;">
+            <p style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #667eea; margin: 0;">{{.MFACode}}</p>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+        <p style="color: #e74c3c; font-size: 14px;"><strong>Security Note:</strong> If you didn't request this code, please ignore this email or contact support if you're concerned.</p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const lowBackupCodesEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Action Required</h1>
+    </div>
+    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>You have only <strong>{{.RemainingCodes}} backup codes remaining</strong> for two-factor authentication.</p>
+        <div style="background: #fff3cd; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #f39c12;">
+            <p style="margin: 0; color: #856404;"><strong>Why this matters:</strong><br>
+            Backup codes are your safety net if you lose access to your authenticator app or device. Once you use all your backup codes, you may be locked out of your account.</p>
+        </div>
+        <p style="color: #666; font-size: 14px;"><strong>What you should do:</strong></p>
+        <ul style="color: #666;">
+            <li>Go to your account security settings</li>
+            <li>Generate a new set of backup codes</li>
+            <li>Store them in a secure location (password manager, safe, etc.)</li>
+        </ul>
+        <p style="color: #e74c3c; font-size: 14px;"><strong>Note:</strong> Generating new backup codes will invalidate your existing ones.</p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
 const passwordChangedEmailHTML = `<!DOCTYPE html>
 <html>
 <head>

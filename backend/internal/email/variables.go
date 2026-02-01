@@ -29,22 +29,24 @@ type TemplateVars struct {
 	CurrentYear    string
 
 	// Context variables (set per email type)
-	VerifyURL   string
-	ResetURL    string
-	BaseURL     string
-	Token       string
-	DeviceName  string
-	Browser     string
-	OS          string
-	IPAddress   string
-	Location    string
-	Time        string
-	InviterName string
-	TenantName  string
-	InviteURL   string
-	Message     string
-	ExpiresAt   string
-	Reason      string
+	VerifyURL      string
+	ResetURL       string
+	BaseURL        string
+	Token          string
+	DeviceName     string
+	Browser        string
+	OS             string
+	IPAddress      string
+	Location       string
+	Time           string
+	InviterName    string
+	TenantName     string
+	InviteURL      string
+	Message        string
+	ExpiresAt      string
+	Reason         string
+	MFACode        string
+	RemainingCodes string
 }
 
 // NewTemplateVars creates template variables from user and branding data.
@@ -169,5 +171,17 @@ func (v *TemplateVars) WithInvitation(invitation *InvitationEmail) *TemplateVars
 // WithReason sets the reason for session revocation.
 func (v *TemplateVars) WithReason(reason string) *TemplateVars {
 	v.Reason = reason
+	return v
+}
+
+// WithMFACode sets the MFA code for verification emails.
+func (v *TemplateVars) WithMFACode(code string) *TemplateVars {
+	v.MFACode = code
+	return v
+}
+
+// WithRemainingCodes sets the number of remaining backup codes.
+func (v *TemplateVars) WithRemainingCodes(remaining int) *TemplateVars {
+	v.RemainingCodes = strconv.Itoa(remaining)
 	return v
 }

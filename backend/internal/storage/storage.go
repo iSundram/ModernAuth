@@ -83,16 +83,17 @@ type AuditLog struct {
 
 // MFASettings represents a user's MFA settings.
 type MFASettings struct {
-	UserID                  uuid.UUID  `json:"user_id"`
-	TOTPSecret              *string    `json:"-"`
-	IsTOTPEnabled           bool       `json:"is_totp_enabled"`
-	IsEmailMFAEnabled       bool       `json:"is_email_mfa_enabled"`
-	IsSMSMFAEnabled         bool       `json:"is_sms_mfa_enabled"`
-	PreferredMethod         string     `json:"preferred_method"`
-	BackupCodes             []string   `json:"-"`
-	TOTPSetupAt             *time.Time `json:"totp_setup_at,omitempty"`
-	LowBackupCodesNotified  bool       `json:"-"`
-	UpdatedAt               time.Time  `json:"updated_at"`
+	UserID                 uuid.UUID       `json:"user_id"`
+	TOTPSecret             *string         `json:"-"`
+	IsTOTPEnabled          bool            `json:"is_totp_enabled"`
+	IsEmailMFAEnabled      bool            `json:"is_email_mfa_enabled"`
+	IsSMSMFAEnabled        bool            `json:"is_sms_mfa_enabled"`
+	PreferredMethod        string          `json:"preferred_method"`
+	BackupCodes            []string        `json:"-"`
+	TOTPSetupAt            *time.Time      `json:"totp_setup_at,omitempty"`
+	LowBackupCodesNotified bool            `json:"-"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+	UsedTOTPCodes          map[string]bool `json:"-"` // Tracks used TOTP codes within valid window
 }
 
 // MFAChallenge represents a pending MFA verification challenge.
@@ -109,17 +110,17 @@ type MFAChallenge struct {
 
 // WebAuthnCredential represents a stored WebAuthn/Passkey credential.
 type WebAuthnCredential struct {
-	ID              uuid.UUID `json:"id"`
-	UserID          uuid.UUID `json:"user_id"`
-	CredentialID    []byte    `json:"-"`
-	PublicKey       []byte    `json:"-"`
-	AttestationType string    `json:"attestation_type,omitempty"`
-	Transport       []string  `json:"transport,omitempty"`
-	AAGUID          []byte    `json:"-"`
-	SignCount       uint32    `json:"sign_count"`
-	CloneWarning    bool      `json:"clone_warning"`
-	Name            string    `json:"name"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              uuid.UUID  `json:"id"`
+	UserID          uuid.UUID  `json:"user_id"`
+	CredentialID    []byte     `json:"-"`
+	PublicKey       []byte     `json:"-"`
+	AttestationType string     `json:"attestation_type,omitempty"`
+	Transport       []string   `json:"transport,omitempty"`
+	AAGUID          []byte     `json:"-"`
+	SignCount       uint32     `json:"sign_count"`
+	CloneWarning    bool       `json:"clone_warning"`
+	Name            string     `json:"name"`
+	CreatedAt       time.Time  `json:"created_at"`
 	LastUsedAt      *time.Time `json:"last_used_at,omitempty"`
 }
 
@@ -162,22 +163,22 @@ type UserRole struct {
 
 // UserDevice represents a user's device for session management.
 type UserDevice struct {
-	ID               uuid.UUID  `json:"id"`
-	UserID           uuid.UUID  `json:"user_id"`
-	DeviceFingerprint *string   `json:"device_fingerprint,omitempty"`
-	DeviceName       *string    `json:"device_name,omitempty"`
-	DeviceType       *string    `json:"device_type,omitempty"`
-	Browser          *string    `json:"browser,omitempty"`
-	BrowserVersion   *string    `json:"browser_version,omitempty"`
-	OS               *string    `json:"os,omitempty"`
-	OSVersion        *string    `json:"os_version,omitempty"`
-	IPAddress        *string    `json:"ip_address,omitempty"`
-	LocationCountry  *string    `json:"location_country,omitempty"`
-	LocationCity     *string    `json:"location_city,omitempty"`
-	IsTrusted        bool       `json:"is_trusted"`
-	IsCurrent        bool       `json:"is_current"`
-	LastSeenAt       *time.Time `json:"last_seen_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
+	ID                uuid.UUID  `json:"id"`
+	UserID            uuid.UUID  `json:"user_id"`
+	DeviceFingerprint *string    `json:"device_fingerprint,omitempty"`
+	DeviceName        *string    `json:"device_name,omitempty"`
+	DeviceType        *string    `json:"device_type,omitempty"`
+	Browser           *string    `json:"browser,omitempty"`
+	BrowserVersion    *string    `json:"browser_version,omitempty"`
+	OS                *string    `json:"os,omitempty"`
+	OSVersion         *string    `json:"os_version,omitempty"`
+	IPAddress         *string    `json:"ip_address,omitempty"`
+	LocationCountry   *string    `json:"location_country,omitempty"`
+	LocationCity      *string    `json:"location_city,omitempty"`
+	IsTrusted         bool       `json:"is_trusted"`
+	IsCurrent         bool       `json:"is_current"`
+	LastSeenAt        *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // UserGroup represents a group of users within a tenant.
@@ -391,21 +392,21 @@ type AuditLogStorage interface {
 type MFAStorage interface {
 	GetMFASettings(ctx context.Context, userID uuid.UUID) (*MFASettings, error)
 	UpdateMFASettings(ctx context.Context, settings *MFASettings) error
-	
+
 	// MFA Challenges
 	CreateMFAChallenge(ctx context.Context, challenge *MFAChallenge) error
 	GetMFAChallenge(ctx context.Context, id uuid.UUID) (*MFAChallenge, error)
 	GetPendingMFAChallenge(ctx context.Context, userID uuid.UUID, challengeType string) (*MFAChallenge, error)
 	MarkMFAChallengeVerified(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredMFAChallenges(ctx context.Context) error
-	
+
 	// WebAuthn Credentials
 	CreateWebAuthnCredential(ctx context.Context, cred *WebAuthnCredential) error
 	GetWebAuthnCredentials(ctx context.Context, userID uuid.UUID) ([]*WebAuthnCredential, error)
 	GetWebAuthnCredentialByID(ctx context.Context, credentialID []byte) (*WebAuthnCredential, error)
 	UpdateWebAuthnCredentialSignCount(ctx context.Context, credentialID []byte, signCount uint32) error
 	DeleteWebAuthnCredential(ctx context.Context, id uuid.UUID) error
-	
+
 	// Device MFA Trust
 	SetDeviceMFATrust(ctx context.Context, deviceID uuid.UUID, trustedUntil time.Time, trustToken string) error
 	ClearDeviceMFATrust(ctx context.Context, deviceID uuid.UUID) error
@@ -456,7 +457,7 @@ type TenantStorage interface {
 	ListTenants(ctx context.Context, limit, offset int) ([]*Tenant, error)
 	UpdateTenant(ctx context.Context, tenant *Tenant) error
 	DeleteTenant(ctx context.Context, id uuid.UUID) error
-	
+
 	// Tenant user operations
 	ListTenantUsers(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*User, error)
 	CountTenantUsers(ctx context.Context, tenantID uuid.UUID) (int, error)
@@ -471,7 +472,7 @@ type DeviceStorage interface {
 	UpdateDevice(ctx context.Context, device *UserDevice) error
 	DeleteDevice(ctx context.Context, id uuid.UUID) error
 	TrustDevice(ctx context.Context, id uuid.UUID, trusted bool) error
-	
+
 	// Login history
 	CreateLoginHistory(ctx context.Context, history *LoginHistory) error
 	GetLoginHistory(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*LoginHistory, error)
@@ -496,7 +497,7 @@ type WebhookStorage interface {
 	ListWebhooksByEvent(ctx context.Context, tenantID *uuid.UUID, eventType string) ([]*Webhook, error)
 	UpdateWebhook(ctx context.Context, webhook *Webhook) error
 	DeleteWebhook(ctx context.Context, id uuid.UUID) error
-	
+
 	// Webhook deliveries
 	CreateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error
 	UpdateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error
@@ -524,7 +525,7 @@ type UserGroupStorage interface {
 	ListGroups(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*UserGroup, error)
 	UpdateGroup(ctx context.Context, group *UserGroup) error
 	DeleteGroup(ctx context.Context, id uuid.UUID) error
-	
+
 	// Group membership
 	AddUserToGroup(ctx context.Context, userID, groupID uuid.UUID, role string) error
 	RemoveUserFromGroup(ctx context.Context, userID, groupID uuid.UUID) error

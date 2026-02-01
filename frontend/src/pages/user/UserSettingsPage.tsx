@@ -13,7 +13,7 @@ import { useToast } from '../../components/ui/Toast';
 import type { UpdateUserRequest } from '../../types';
 
 export function UserSettingsPage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -35,8 +35,8 @@ export function UserSettingsPage() {
       return userService.update(user.id, data);
     },
     onSuccess: (updatedUser) => {
+      setUser(updatedUser);
       queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      queryClient.setQueryData(['auth', 'me'], updatedUser);
       showToast({ title: 'Success', message: 'Profile updated successfully', type: 'success' });
     },
     onError: (error: Error) => {

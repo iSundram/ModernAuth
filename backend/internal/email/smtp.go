@@ -306,6 +306,63 @@ func (s *SMTPService) SendMFAEnabledEmail(ctx context.Context, user *storage.Use
 	return s.sendEmail(user.Email, subject, htmlBody, textBody)
 }
 
+// SendMFACodeEmail sends MFA verification code email.
+func (s *SMTPService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
+	subject := "Your Verification Code"
+
+	htmlBody := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Your Verification Code</h1>
+    </div>
+    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Use the following verification code to complete your login:</p>
+        <div style="background: #f5f5f5; padding: 25px; border-radius: 10px; margin: 25px 0; text-align: center; border: 2px dashed #667eea;">
+            <p style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #667eea; margin: 0;">%s</p>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+        <p style="color: #e74c3c; font-size: 14px;"><strong>Security Note:</strong> If you didn't request this code, please ignore this email or contact support if you're concerned.</p>
+        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px; text-align: center;">Thanks,<br>The ModernAuth Team</p>
+    </div>
+</body>
+</html>`, code)
+
+	textBody := fmt.Sprintf("Hi,\n\nUse the following verification code to complete your login:\n\n%s\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email.\n\nThanks,\nThe ModernAuth Team", code)
+
+	s.logger.Info("Sending MFA code email", "to", userID)
+	return s.sendEmail(userID, subject, htmlBody, textBody)
+}
+
+// SendLowBackupCodesEmail sends notification when backup codes are running low.
+func (s *SMTPService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
+	subject := "Action Required: Low backup codes remaining"
+
+	data := map[string]string{
+		"Name":      getUserName(user),
+		"Remaining": fmt.Sprintf("%d", remaining),
+	}
+
+	htmlBody, err := s.renderTemplate(lowBackupCodesEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(
+		"Hi %s,\n\nYou have only %d backup codes remaining for two-factor authentication.\n\nWe recommend generating new backup codes as soon as possible to avoid being locked out of your account.\n\nTo generate new backup codes, go to your account security settings.\n\nThanks,\nThe ModernAuth Team",
+		getUserName(user), remaining,
+	)
+
+	s.logger.Info("Sending low backup codes email", "to", user.Email, "remaining", remaining)
+	return s.sendEmail(user.Email, subject, htmlBody, textBody)
+}
+
 // SendPasswordChangedEmail sends notification that password was changed.
 func (s *SMTPService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	subject := "Your password was changed"

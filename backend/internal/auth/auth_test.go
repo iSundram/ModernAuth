@@ -503,6 +503,19 @@ func (m *MockStorage) GetDeviceMFATrust(ctx context.Context, userID uuid.UUID, d
 	return nil, nil
 }
 
+func (m *MockStorage) ListAuditLogsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.AuditLog, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if offset >= len(m.auditLogs) {
+		return []*storage.AuditLog{}, nil
+	}
+	end := offset + limit
+	if end > len(m.auditLogs) {
+		end = len(m.auditLogs)
+	}
+	return m.auditLogs[offset:end], nil
+}
+
 func setupTestAuthService() (*AuthService, *MockStorage) {
 	mockStorage := NewMockStorage()
 	tokenConfig := &TokenConfig{
@@ -513,7 +526,7 @@ func setupTestAuthService() (*AuthService, *MockStorage) {
 		SigningMethod:   DefaultTokenConfig().SigningMethod,
 	}
 	tokenService := NewTokenService(tokenConfig)
-	authService := NewAuthService(mockStorage, tokenService, 24*time.Hour)
+	authService := NewAuthService(mockStorage, tokenService, nil, 24*time.Hour)
 	return authService, mockStorage
 }
 

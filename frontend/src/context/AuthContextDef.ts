@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { User, LoginRequest } from '../types';
+import type { User, LoginRequest, LoginMfaRequiredResponse, LoginResponse } from '../types';
 
 export interface AuthContextType {
   user: User | null;
@@ -7,8 +7,10 @@ export interface AuthContextType {
   settings: Record<string, any>;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (credentials: LoginRequest) => Promise<{ mfa_required: boolean; user_id: string } | void>;
+  login: (credentials: LoginRequest) => Promise<LoginMfaRequiredResponse | void>;
   loginMfa: (userId: string, code: string) => Promise<void>;
+  /** Store tokens and user from a login response (e.g. after email/backup/passkey MFA). */
+  completeLogin: (response: LoginResponse) => void;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
