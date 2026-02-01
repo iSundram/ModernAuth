@@ -88,7 +88,7 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 	query := `
 		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
 		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
-		       password_changed_at, created_at, updated_at
+		       password_changed_at, created_at, updated_at, tenant_id
 		FROM users
 		WHERE email = $1
 	`
@@ -111,6 +111,63 @@ func (s *PostgresStorage) GetUserByEmail(ctx context.Context, email string) (*st
 		&user.PasswordChangedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
+		&user.TenantID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// GetUserByEmailAndTenant retrieves a user by their email within a specific tenant.
+// This ensures proper tenant isolation for multi-tenant scenarios.
+func (s *PostgresStorage) GetUserByEmailAndTenant(ctx context.Context, email string, tenantID *uuid.UUID) (*storage.User, error) {
+	var query string
+	var args []interface{}
+
+	if tenantID != nil {
+		query = `
+			SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+			       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+			       password_changed_at, created_at, updated_at, tenant_id
+			FROM users
+			WHERE email = $1 AND (tenant_id = $2 OR tenant_id IS NULL)
+		`
+		args = []interface{}{email, *tenantID}
+	} else {
+		query = `
+			SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+			       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+			       password_changed_at, created_at, updated_at, tenant_id
+			FROM users
+			WHERE email = $1 AND tenant_id IS NULL
+		`
+		args = []interface{}{email}
+	}
+
+	user := &storage.User{}
+	err := s.pool.QueryRow(ctx, query, args...).Scan(
+		&user.ID,
+		&user.Email,
+		&user.Phone,
+		&user.Username,
+		&user.FirstName,
+		&user.LastName,
+		&user.AvatarURL,
+		&user.HashedPassword,
+		&user.IsEmailVerified,
+		&user.IsActive,
+		&user.Timezone,
+		&user.Locale,
+		&user.Metadata,
+		&user.LastLoginAt,
+		&user.PasswordChangedAt,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+		&user.TenantID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -126,7 +183,7 @@ func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*
 	query := `
 		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
 		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
-		       password_changed_at, created_at, updated_at
+		       password_changed_at, created_at, updated_at, tenant_id
 		FROM users
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -158,6 +215,7 @@ func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*
 			&user.PasswordChangedAt,
 			&user.CreatedAt,
 			&user.UpdatedAt,
+			&user.TenantID,
 		)
 		if err != nil {
 			return nil, err
@@ -166,6 +224,64 @@ func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*
 	}
 
 	return users, rows.Err()
+}
+
+// ListUsersByTenant retrieves users for a specific tenant with pagination.
+// This ensures proper tenant isolation when listing users.
+func (s *PostgresStorage) ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
+	query := `
+		SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+		       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+		       password_changed_at, created_at, updated_at, tenant_id
+		FROM users
+		WHERE tenant_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*storage.User
+	for rows.Next() {
+		user := &storage.User{}
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Phone,
+			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
+			&user.HashedPassword,
+			&user.IsEmailVerified,
+			&user.IsActive,
+			&user.Timezone,
+			&user.Locale,
+			&user.Metadata,
+			&user.LastLoginAt,
+			&user.PasswordChangedAt,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&user.TenantID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}
+
+// CountUsersByTenant returns the count of users for a specific tenant.
+func (s *PostgresStorage) CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE tenant_id = $1`
+	var count int
+	err := s.pool.QueryRow(ctx, query, tenantID).Scan(&count)
+	return count, err
 }
 
 // CountUsers returns the total count of users.
@@ -485,6 +601,43 @@ func (s *PostgresStorage) ListAuditLogsByTenant(ctx context.Context, tenantID uu
 		logs = append(logs, log)
 	}
 	return logs, nil
+}
+
+// ListAuditLogsByEventTypes retrieves audit logs filtered by event types.
+func (s *PostgresStorage) ListAuditLogsByEventTypes(ctx context.Context, eventTypes []string, limit, offset int) ([]*storage.AuditLog, error) {
+	query := `
+		SELECT id, tenant_id, user_id, actor_id, event_type, ip, user_agent, data, created_at
+		FROM audit_logs
+		WHERE event_type = ANY($1)
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, eventTypes, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*storage.AuditLog
+	for rows.Next() {
+		log := &storage.AuditLog{}
+		if err := rows.Scan(
+			&log.ID, &log.TenantID, &log.UserID, &log.ActorID, &log.EventType,
+			&log.IP, &log.UserAgent, &log.Data, &log.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return logs, nil
+}
+
+// CountAuditLogsByEventTypes counts audit logs filtered by event types.
+func (s *PostgresStorage) CountAuditLogsByEventTypes(ctx context.Context, eventTypes []string) (int, error) {
+	query := `SELECT COUNT(*) FROM audit_logs WHERE event_type = ANY($1)`
+	var count int
+	err := s.pool.QueryRow(ctx, query, eventTypes).Scan(&count)
+	return count, err
 }
 
 // GetMFASettings retrieves MFA settings for a user.
@@ -847,6 +1000,31 @@ func (s *PostgresStorage) GetRoleByID(ctx context.Context, id uuid.UUID) (*stora
 	return role, nil
 }
 
+// GetRoleByIDAndTenant retrieves a role by its ID within a specific tenant context.
+// Returns roles that belong to the tenant or are system roles (tenant_id IS NULL).
+func (s *PostgresStorage) GetRoleByIDAndTenant(ctx context.Context, id uuid.UUID, tenantID *uuid.UUID) (*storage.Role, error) {
+	var query string
+	var args []interface{}
+
+	if tenantID != nil {
+		query = `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL OR is_system = true)`
+		args = []interface{}{id, *tenantID}
+	} else {
+		query = `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE id = $1 AND (tenant_id IS NULL OR is_system = true)`
+		args = []interface{}{id}
+	}
+
+	role := &storage.Role{}
+	err := s.pool.QueryRow(ctx, query, args...).Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return role, nil
+}
+
 // GetRoleByName retrieves a role by its name.
 func (s *PostgresStorage) GetRoleByName(ctx context.Context, name string) (*storage.Role, error) {
 	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE name = $1`
@@ -861,10 +1039,55 @@ func (s *PostgresStorage) GetRoleByName(ctx context.Context, name string) (*stor
 	return role, nil
 }
 
+// GetRoleByNameAndTenant retrieves a role by its name within a specific tenant context.
+// Returns roles that belong to the tenant or are system roles.
+func (s *PostgresStorage) GetRoleByNameAndTenant(ctx context.Context, name string, tenantID *uuid.UUID) (*storage.Role, error) {
+	var query string
+	var args []interface{}
+
+	if tenantID != nil {
+		query = `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE name = $1 AND (tenant_id = $2 OR tenant_id IS NULL OR is_system = true)`
+		args = []interface{}{name, *tenantID}
+	} else {
+		query = `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE name = $1 AND (tenant_id IS NULL OR is_system = true)`
+		args = []interface{}{name}
+	}
+
+	role := &storage.Role{}
+	err := s.pool.QueryRow(ctx, query, args...).Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return role, nil
+}
+
 // ListRoles retrieves all roles.
 func (s *PostgresStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
 	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles ORDER BY name`
 	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []*storage.Role
+	for rows.Next() {
+		role := &storage.Role{}
+		if err := rows.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+// ListRolesByTenant retrieves roles for a specific tenant plus system roles.
+func (s *PostgresStorage) ListRolesByTenant(ctx context.Context, tenantID uuid.UUID) ([]*storage.Role, error) {
+	query := `SELECT id, tenant_id, name, description, is_system, created_at FROM roles WHERE tenant_id = $1 OR tenant_id IS NULL OR is_system = true ORDER BY name`
+	rows, err := s.pool.Query(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
 	}

@@ -249,6 +249,15 @@ func (h *Handler) Router() *chi.Mux {
 				r.Mount("/", h.oauthHandler.OAuthRoutes())
 			})
 		}
+
+		// Analytics routes (requires admin role)
+		if h.analyticsHandler != nil {
+			r.Route("/analytics", func(r chi.Router) {
+				r.Use(h.Auth)
+				r.Use(h.RequireRole("admin"))
+				r.Mount("/", h.analyticsHandler.AnalyticsRoutes())
+			})
+		}
 	})
 
 	return r

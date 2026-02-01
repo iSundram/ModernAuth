@@ -489,6 +489,62 @@ func (s *Service) RemoveUserFromTenant(ctx context.Context, tenantID, userID uui
 	return nil
 }
 
+// IsUserTenantMember checks if a user belongs to or can manage a tenant.
+// Returns true if the user is a member of the tenant or has admin privileges.
+func (s *Service) IsUserTenantMember(ctx context.Context, userID, tenantID uuid.UUID) (bool, error) {
+	// Get user to check their tenant membership
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if user == nil {
+		return false, ErrUserNotFound
+	}
+
+	// Check if user belongs to this tenant
+	if user.TenantID != nil && *user.TenantID == tenantID {
+		return true, nil
+	}
+
+	// Check if user has admin role (admins can manage all tenants)
+	roles, err := s.storage.GetUserRoles(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		if role.Name == "admin" || role.Name == "super_admin" {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// IsUserTenantAdmin checks if a user has admin privileges for a specific tenant.
+func (s *Service) IsUserTenantAdmin(ctx context.Context, userID, tenantID uuid.UUID) (bool, error) {
+	// First check if user is a member
+	isMember, err := s.IsUserTenantMember(ctx, userID, tenantID)
+	if err != nil {
+		return false, err
+	}
+	if !isMember {
+		return false, nil
+	}
+
+	// Check if user has admin role
+	roles, err := s.storage.GetUserRoles(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		if role.Name == "admin" || role.Name == "super_admin" || role.Name == "tenant_admin" {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // SuspendTenant suspends a tenant, preventing access.
 func (s *Service) SuspendTenant(ctx context.Context, tenantID uuid.UUID) error {
 tenant, err := s.storage.GetTenantByID(ctx, tenantID)

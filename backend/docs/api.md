@@ -488,3 +488,37 @@ curl -X POST http://localhost:8080/v1/admin/users/import \
     "skip_existing": true
   }'
 ```
+
+---
+
+## Analytics Endpoints (requires `admin` role)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/analytics/overview` | Get overall system analytics (users, logins, security) |
+| GET | `/v1/analytics/users` | Get user analytics (DAU, MAU, registrations) |
+| GET | `/v1/analytics/auth` | Get authentication analytics (success rates, MFA adoption) |
+| GET | `/v1/analytics/security` | Get security analytics (failed logins, locked accounts) |
+| GET | `/v1/analytics/timeseries` | Get time-series data for charts |
+
+Query parameters for analytics endpoints:
+- `period` - Time period: `day`, `week`, `month` (default: `week`)
+- `tenant_id` - Filter by tenant ID (optional)
+
+### Example: Get Analytics Overview
+```bash
+curl -X GET "http://localhost:8080/v1/analytics/overview?period=week" \
+  -H "Authorization: Bearer <admin_access_token>"
+```
+Response:
+```json
+{
+  "total_users": 1250,
+  "active_users_24h": 340,
+  "active_users_7d": 890,
+  "logins_24h": 520,
+  "failed_logins_24h": 15,
+  "mfa_enabled_users": 780,
+  "locked_accounts": 3
+}
+```

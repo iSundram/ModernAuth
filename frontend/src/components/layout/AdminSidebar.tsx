@@ -14,12 +14,14 @@ import {
   FileText,
   Palette,
   UserCheck,
+  BarChart3,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 
 const navItems = [
   { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
   { path: '/admin/users', icon: Users, label: 'Users' },
   { path: '/admin/roles', icon: Shield, label: 'Roles' },
   { path: '/admin/tenants', icon: Building2, label: 'Tenants' },

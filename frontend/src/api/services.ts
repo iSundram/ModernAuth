@@ -639,6 +639,88 @@ export const adminService = {
 };
 
 // ============================================================================
+// Analytics Service
+// ============================================================================
+
+export interface AnalyticsOverview {
+  total_users: number;
+  active_users: number;
+  new_users_today: number;
+  new_users_this_week: number;
+  dau: number;
+  wau: number;
+  mau: number;
+  avg_sessions_per_user: number;
+  mfa_adoption_rate: number;
+  verified_users_rate: number;
+}
+
+export interface UserAnalytics {
+  total_users: number;
+  active_users: number;
+  verified_users: number;
+  unverified_users: number;
+  users_with_mfa: number;
+  users_by_plan?: Record<string, number>;
+  users_by_tenant?: Record<string, number>;
+  recent_signups: { date: string; count: number }[];
+}
+
+export interface AuthAnalytics {
+  total_logins: number;
+  successful_logins: number;
+  failed_logins: number;
+  success_rate: number;
+  password_resets: number;
+  magic_link_logins: number;
+  oauth_logins: number;
+  mfa_challenges: number;
+  active_sessions: number;
+  logins_by_method?: Record<string, number>;
+  logins_by_day: { date: string; value: number }[];
+}
+
+export interface SecurityAnalytics {
+  locked_accounts: number;
+  suspicious_logins: number;
+  failed_mfa_attempts: number;
+  revoked_sessions: number;
+  blocked_ips: number;
+  security_events: { id: string; type: string; user_id?: string; ip: string; details: string; created_at: string }[];
+  risk_distribution?: Record<string, number>;
+}
+
+export interface TimeseriesPoint {
+  timestamp: string;
+  value: number;
+  label: string;
+}
+
+export interface TimeseriesResponse {
+  metric: string;
+  interval: string;
+  days: number;
+  data: TimeseriesPoint[];
+}
+
+export const analyticsService = {
+  getOverview: () =>
+    apiClient.get<AnalyticsOverview>('/v1/analytics/overview'),
+
+  getUserAnalytics: () =>
+    apiClient.get<UserAnalytics>('/v1/analytics/users'),
+
+  getAuthAnalytics: (days: number = 7) =>
+    apiClient.get<AuthAnalytics>(`/v1/analytics/auth?days=${days}`),
+
+  getSecurityAnalytics: () =>
+    apiClient.get<SecurityAnalytics>('/v1/analytics/security'),
+
+  getTimeseries: (metric: string, days: number = 30, interval: string = 'day') =>
+    apiClient.get<TimeseriesResponse>(`/v1/analytics/timeseries?metric=${metric}&days=${days}&interval=${interval}`),
+};
+
+// ============================================================================
 // OAuth Linking Service
 // ============================================================================
 

@@ -40,6 +40,7 @@ import {
   AdminEmailTemplatesPage,
   AdminEmailBrandingPage,
 } from './pages';
+import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 import { TenantDetailPage } from './pages/admin/TenantDetailPage';
 import { AdminImpersonationPage } from './pages/admin/AdminImpersonationPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
@@ -150,6 +151,7 @@ function AppRoutes() {
         <Route path="security" element={<AdminSecurityPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
         <Route path="audit" element={<AdminAuditPage />} />
+        <Route path="analytics" element={<AdminAnalyticsPage />} />
         <Route path="impersonation" element={<AdminImpersonationPage />} />
         <Route path="invitations" element={<InvitationsPage />} />
         <Route path="tenants" element={<AdminTenantsPage />} />

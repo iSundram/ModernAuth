@@ -13,23 +13,34 @@ ModernAuth includes a modern React + TypeScript + Vite frontend for managing aut
 ### Key Features
 
 - **Auth & Onboarding**
-  - Login with email/password and MFA
+  - Login with email/password and MFA (TOTP, Email, WebAuthn/Passkeys)
   - Registration and email verification flows
   - Password reset and change password
+  - Passwordless magic link authentication
+  - Onboarding wizard for new users
 - **User Area (`/user`)**
   - Dashboard with security overview and recent activity
-  - Security page: MFA setup, devices, sessions, login history
+  - Security page: MFA setup (TOTP, Email, Passkeys), devices, sessions, login history
   - Settings page: basic profile/account settings
+  - Linked social accounts management
 - **Admin Area (`/admin`)**
-  - Dashboard with system stats and health
-  - Users: list, search, create, edit, deactivate/delete
+  - Dashboard with system stats, health, and security charts
+  - **Real-time Analytics**: DAU, MAU, login stats, security metrics with auto-refresh
+  - Users: list, search, create, edit, deactivate/delete, impersonation
+  - Bulk operations: import/export users (CSV/JSON)
   - Roles & permissions management
   - Audit logs browsing with filters
-  - Tenants management (if enabled in backend)
+  - Tenants management (create, edit, suspend, domain verification)
 - **Advanced Management**
   - API keys (create, revoke, rotate)
   - Webhooks (configure endpoints, view deliveries)
   - Invitations (invite users, track status)
+  - Email templates and branding customization
+- **UI Features**
+  - Dark mode support
+  - Responsive design
+  - Toast notifications
+  - Loading states and error handling
 
 ### Getting Started
 

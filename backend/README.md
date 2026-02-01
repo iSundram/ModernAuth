@@ -25,7 +25,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **User Invitations**: Token-based invitation system with automatic role assignment.
 - **SMTP Email Service**: Production-ready email with TLS support and HTML templates.
 - **SendGrid Integration**: Alternative email provider using SendGrid API v3.
-- **Email Queue**: Async email delivery with exponential backoff retry logic.
+- **Email Queue**: Persistent async email delivery with Redis Streams, consumer groups, retries, and dead letter handling.
 - **Email Rate Limiting**: Per-user rate limits to prevent abuse.
 - **Password Strength Validation**: Configurable policies with common password blocking.
 - **Email Verification**: Token-based email verification flow.
@@ -41,7 +41,9 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **Secure Token Management**: Stateless JWT access tokens and stateful opaque refresh tokens.
 - **Session Security**: Built-in token reuse detection to prevent token theft.
 - **Rate Limiting**: Redis-backed rate limiting on sensitive endpoints.
-- **Audit Trails**: Comprehensive database-backed audit logging for all auth events with configurable retention policy and automatic cleanup.
+- **Audit Trails**: Comprehensive database-backed audit logging for all auth events and admin actions with configurable retention policy and automatic cleanup.
+- **Admin Audit Logging**: Dedicated logging of administrative actions (user management, role changes, tenant operations).
+- **Real-time Analytics**: DAU, MAU, authentication patterns, security metrics with time-series aggregation.
 - **Input Validation**: Request validation using go-playground/validator.
 - **Docker Ready**: Easy deployment with Docker and Docker Compose.
 

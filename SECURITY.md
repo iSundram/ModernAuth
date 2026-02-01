@@ -75,9 +75,13 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Request Size Limits**: Maximum 1MB request body to prevent DoS attacks
 
 ### MFA (Multi-Factor Authentication)
-- **TOTP Support**: Time-based One-Time Passwords (RFC 6238)
+- **TOTP Support**: Time-based One-Time Passwords (RFC 6238) with replay protection
 - **Secure Storage**: TOTP secrets stored in database
 - **Backup Codes**: Single-use recovery codes generated on demand, stored as SHA-256 hashes
+- **Email MFA**: Alternative MFA via secure email verification codes
+- **WebAuthn/Passkeys**: FIDO2 support for hardware security keys and platform authenticators
+- **MFA Preferences**: User-selectable preferred MFA method with fallback options
+- **Device MFA Trust**: Skip MFA on trusted devices for configurable duration
 
 ### API Key Security
 - **Secure Storage**: API keys are hashed with SHA-256 before storage; the raw key is only shown once upon creation
@@ -104,8 +108,23 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
   - Verification emails: 3 per hour per user
   - Password reset emails: 5 per hour per user
   - Magic link emails: 3 per hour per user
-- **Async Delivery**: Emails are queued with automatic retry on failure
+- **Redis Streams Queue**: Persistent email queue with consumer groups, automatic retries, and dead letter handling
+- **Queue Monitoring**: Email queue statistics available for operational monitoring
 - **No Enumeration**: Password reset and Magic link requests always return success to prevent email enumeration
+
+### Multi-Tenancy Security
+- **Tenant Isolation**: All queries are tenant-scoped to prevent cross-tenant data access
+- **Tenant Authorization Middleware**: API endpoints validate tenant membership before access
+- **Tenant Ownership Validation**: Users can only access resources within their assigned tenant
+- **Tenant Admin Checks**: Administrative operations require tenant admin privileges
+- **Cross-Tenant Protection**: System-level roles and tenant-specific roles are properly separated
+
+### Admin Audit Logging
+- **Comprehensive Tracking**: 20+ admin action types are logged with full context
+- **Action Categories**: User management, role changes, tenant operations, security settings
+- **Audit Context**: Logs include admin ID, target user, IP address, user agent, and outcome
+- **Success/Failure Tracking**: Both successful and failed admin actions are recorded
+- **Analytics Integration**: Admin audit logs feed into the analytics dashboard
 
 ### HTTP Security Headers
 All responses include security headers to protect against common web vulnerabilities:

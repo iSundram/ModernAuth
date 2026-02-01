@@ -36,6 +36,7 @@ type Handler struct {
 	invitationHandler     *InvitationHandler
 	oauthHandler          *OAuthHandler
 	emailTemplateHandler  *EmailTemplateHandler
+	analyticsHandler      *AnalyticsHandler
 }
 
 // NewHandler creates a new HTTP handler.
@@ -104,6 +105,11 @@ func (h *Handler) SetOAuthHandler(handler *OAuthHandler) {
 // SetEmailTemplateHandler sets the email template handler.
 func (h *Handler) SetEmailTemplateHandler(handler *EmailTemplateHandler) {
 	h.emailTemplateHandler = handler
+}
+
+// SetAnalyticsHandler sets the analytics handler.
+func (h *Handler) SetAnalyticsHandler(handler *AnalyticsHandler) {
+	h.analyticsHandler = handler
 }
 
 // HealthCheck handles health check requests.

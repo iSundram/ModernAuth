@@ -48,11 +48,14 @@ Environment variables:
 |----------|-------------|---------|
 | `SENDGRID_API_KEY` | SendGrid API key (required when `EMAIL_PROVIDER=sendgrid`) | - |
 
-### Email Queue
+### Email Queue (Redis Streams)
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EMAIL_QUEUE_ENABLED` | Enable async email queue with retry logic | `true` |
 | `EMAIL_QUEUE_SIZE` | Maximum number of emails in queue | `1000` |
+| `EMAIL_QUEUE_REDIS` | Use Redis Streams for persistent queue (recommended for production) | `false` |
+| `EMAIL_QUEUE_WORKERS` | Number of concurrent email worker consumers | `3` |
+| `EMAIL_QUEUE_MAX_RETRIES` | Maximum retry attempts before dead letter | `3` |
 
 ### Email Rate Limiting
 | Variable | Description | Default |

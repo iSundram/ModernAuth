@@ -55,13 +55,23 @@
 - **Providers**: SMTP, SendGrid, and Console (development) email providers
 - **SMTP**: Production-ready SMTP with TLS support (STARTTLS and implicit TLS)
 - **SendGrid**: SendGrid API v3 integration (no SDK dependency)
-- **Queue**: Async email delivery with exponential backoff retry (1min → 5min → 15min)
+- **Redis Streams Queue**: Persistent async email delivery with consumer groups and dead letter handling
+- **Retry Logic**: Exponential backoff retry (1min → 5min → 15min) with configurable max retries
 - **Rate Limiting**: Per-user rate limits (3 verification/hr, 5 password reset/hr, 3 magic link/hr)
 - **Templates**: HTML email templates for verification, reset, magic link, welcome, alerts
+- **Queue Monitoring**: Statistics endpoint for queue depth, pending messages, and dead letters
 
 ### Tenant Service (`/internal/tenant`)
 - **Service**: Core multi-tenancy logic (tenant creation, isolation, settings)
 - **Middleware**: Tenant identification from domain or headers
+- **Authorization Middleware**: Tenant access and ownership validation
+- **Tenant-Scoped Queries**: All data access is filtered by tenant_id for isolation
+- **Membership Validation**: IsUserTenantMember and IsUserTenantAdmin checks
+
+### Audit Service (`/internal/audit`)
+- **Admin Audit Logging**: Comprehensive tracking of administrative actions
+- **20+ Action Types**: User CRUD, role changes, tenant operations, security settings
+- **Context Capture**: Admin ID, target user, IP, user agent, metadata, success/failure
 
 ### Webhook Engine (`/internal/webhook`)
 - **Delivery**: Asynchronous delivery system using a worker pool.
@@ -81,7 +91,9 @@
 - Argon2id password hashing
 - JWT with HMAC-SHA256 signing
 - Refresh token rotation with reuse detection
-- TOTP-based MFA
+- TOTP-based MFA with replay protection
+- Email MFA as alternative authentication factor
+- WebAuthn/Passkeys (FIDO2) support
 - Email verification and password reset flows
 - **Passwordless Magic Links**
 - **Admin Impersonation** (audited)
@@ -93,3 +105,12 @@
 - OAuth state validation (CSRF protection)
 - PKCE support for OAuth flows
 - **Response-based Rate Limiting** with standard headers
+- **Tenant Isolation** with scoped queries
+- **Admin Audit Logging** for all administrative actions
+
+### Analytics Service (`/internal/api/http/analytics_service.go`)
+- **Overview Stats**: Total users, active users, login counts, security metrics
+- **User Analytics**: DAU, MAU, new registrations, active sessions
+- **Auth Analytics**: Login success/failure rates, MFA adoption, method breakdown
+- **Security Analytics**: Failed logins, locked accounts, suspicious activity
+- **Time-series Data**: Hourly/daily aggregation for charts and trends

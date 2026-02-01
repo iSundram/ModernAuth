@@ -357,8 +357,11 @@ type UserStorage interface {
 	CreateUser(ctx context.Context, user *User) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	GetUserByEmailAndTenant(ctx context.Context, email string, tenantID *uuid.UUID) (*User, error)
 	ListUsers(ctx context.Context, limit, offset int) ([]*User, error)
+	ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*User, error)
 	CountUsers(ctx context.Context) (int, error)
+	CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
@@ -386,6 +389,8 @@ type AuditLogStorage interface {
 	GetAuditLogs(ctx context.Context, userID *uuid.UUID, eventType *string, limit, offset int) ([]*AuditLog, error)
 	DeleteOldAuditLogs(ctx context.Context, olderThan time.Time) (int64, error)
 	ListAuditLogsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*AuditLog, error)
+	ListAuditLogsByEventTypes(ctx context.Context, eventTypes []string, limit, offset int) ([]*AuditLog, error)
+	CountAuditLogsByEventTypes(ctx context.Context, eventTypes []string) (int, error)
 }
 
 // MFAStorage defines MFA-related storage operations.
