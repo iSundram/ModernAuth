@@ -22,4 +22,5 @@ export * from './admin/AdminUsersPage';
 export * from './admin/AdminTenantsPage';
 export * from './admin/AdminEmailTemplatesPage';
 export * from './admin/AdminEmailBrandingPage';
+export * from './admin/AdminEmailAnalyticsPage';
 export * from './InvitationAcceptPage';

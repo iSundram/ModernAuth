@@ -15,6 +15,7 @@ import {
   Palette,
   UserCheck,
   BarChart3,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSidebar } from '../../context/SidebarContext';
@@ -32,6 +33,7 @@ const navItems = [
   { path: '/admin/invitations', icon: Mail, label: 'Invitations' },
   { path: '/admin/email-templates', icon: FileText, label: 'Email Templates' },
   { path: '/admin/email-branding', icon: Palette, label: 'Email Branding' },
+  { path: '/admin/email-analytics', icon: TrendingUp, label: 'Email Analytics' },
 ];
 
 const bottomNavItems = [

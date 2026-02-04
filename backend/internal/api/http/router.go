@@ -177,14 +177,28 @@ func (h *Handler) Router() *chi.Mux {
 				r.Route("/email-templates", func(r chi.Router) {
 					r.Get("/", h.emailTemplateHandler.ListTemplates)
 					r.Get("/variables", h.emailTemplateHandler.ListAvailableVariables)
+					r.Get("/stats", h.emailTemplateHandler.GetEmailStats)
 					r.Get("/{type}", h.emailTemplateHandler.GetTemplate)
 					r.Put("/{type}", h.emailTemplateHandler.UpdateTemplate)
 					r.Delete("/{type}", h.emailTemplateHandler.DeleteTemplate)
 					r.Post("/{type}/preview", h.emailTemplateHandler.PreviewTemplate)
+					r.Post("/{type}/test", h.emailTemplateHandler.SendTestEmail)
+					r.Post("/{type}/validate", h.emailTemplateHandler.ValidateTemplate)
+					r.Get("/{type}/versions", h.emailTemplateHandler.ListTemplateVersions)
+					r.Get("/{type}/versions/{versionId}", h.emailTemplateHandler.GetTemplateVersion)
+					r.Post("/{type}/versions/{versionId}/restore", h.emailTemplateHandler.RestoreTemplateVersion)
 				})
 				r.Route("/email-branding", func(r chi.Router) {
 					r.Get("/", h.emailTemplateHandler.GetBranding)
 					r.Put("/", h.emailTemplateHandler.UpdateBranding)
+				})
+				r.Route("/email-bounces", func(r chi.Router) {
+					r.Get("/", h.emailTemplateHandler.ListEmailBounces)
+				})
+				r.Route("/email-suppressions", func(r chi.Router) {
+					r.Get("/", h.emailTemplateHandler.ListSuppressions)
+					r.Post("/", h.emailTemplateHandler.AddSuppression)
+					r.Delete("/{email}", h.emailTemplateHandler.RemoveSuppression)
 				})
 			}
 		})
@@ -256,6 +270,13 @@ func (h *Handler) Router() *chi.Mux {
 				r.Use(h.Auth)
 				r.Use(h.RequireRole("admin"))
 				r.Mount("/", h.analyticsHandler.AnalyticsRoutes())
+			})
+		}
+
+		// External webhooks (unauthenticated, verified by signature)
+		if h.sendGridWebhookHandler != nil {
+			r.Route("/webhooks/external", func(r chi.Router) {
+				r.Mount("/", h.sendGridWebhookHandler.WebhookRoutes())
 			})
 		}
 	})

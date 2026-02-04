@@ -603,6 +603,26 @@ type EmailTemplateStorage interface {
 	CreateEmailDeadLetter(ctx context.Context, dl *EmailDeadLetter) error
 	ListEmailDeadLetters(ctx context.Context, tenantID *uuid.UUID, resolved bool, limit, offset int) ([]*EmailDeadLetter, error)
 	MarkEmailDeadLetterResolved(ctx context.Context, id uuid.UUID) error
+
+	// Version history operations
+	CreateEmailTemplateVersion(ctx context.Context, version *EmailTemplateVersion) error
+	ListEmailTemplateVersions(ctx context.Context, tenantID *uuid.UUID, templateType string, limit, offset int) ([]*EmailTemplateVersion, error)
+	GetEmailTemplateVersion(ctx context.Context, id uuid.UUID) (*EmailTemplateVersion, error)
+
+	// Bounce tracking operations
+	CreateEmailBounce(ctx context.Context, bounce *EmailBounce) error
+	ListEmailBounces(ctx context.Context, tenantID *uuid.UUID, bounceType string, limit, offset int) ([]*EmailBounce, error)
+	GetEmailBounceByEmail(ctx context.Context, tenantID *uuid.UUID, email string) (*EmailBounce, error)
+
+	// Email event tracking
+	CreateEmailEvent(ctx context.Context, event *EmailEvent) error
+	GetEmailStats(ctx context.Context, tenantID *uuid.UUID, days int) (*EmailStats, error)
+
+	// Suppression list operations
+	CreateEmailSuppression(ctx context.Context, suppression *EmailSuppression) error
+	GetEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) (*EmailSuppression, error)
+	DeleteEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) error
+	ListEmailSuppressions(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*EmailSuppression, error)
 }
 
 // EmailDeadLetter represents a failed email in the dead letter queue.
@@ -619,6 +639,70 @@ type EmailDeadLetter struct {
 	FailedAt     time.Time              `json:"failed_at"`
 	RetriedAt    *time.Time             `json:"retried_at,omitempty"`
 	Resolved     bool                   `json:"resolved"`
+}
+
+// EmailTemplateVersion represents a historical version of an email template.
+type EmailTemplateVersion struct {
+	ID           uuid.UUID  `json:"id"`
+	TemplateID   uuid.UUID  `json:"template_id"`
+	TenantID     *uuid.UUID `json:"tenant_id,omitempty"`
+	TemplateType string     `json:"template_type"`
+	Version      int        `json:"version"`
+	Subject      string     `json:"subject"`
+	HTMLBody     string     `json:"html_body"`
+	TextBody     *string    `json:"text_body,omitempty"`
+	ChangedBy    *uuid.UUID `json:"changed_by,omitempty"`
+	ChangeReason *string    `json:"change_reason,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// EmailBounce represents a bounced email record.
+type EmailBounce struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      *uuid.UUID `json:"tenant_id,omitempty"`
+	Email         string     `json:"email"`
+	BounceType    string     `json:"bounce_type"`    // hard, soft, complaint, unsubscribe
+	BounceSubtype *string    `json:"bounce_subtype"` // general, no_email, suppressed
+	EventID       *string    `json:"event_id"`       // ID from provider
+	TemplateType  *string    `json:"template_type"`
+	ErrorMessage  *string    `json:"error_message"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// EmailEvent represents an email tracking event.
+type EmailEvent struct {
+	ID           uuid.UUID              `json:"id"`
+	TenantID     *uuid.UUID             `json:"tenant_id,omitempty"`
+	JobID        *string                `json:"job_id,omitempty"`
+	TemplateType string                 `json:"template_type"`
+	EventType    string                 `json:"event_type"` // sent, delivered, opened, clicked, bounced, dropped
+	Recipient    string                 `json:"recipient"`
+	UserID       *uuid.UUID             `json:"user_id,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	EventID      *string                `json:"event_id,omitempty"`
+	CreatedAt    time.Time              `json:"created_at"`
+}
+
+// EmailSuppression represents a suppressed email address.
+type EmailSuppression struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  *uuid.UUID `json:"tenant_id,omitempty"`
+	Email     string     `json:"email"`
+	Reason    string     `json:"reason"` // hard_bounce, complaint, unsubscribe, manual
+	Source    *string    `json:"source"` // sendgrid_webhook, admin, user_request
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// EmailStats represents aggregated email statistics.
+type EmailStats struct {
+	TotalSent      int            `json:"total_sent"`
+	TotalDelivered int            `json:"total_delivered"`
+	TotalOpened    int            `json:"total_opened"`
+	TotalClicked   int            `json:"total_clicked"`
+	TotalBounced   int            `json:"total_bounced"`
+	TotalDropped   int            `json:"total_dropped"`
+	ByTemplate     map[string]int `json:"by_template"`
+	ByDay          map[string]int `json:"by_day"`
 }
 
 // PasswordHistory represents a password history entry for preventing reuse.

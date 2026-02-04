@@ -4,7 +4,9 @@ package email
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -56,7 +58,12 @@ func (s *SMTPService) sendEmail(to, subject, htmlBody, textBody string) error {
 
 	if htmlBody != "" {
 		// Multipart message with both HTML and plain text
-		boundary := "boundary-modernauth-email"
+		// Generate random boundary to prevent content injection
+		boundaryBytes := make([]byte, 16)
+		if _, err := rand.Read(boundaryBytes); err != nil {
+			return fmt.Errorf("failed to generate boundary: %w", err)
+		}
+		boundary := "boundary-" + hex.EncodeToString(boundaryBytes)
 		msg.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary))
 
 		if textBody != "" {
@@ -164,9 +171,10 @@ func (s *SMTPService) SendVerificationEmail(ctx context.Context, user *storage.U
 	subject := "Verify your email address"
 
 	data := map[string]string{
-		"Name":      getUserName(user),
-		"VerifyURL": verifyURL,
-		"Token":     token,
+		"FullName":   getUserName(user),
+		"VerifyURL":  verifyURL,
+		"Token":      token,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(verificationEmailHTML, data)
@@ -188,9 +196,10 @@ func (s *SMTPService) SendPasswordResetEmail(ctx context.Context, user *storage.
 	subject := "Reset your password"
 
 	data := map[string]string{
-		"Name":     getUserName(user),
-		"ResetURL": resetURL,
-		"Token":    token,
+		"FullName":   getUserName(user),
+		"ResetURL":   resetURL,
+		"Token":      token,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(passwordResetEmailHTML, data)
@@ -212,8 +221,10 @@ func (s *SMTPService) SendWelcomeEmail(ctx context.Context, user *storage.User) 
 	subject := "Welcome to ModernAuth"
 
 	data := map[string]string{
-		"Name":    getUserName(user),
-		"BaseURL": s.config.BaseURL,
+		"FullName":   getUserName(user),
+		"AppName":    "ModernAuth",
+		"BaseURL":    s.config.BaseURL,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(welcomeEmailHTML, data)
@@ -235,13 +246,14 @@ func (s *SMTPService) SendLoginAlertEmail(ctx context.Context, user *storage.Use
 	subject := "New login to your account"
 
 	data := map[string]string{
-		"Name":       getUserName(user),
+		"FullName":   getUserName(user),
 		"DeviceName": device.DeviceName,
 		"Browser":    device.Browser,
 		"OS":         device.OS,
 		"IPAddress":  device.IPAddress,
 		"Location":   device.Location,
 		"Time":       device.Time,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(loginAlertEmailHTML, data)
@@ -268,6 +280,7 @@ func (s *SMTPService) SendInvitationEmail(ctx context.Context, invitation *Invit
 		"InviteURL":   invitation.InviteURL,
 		"Message":     invitation.Message,
 		"ExpiresAt":   invitation.ExpiresAt,
+		"FooterText":  "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(invitationEmailHTML, data)
@@ -289,7 +302,8 @@ func (s *SMTPService) SendMFAEnabledEmail(ctx context.Context, user *storage.Use
 	subject := "Two-factor authentication enabled"
 
 	data := map[string]string{
-		"Name": getUserName(user),
+		"FullName":   getUserName(user),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(mfaEnabledEmailHTML, data)
@@ -345,8 +359,9 @@ func (s *SMTPService) SendLowBackupCodesEmail(ctx context.Context, user *storage
 	subject := "Action Required: Low backup codes remaining"
 
 	data := map[string]string{
-		"Name":      getUserName(user),
-		"Remaining": fmt.Sprintf("%d", remaining),
+		"FullName":   getUserName(user),
+		"Remaining":  fmt.Sprintf("%d", remaining),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(lowBackupCodesEmailHTML, data)
@@ -368,7 +383,8 @@ func (s *SMTPService) SendPasswordChangedEmail(ctx context.Context, user *storag
 	subject := "Your password was changed"
 
 	data := map[string]string{
-		"Name": getUserName(user),
+		"FullName":   getUserName(user),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(passwordChangedEmailHTML, data)
@@ -390,8 +406,9 @@ func (s *SMTPService) SendSessionRevokedEmail(ctx context.Context, user *storage
 	subject := "Your session was terminated"
 
 	data := map[string]string{
-		"Name":   getUserName(user),
-		"Reason": reason,
+		"FullName":   getUserName(user),
+		"Reason":     reason,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(sessionRevokedEmailHTML, data)

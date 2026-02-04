@@ -563,6 +563,47 @@ export interface EmailBranding {
   updated_at?: string;
 }
 
+export interface EmailTemplateVersion {
+  id: string;
+  template_id: string;
+  version: number;
+  subject: string;
+  html_body: string;
+  text_body?: string;
+  changed_by?: string;
+  change_reason?: string;
+  created_at: string;
+}
+
+export interface EmailStats {
+  total_sent: number;
+  total_delivered: number;
+  total_opened: number;
+  total_clicked: number;
+  total_bounced: number;
+  total_dropped: number;
+  by_template: Record<string, number>;
+  by_day: Record<string, number>;
+}
+
+export interface EmailBounce {
+  id: string;
+  email: string;
+  bounce_type: string;
+  bounce_subtype?: string;
+  template_type?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface EmailSuppression {
+  id: string;
+  email: string;
+  reason: string;
+  source?: string;
+  created_at: string;
+}
+
 // ============================================================================
 // Magic Link Authentication
 // ============================================================================

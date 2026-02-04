@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { Button, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -11,8 +13,18 @@ export function VerifyEmailPage() {
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [message, setMessage] = useState('Verifying your email address...');
   const [isResending, setIsResending] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const navigate = useNavigate();
   const { showToast } = useToast();
+
+  // Cooldown timer effect
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownRemaining]);
 
   useEffect(() => {
     if (!token) {
@@ -35,25 +47,33 @@ export function VerifyEmailPage() {
     verify();
   }, [token]);
 
-  const handleResend = async () => {
+  const handleResend = useCallback(async () => {
+    if (cooldownRemaining > 0) return;
+    
     setIsResending(true);
     try {
       await authService.sendVerification();
+      setCooldownRemaining(RESEND_COOLDOWN_SECONDS);
       showToast({
         title: 'Verification email sent',
         message: 'Check your inbox for a new verification link.',
         type: 'success',
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resend verification email.';
+      // Handle rate limit response
+      if (errorMessage.toLowerCase().includes('rate limit') || errorMessage.includes('429')) {
+        setCooldownRemaining(RESEND_COOLDOWN_SECONDS);
+      }
       showToast({
         title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to resend verification email.',
+        message: errorMessage,
         type: 'error',
       });
     } finally {
       setIsResending(false);
     }
-  };
+  }, [cooldownRemaining, showToast]);
 
   return (
     <div className="min-h-screen bg-[var(--color-background)]">
@@ -107,8 +127,11 @@ export function VerifyEmailPage() {
                   className="w-full"
                   onClick={handleResend}
                   isLoading={isResending}
+                  disabled={cooldownRemaining > 0}
                 >
-                  Resend verification email
+                  {cooldownRemaining > 0
+                    ? `Resend in ${cooldownRemaining}s`
+                    : 'Resend verification email'}
                 </Button>
               )}
             </div>

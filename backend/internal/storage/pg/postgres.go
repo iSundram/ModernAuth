@@ -2625,6 +2625,385 @@ func (s *PostgresStorage) MarkEmailDeadLetterResolved(ctx context.Context, id uu
 	return err
 }
 
+// ========== Email Template Version Storage ==========
+
+// CreateEmailTemplateVersion creates a new version record for a template.
+func (s *PostgresStorage) CreateEmailTemplateVersion(ctx context.Context, version *storage.EmailTemplateVersion) error {
+	query := `
+		INSERT INTO email_template_versions (id, template_id, tenant_id, template_type, version, subject, html_body, text_body, changed_by, change_reason, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`
+	if version.ID == uuid.Nil {
+		version.ID = uuid.New()
+	}
+	if version.CreatedAt.IsZero() {
+		version.CreatedAt = time.Now()
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		version.ID,
+		version.TemplateID,
+		version.TenantID,
+		version.TemplateType,
+		version.Version,
+		version.Subject,
+		version.HTMLBody,
+		version.TextBody,
+		version.ChangedBy,
+		version.ChangeReason,
+		version.CreatedAt,
+	)
+	return err
+}
+
+// ListEmailTemplateVersions lists version history for a template.
+func (s *PostgresStorage) ListEmailTemplateVersions(ctx context.Context, tenantID *uuid.UUID, templateType string, limit, offset int) ([]*storage.EmailTemplateVersion, error) {
+	query := `
+		SELECT id, template_id, tenant_id, template_type, version, subject, html_body, text_body, changed_by, change_reason, created_at
+		FROM email_template_versions
+		WHERE template_type = $1 AND (tenant_id = $2 OR (tenant_id IS NULL AND $2 IS NULL))
+		ORDER BY version DESC
+		LIMIT $3 OFFSET $4
+	`
+	rows, err := s.pool.Query(ctx, query, templateType, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var versions []*storage.EmailTemplateVersion
+	for rows.Next() {
+		v := &storage.EmailTemplateVersion{}
+		if err := rows.Scan(
+			&v.ID, &v.TemplateID, &v.TenantID, &v.TemplateType, &v.Version,
+			&v.Subject, &v.HTMLBody, &v.TextBody, &v.ChangedBy, &v.ChangeReason, &v.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
+// GetEmailTemplateVersion retrieves a specific version by ID.
+func (s *PostgresStorage) GetEmailTemplateVersion(ctx context.Context, id uuid.UUID) (*storage.EmailTemplateVersion, error) {
+	query := `
+		SELECT id, template_id, tenant_id, template_type, version, subject, html_body, text_body, changed_by, change_reason, created_at
+		FROM email_template_versions
+		WHERE id = $1
+	`
+	v := &storage.EmailTemplateVersion{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&v.ID, &v.TemplateID, &v.TenantID, &v.TemplateType, &v.Version,
+		&v.Subject, &v.HTMLBody, &v.TextBody, &v.ChangedBy, &v.ChangeReason, &v.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return v, nil
+}
+
+// ========== Email Bounce Storage ==========
+
+// CreateEmailBounce creates a new bounce record.
+func (s *PostgresStorage) CreateEmailBounce(ctx context.Context, bounce *storage.EmailBounce) error {
+	query := `
+		INSERT INTO email_bounces (id, tenant_id, email, bounce_type, bounce_subtype, event_id, template_type, error_message, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	if bounce.ID == uuid.Nil {
+		bounce.ID = uuid.New()
+	}
+	if bounce.CreatedAt.IsZero() {
+		bounce.CreatedAt = time.Now()
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		bounce.ID,
+		bounce.TenantID,
+		bounce.Email,
+		bounce.BounceType,
+		bounce.BounceSubtype,
+		bounce.EventID,
+		bounce.TemplateType,
+		bounce.ErrorMessage,
+		bounce.CreatedAt,
+	)
+	return err
+}
+
+// ListEmailBounces lists bounce records.
+func (s *PostgresStorage) ListEmailBounces(ctx context.Context, tenantID *uuid.UUID, bounceType string, limit, offset int) ([]*storage.EmailBounce, error) {
+	query := `
+		SELECT id, tenant_id, email, bounce_type, bounce_subtype, event_id, template_type, error_message, created_at
+		FROM email_bounces
+		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		AND ($2 = '' OR bounce_type = $2)
+		ORDER BY created_at DESC
+		LIMIT $3 OFFSET $4
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, bounceType, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bounces []*storage.EmailBounce
+	for rows.Next() {
+		b := &storage.EmailBounce{}
+		if err := rows.Scan(
+			&b.ID, &b.TenantID, &b.Email, &b.BounceType, &b.BounceSubtype,
+			&b.EventID, &b.TemplateType, &b.ErrorMessage, &b.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		bounces = append(bounces, b)
+	}
+	return bounces, rows.Err()
+}
+
+// GetEmailBounceByEmail retrieves the most recent bounce for an email.
+func (s *PostgresStorage) GetEmailBounceByEmail(ctx context.Context, tenantID *uuid.UUID, email string) (*storage.EmailBounce, error) {
+	query := `
+		SELECT id, tenant_id, email, bounce_type, bounce_subtype, event_id, template_type, error_message, created_at
+		FROM email_bounces
+		WHERE email = $1 AND (tenant_id = $2 OR ($2 IS NULL AND tenant_id IS NULL))
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	b := &storage.EmailBounce{}
+	err := s.pool.QueryRow(ctx, query, email, tenantID).Scan(
+		&b.ID, &b.TenantID, &b.Email, &b.BounceType, &b.BounceSubtype,
+		&b.EventID, &b.TemplateType, &b.ErrorMessage, &b.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return b, nil
+}
+
+// ========== Email Event Storage ==========
+
+// CreateEmailEvent creates a new email event record.
+func (s *PostgresStorage) CreateEmailEvent(ctx context.Context, event *storage.EmailEvent) error {
+	query := `
+		INSERT INTO email_events (id, tenant_id, job_id, template_type, event_type, recipient, user_id, metadata, event_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	if event.ID == uuid.Nil {
+		event.ID = uuid.New()
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now()
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		event.ID,
+		event.TenantID,
+		event.JobID,
+		event.TemplateType,
+		event.EventType,
+		event.Recipient,
+		event.UserID,
+		event.Metadata,
+		event.EventID,
+		event.CreatedAt,
+	)
+	return err
+}
+
+// GetEmailStats retrieves aggregated email statistics.
+func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID, days int) (*storage.EmailStats, error) {
+	stats := &storage.EmailStats{
+		ByTemplate: make(map[string]int),
+		ByDay:      make(map[string]int),
+	}
+
+	since := time.Now().AddDate(0, 0, -days)
+
+	// Get counts by event type
+	query := `
+		SELECT event_type, COUNT(*) as count
+		FROM email_events
+		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		AND created_at > $2
+		GROUP BY event_type
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var eventType string
+		var count int
+		if err := rows.Scan(&eventType, &count); err != nil {
+			return nil, err
+		}
+		switch eventType {
+		case "sent":
+			stats.TotalSent = count
+		case "delivered":
+			stats.TotalDelivered = count
+		case "opened":
+			stats.TotalOpened = count
+		case "clicked":
+			stats.TotalClicked = count
+		case "bounced":
+			stats.TotalBounced = count
+		case "dropped":
+			stats.TotalDropped = count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Get counts by template
+	query = `
+		SELECT template_type, COUNT(*) as count
+		FROM email_events
+		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		AND created_at > $2 AND event_type = 'sent'
+		GROUP BY template_type
+	`
+	rows, err = s.pool.Query(ctx, query, tenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var templateType string
+		var count int
+		if err := rows.Scan(&templateType, &count); err != nil {
+			return nil, err
+		}
+		stats.ByTemplate[templateType] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Get counts by day
+	query = `
+		SELECT DATE(created_at)::text as day, COUNT(*) as count
+		FROM email_events
+		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		AND created_at > $2 AND event_type = 'sent'
+		GROUP BY DATE(created_at)
+		ORDER BY day
+	`
+	rows, err = s.pool.Query(ctx, query, tenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var day string
+		var count int
+		if err := rows.Scan(&day, &count); err != nil {
+			return nil, err
+		}
+		stats.ByDay[day] = count
+	}
+
+	return stats, rows.Err()
+}
+
+// ========== Email Suppression Storage ==========
+
+// CreateEmailSuppression adds an email to the suppression list.
+func (s *PostgresStorage) CreateEmailSuppression(ctx context.Context, suppression *storage.EmailSuppression) error {
+	query := `
+		INSERT INTO email_suppressions (id, tenant_id, email, reason, source, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (tenant_id, email) DO UPDATE SET
+			reason = EXCLUDED.reason,
+			source = EXCLUDED.source
+	`
+	if suppression.ID == uuid.Nil {
+		suppression.ID = uuid.New()
+	}
+	if suppression.CreatedAt.IsZero() {
+		suppression.CreatedAt = time.Now()
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		suppression.ID,
+		suppression.TenantID,
+		suppression.Email,
+		suppression.Reason,
+		suppression.Source,
+		suppression.CreatedAt,
+	)
+	return err
+}
+
+// GetEmailSuppression checks if an email is suppressed.
+func (s *PostgresStorage) GetEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) (*storage.EmailSuppression, error) {
+	query := `
+		SELECT id, tenant_id, email, reason, source, created_at
+		FROM email_suppressions
+		WHERE email = $1 AND (tenant_id = $2 OR (tenant_id IS NULL AND $2 IS NULL))
+	`
+	sup := &storage.EmailSuppression{}
+	err := s.pool.QueryRow(ctx, query, email, tenantID).Scan(
+		&sup.ID, &sup.TenantID, &sup.Email, &sup.Reason, &sup.Source, &sup.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return sup, nil
+}
+
+// DeleteEmailSuppression removes an email from the suppression list.
+func (s *PostgresStorage) DeleteEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) error {
+	query := `
+		DELETE FROM email_suppressions
+		WHERE email = $1 AND (tenant_id = $2 OR (tenant_id IS NULL AND $2 IS NULL))
+	`
+	_, err := s.pool.Exec(ctx, query, email, tenantID)
+	return err
+}
+
+// ListEmailSuppressions lists suppressed emails.
+func (s *PostgresStorage) ListEmailSuppressions(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.EmailSuppression, error) {
+	query := `
+		SELECT id, tenant_id, email, reason, source, created_at
+		FROM email_suppressions
+		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var suppressions []*storage.EmailSuppression
+	for rows.Next() {
+		sup := &storage.EmailSuppression{}
+		if err := rows.Scan(&sup.ID, &sup.TenantID, &sup.Email, &sup.Reason, &sup.Source, &sup.CreatedAt); err != nil {
+			return nil, err
+		}
+		suppressions = append(suppressions, sup)
+	}
+	return suppressions, rows.Err()
+}
+
 // ========== Password History Storage ==========
 
 // AddPasswordHistory adds a password hash to user's password history.

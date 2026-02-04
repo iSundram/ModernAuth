@@ -39,6 +39,7 @@ import {
   AdminTenantsPage,
   AdminEmailTemplatesPage,
   AdminEmailBrandingPage,
+  AdminEmailAnalyticsPage,
 } from './pages';
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 import { TenantDetailPage } from './pages/admin/TenantDetailPage';
@@ -158,6 +159,7 @@ function AppRoutes() {
         <Route path="tenants/:id" element={<TenantDetailPage />} />
         <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
         <Route path="email-branding" element={<AdminEmailBrandingPage />} />
+        <Route path="email-analytics" element={<AdminEmailAnalyticsPage />} />
       </Route>
 
       <Route

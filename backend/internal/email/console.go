@@ -35,18 +35,25 @@ func (s *ConsoleService) SendEmail(to, subject, htmlBody, textBody string) error
 	return nil
 }
 
+// maskToken masks a token for logging, showing only first and last 4 chars.
+func maskToken(token string) string {
+	if len(token) <= 8 {
+		return "***"
+	}
+	return token[:4] + "..." + token[len(token)-4:]
+}
+
 // SendVerificationEmail logs a verification email to console.
 func (s *ConsoleService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
 	s.logger.Info("Verification Email",
 		"to", user.Email,
 		"subject", "Verify your email address",
-		"token", token,
-		"verify_url", verifyURL,
+		"token", maskToken(token),
 	)
 	fmt.Printf("\n=== VERIFICATION EMAIL ===\n")
 	fmt.Printf("To: %s\n", user.Email)
 	fmt.Printf("Subject: Verify your email address\n")
-	fmt.Printf("Token: %s\n", token)
+	fmt.Printf("Token: %s\n", maskToken(token))
 	fmt.Printf("URL: %s\n", verifyURL)
 	fmt.Printf("==========================\n\n")
 	return nil
@@ -57,13 +64,12 @@ func (s *ConsoleService) SendPasswordResetEmail(ctx context.Context, user *stora
 	s.logger.Info("Password Reset Email",
 		"to", user.Email,
 		"subject", "Reset your password",
-		"token", token,
-		"reset_url", resetURL,
+		"token", maskToken(token),
 	)
 	fmt.Printf("\n=== PASSWORD RESET EMAIL ===\n")
 	fmt.Printf("To: %s\n", user.Email)
 	fmt.Printf("Subject: Reset your password\n")
-	fmt.Printf("Token: %s\n", token)
+	fmt.Printf("Token: %s\n", maskToken(token))
 	fmt.Printf("URL: %s\n", resetURL)
 	fmt.Printf("============================\n\n")
 	return nil
@@ -139,12 +145,12 @@ func (s *ConsoleService) SendMFACodeEmail(ctx context.Context, userID, code stri
 	s.logger.Info("MFA Code Email",
 		"user_id", userID,
 		"subject", "Your verification code",
-		"code", "***", // Masked for security
+		"code", "******",
 	)
 	fmt.Printf("\n=== MFA CODE EMAIL ===\n")
 	fmt.Printf("To User ID: %s\n", userID)
 	fmt.Printf("Subject: Your verification code\n")
-	fmt.Printf("Code: %s\n", code)
+	fmt.Printf("Code: ******\n")
 	fmt.Printf("=====================\n")
 	return nil
 }
@@ -197,12 +203,12 @@ func (s *ConsoleService) SendMagicLink(email string, magicLinkURL string) error 
 	s.logger.Info("Magic Link Email",
 		"to", email,
 		"subject", "Sign in to your account",
-		"url", magicLinkURL,
+		"url", "[MASKED]",
 	)
 	fmt.Printf("\n=== MAGIC LINK EMAIL ===\n")
 	fmt.Printf("To: %s\n", email)
 	fmt.Printf("Subject: Sign in to your account\n")
-	fmt.Printf("Magic Link URL: %s\n", magicLinkURL)
+	fmt.Printf("Magic Link URL: [Use email provider logs for actual URL]\n")
 	fmt.Printf("========================\n\n")
 	return nil
 }

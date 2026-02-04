@@ -96,10 +96,10 @@ func NewTemplateVars(user *storage.User, branding *storage.EmailBranding) *Templ
 			vars.FooterText = "© " + vars.CurrentYear + " " + vars.CompanyName + ". All rights reserved."
 		}
 	} else {
-		// Default branding
+		// Default branding with new color scheme
 		vars.AppName = "ModernAuth"
-		vars.PrimaryColor = "#667eea"
-		vars.SecondaryColor = "#764ba2"
+		vars.PrimaryColor = "#2B2B2B"   // Dark
+		vars.SecondaryColor = "#B3B3B3" // Medium gray
 		vars.CompanyName = "ModernAuth"
 		vars.FooterText = "© " + vars.CurrentYear + " ModernAuth. All rights reserved."
 	}

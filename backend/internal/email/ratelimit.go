@@ -17,6 +17,8 @@ type RateLimitConfig struct {
 	PasswordResetLimit int
 	// LoginAlertLimit is the max login alert emails per user per hour
 	LoginAlertLimit int
+	// MFACodeLimit is the max MFA code emails per user per hour
+	MFACodeLimit int
 	// Window is the time window for rate limiting
 	Window time.Duration
 }
@@ -27,6 +29,7 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 		VerificationLimit:  3,
 		PasswordResetLimit: 5,
 		LoginAlertLimit:    10,
+		MFACodeLimit:       10,
 		Window:             time.Hour,
 	}
 }
@@ -45,6 +48,7 @@ type RateLimitedService struct {
 	verificationLimits  map[string]*rateLimitEntry
 	passwordResetLimits map[string]*rateLimitEntry
 	loginAlertLimits    map[string]*rateLimitEntry
+	mfaCodeLimits       map[string]*rateLimitEntry
 	mu                  sync.RWMutex
 
 	// Cleanup ticker
@@ -64,6 +68,7 @@ func NewRateLimitedService(inner Service, cfg *RateLimitConfig) *RateLimitedServ
 		verificationLimits:  make(map[string]*rateLimitEntry),
 		passwordResetLimits: make(map[string]*rateLimitEntry),
 		loginAlertLimits:    make(map[string]*rateLimitEntry),
+		mfaCodeLimits:       make(map[string]*rateLimitEntry),
 		cleanupTicker:       time.NewTicker(10 * time.Minute),
 		stopCh:              make(chan struct{}),
 	}
@@ -120,6 +125,14 @@ func (r *RateLimitedService) cleanup() {
 		entry.timestamps = filterTimestamps(entry.timestamps, cutoff)
 		if len(entry.timestamps) == 0 {
 			delete(r.loginAlertLimits, key)
+		}
+	}
+
+	// Clean MFA code limits
+	for key, entry := range r.mfaCodeLimits {
+		entry.timestamps = filterTimestamps(entry.timestamps, cutoff)
+		if len(entry.timestamps) == 0 {
+			delete(r.mfaCodeLimits, key)
 		}
 	}
 }
@@ -203,6 +216,9 @@ func (r *RateLimitedService) SendMFAEnabledEmail(ctx context.Context, user *stor
 
 // SendMFACodeEmail sends MFA code with rate limiting.
 func (r *RateLimitedService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
+	if err := r.checkRateLimit(r.mfaCodeLimits, userID, r.config.MFACodeLimit); err != nil {
+		return err
+	}
 	return r.inner.SendMFACodeEmail(ctx, userID, code)
 }
 

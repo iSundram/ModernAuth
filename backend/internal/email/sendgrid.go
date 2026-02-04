@@ -176,9 +176,10 @@ func (s *SendGridService) SendVerificationEmail(ctx context.Context, user *stora
 	subject := "Verify your email address"
 
 	data := map[string]string{
-		"Name":      sendGridGetUserName(user),
-		"VerifyURL": verifyURL,
-		"Token":     token,
+		"FullName":   sendGridGetUserName(user),
+		"VerifyURL":  verifyURL,
+		"Token":      token,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(verificationEmailHTML, data)
@@ -199,9 +200,10 @@ func (s *SendGridService) SendPasswordResetEmail(ctx context.Context, user *stor
 	subject := "Reset your password"
 
 	data := map[string]string{
-		"Name":     sendGridGetUserName(user),
-		"ResetURL": resetURL,
-		"Token":    token,
+		"FullName":   sendGridGetUserName(user),
+		"ResetURL":   resetURL,
+		"Token":      token,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(passwordResetEmailHTML, data)
@@ -222,8 +224,10 @@ func (s *SendGridService) SendWelcomeEmail(ctx context.Context, user *storage.Us
 	subject := "Welcome to ModernAuth"
 
 	data := map[string]string{
-		"Name":    sendGridGetUserName(user),
-		"BaseURL": s.baseURL,
+		"FullName":   sendGridGetUserName(user),
+		"AppName":    "ModernAuth",
+		"BaseURL":    s.baseURL,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(welcomeEmailHTML, data)
@@ -244,13 +248,14 @@ func (s *SendGridService) SendLoginAlertEmail(ctx context.Context, user *storage
 	subject := "New login to your account"
 
 	data := map[string]string{
-		"Name":       sendGridGetUserName(user),
+		"FullName":   sendGridGetUserName(user),
 		"DeviceName": device.DeviceName,
 		"Browser":    device.Browser,
 		"OS":         device.OS,
 		"IPAddress":  device.IPAddress,
 		"Location":   device.Location,
 		"Time":       device.Time,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(loginAlertEmailHTML, data)
@@ -276,6 +281,7 @@ func (s *SendGridService) SendInvitationEmail(ctx context.Context, invitation *I
 		"InviteURL":   invitation.InviteURL,
 		"Message":     invitation.Message,
 		"ExpiresAt":   invitation.ExpiresAt,
+		"FooterText":  "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(invitationEmailHTML, data)
@@ -296,7 +302,8 @@ func (s *SendGridService) SendMFAEnabledEmail(ctx context.Context, user *storage
 	subject := "Two-factor authentication enabled"
 
 	data := map[string]string{
-		"Name": sendGridGetUserName(user),
+		"FullName":   sendGridGetUserName(user),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(mfaEnabledEmailHTML, data)
@@ -350,8 +357,9 @@ func (s *SendGridService) SendLowBackupCodesEmail(ctx context.Context, user *sto
 	subject := "Action Required: Low backup codes remaining"
 
 	data := map[string]string{
-		"Name":      sendGridGetUserName(user),
-		"Remaining": fmt.Sprintf("%d", remaining),
+		"FullName":   sendGridGetUserName(user),
+		"Remaining":  fmt.Sprintf("%d", remaining),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(lowBackupCodesEmailHTML, data)
@@ -372,7 +380,8 @@ func (s *SendGridService) SendPasswordChangedEmail(ctx context.Context, user *st
 	subject := "Your password was changed"
 
 	data := map[string]string{
-		"Name": sendGridGetUserName(user),
+		"FullName":   sendGridGetUserName(user),
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(passwordChangedEmailHTML, data)
@@ -393,8 +402,9 @@ func (s *SendGridService) SendSessionRevokedEmail(ctx context.Context, user *sto
 	subject := "Your session was terminated"
 
 	data := map[string]string{
-		"Name":   sendGridGetUserName(user),
-		"Reason": reason,
+		"FullName":   sendGridGetUserName(user),
+		"Reason":     reason,
+		"FooterText": "Thanks, The ModernAuth Team",
 	}
 
 	htmlBody, err := s.renderTemplate(sessionRevokedEmailHTML, data)

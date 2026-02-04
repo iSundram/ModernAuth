@@ -11,8 +11,8 @@ export function AdminEmailBrandingPage() {
   const [formData, setFormData] = useState<EmailBranding>({
     app_name: '',
     logo_url: '',
-    primary_color: '#4F46E5',
-    secondary_color: '#6B7280',
+    primary_color: '#2B2B2B',
+    secondary_color: '#B3B3B3',
     company_name: '',
     support_email: '',
     footer_text: '',
@@ -35,8 +35,8 @@ export function AdminEmailBrandingPage() {
       setFormData({
         app_name: branding.app_name || '',
         logo_url: branding.logo_url || '',
-        primary_color: branding.primary_color || '#4F46E5',
-        secondary_color: branding.secondary_color || '#6B7280',
+        primary_color: branding.primary_color || '#2B2B2B',
+        secondary_color: branding.secondary_color || '#B3B3B3',
         company_name: branding.company_name || '',
         support_email: branding.support_email || '',
         footer_text: branding.footer_text || '',

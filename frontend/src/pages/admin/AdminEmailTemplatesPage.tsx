@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, Edit2, Eye, Save, RotateCcw, 
-  FileText 
+  FileText, Send, History, AlertCircle, Check
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, Modal, LoadingBar, Badge } from '../../components/ui';
 import { useToast } from '../../components/ui/Toast';
 import { adminService } from '../../api/services';
-import type { EmailTemplateSummary, EmailTemplate, EmailTemplateVariables } from '../../types';
+import type { EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailTemplateVersion } from '../../types';
 
 // Template type labels - used as fallback if backend description is missing
 const templateLabels: Record<string, { name: string; description: string }> = {
@@ -35,6 +35,21 @@ export function AdminEmailTemplatesPage() {
     text_body: '',
   });
 
+  // New state for test email
+  const [testEmailModal, setTestEmailModal] = useState(false);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailType, setTestEmailType] = useState('');
+
+  // New state for version history
+  const [versionHistoryModal, setVersionHistoryModal] = useState(false);
+  const [versionHistoryType, setVersionHistoryType] = useState('');
+  const [versions, setVersions] = useState<EmailTemplateVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Validation state
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
+
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -59,6 +74,7 @@ export function AdminEmailTemplatesPage() {
       showToast({ title: 'Success', message: 'Template updated successfully', type: 'success' });
       setEditMode(false);
       setSelectedTemplate(null);
+      setValidationErrors([]);
     },
     onError: (error: Error) => {
       showToast({ title: 'Error', message: error.message || 'Failed to update template', type: 'error' });
@@ -78,10 +94,39 @@ export function AdminEmailTemplatesPage() {
     },
   });
 
+  // Test email mutation
+  const testEmailMutation = useMutation({
+    mutationFn: ({ type, email }: { type: string; email: string }) =>
+      adminService.sendTestEmail(type, email),
+    onSuccess: (data) => {
+      showToast({ title: 'Success', message: `Test email sent to ${data.recipient}`, type: 'success' });
+      setTestEmailModal(false);
+      setTestEmailRecipient('');
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to send test email', type: 'error' });
+    },
+  });
+
+  // Restore version mutation
+  const restoreVersionMutation = useMutation({
+    mutationFn: ({ type, versionId }: { type: string; versionId: string }) =>
+      adminService.restoreEmailTemplateVersion(type, versionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+      showToast({ title: 'Success', message: 'Template restored to previous version', type: 'success' });
+      setVersionHistoryModal(false);
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to restore version', type: 'error' });
+    },
+  });
+
   // Fetch full template for editing
   const handleEdit = async (templateSummary: EmailTemplateSummary) => {
     setLoadingTemplate(true);
     setSelectedType(templateSummary.type);
+    setValidationErrors([]);
     try {
       const fullTemplate = await adminService.getEmailTemplate(templateSummary.type);
       setSelectedTemplate(fullTemplate);
@@ -121,6 +166,72 @@ export function AdminEmailTemplatesPage() {
       type: selectedTemplate.type,
       data: editData,
     });
+  };
+
+  // Validate template before save
+  const handleValidate = async () => {
+    if (!selectedTemplate) return;
+    setIsValidating(true);
+    try {
+      const result = await adminService.validateEmailTemplate(selectedTemplate.type, {
+        subject: editData.subject,
+        html_body: editData.html_body,
+        text_body: editData.text_body || undefined,
+      });
+      if (result.valid) {
+        setValidationErrors([]);
+        showToast({ title: 'Valid', message: 'Template syntax is valid', type: 'success' });
+      } else {
+        setValidationErrors(result.errors || []);
+      }
+    } catch (error) {
+      showToast({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Validation failed',
+        type: 'error'
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Open test email modal
+  const handleTestEmail = (templateType: string) => {
+    setTestEmailType(templateType);
+    setTestEmailRecipient('');
+    setTestEmailModal(true);
+  };
+
+  // Send test email
+  const handleSendTestEmail = () => {
+    if (!testEmailRecipient || !testEmailType) return;
+    testEmailMutation.mutate({ type: testEmailType, email: testEmailRecipient });
+  };
+
+  // Open version history modal
+  const handleVersionHistory = async (templateType: string) => {
+    setVersionHistoryType(templateType);
+    setLoadingVersions(true);
+    setVersionHistoryModal(true);
+    try {
+      const versionList = await adminService.listEmailTemplateVersions(templateType);
+      setVersions(versionList);
+    } catch (error) {
+      showToast({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Failed to load versions',
+        type: 'error'
+      });
+      setVersions([]);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  // Restore a version
+  const handleRestoreVersion = (versionId: string) => {
+    if (!versionHistoryType) return;
+    restoreVersionMutation.mutate({ type: versionHistoryType, versionId });
   };
 
   return (
@@ -191,6 +302,22 @@ export function AdminEmailTemplatesPage() {
                       title="Edit"
                     >
                       <Edit2 size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleTestEmail(template.type)}
+                      title="Send Test Email"
+                    >
+                      <Send size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleVersionHistory(template.type)}
+                      title="Version History"
+                    >
+                      <History size={16} />
                     </Button>
                     {template.has_custom && (
                       <Button
@@ -342,13 +469,36 @@ export function AdminEmailTemplatesPage() {
             />
           </div>
 
+          {/* Validation Errors */}
+          {validationErrors.length > 0 && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+              <div className="flex items-center gap-2 text-red-400 mb-2">
+                <AlertCircle size={16} />
+                <span className="font-medium">Template Validation Errors</span>
+              </div>
+              <ul className="list-disc list-inside text-sm text-red-300 space-y-1">
+                {validationErrors.map((error, idx) => (
+                  <li key={idx}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <Button 
               variant="ghost" 
-              onClick={() => { setEditMode(false); setSelectedTemplate(null); }}
+              onClick={() => { setEditMode(false); setSelectedTemplate(null); setValidationErrors([]); }}
               className="flex-1"
             >
               Cancel
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleValidate}
+              isLoading={isValidating}
+            >
+              <Check size={16} className="mr-2" />
+              Validate
             </Button>
             <Button 
               variant="primary" 
@@ -376,6 +526,106 @@ export function AdminEmailTemplatesPage() {
             className="w-full h-[500px] border-0"
             title="Email Preview"
           />
+        </div>
+      </Modal>
+
+      {/* Test Email Modal */}
+      <Modal
+        isOpen={testEmailModal}
+        onClose={() => setTestEmailModal(false)}
+        title="Send Test Email"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Send a test email to verify this template renders correctly.
+          </p>
+          <Input
+            label="Recipient Email"
+            type="email"
+            value={testEmailRecipient}
+            onChange={(e) => setTestEmailRecipient(e.target.value)}
+            placeholder="test@example.com"
+          />
+          <div className="flex gap-3 pt-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => setTestEmailModal(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="primary" 
+              onClick={handleSendTestEmail}
+              isLoading={testEmailMutation.isPending}
+              disabled={!testEmailRecipient}
+              className="flex-1"
+            >
+              <Send size={16} className="mr-2" />
+              Send Test
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Version History Modal */}
+      <Modal
+        isOpen={versionHistoryModal}
+        onClose={() => setVersionHistoryModal(false)}
+        title="Version History"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {loadingVersions ? (
+            <div className="text-center py-8 text-[var(--color-text-secondary)]">
+              Loading versions...
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="text-center py-8 text-[var(--color-text-secondary)]">
+              <History size={32} className="mx-auto mb-2 opacity-50" />
+              <p>No version history available.</p>
+              <p className="text-sm mt-1">Versions are created when you save changes.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {versions.map((version) => (
+                <div 
+                  key={version.id}
+                  className="p-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)]"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-[var(--color-text-primary)]">
+                          Version {version.version}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-muted)]">
+                          {new Date(version.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                        Subject: {version.subject}
+                      </p>
+                      {version.change_reason && (
+                        <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                          Reason: {version.change_reason}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRestoreVersion(version.id)}
+                      isLoading={restoreVersionMutation.isPending}
+                    >
+                      <RotateCcw size={14} className="mr-1" />
+                      Restore
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
     </div>

@@ -15,6 +15,7 @@ import type {
   TokensResponse,
   MFAStatus, WebAuthnCredential, LinkedOAuthProvider,
   EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailBranding,
+  EmailTemplateVersion, EmailStats, EmailBounce, EmailSuppression,
   MagicLinkVerifyResponse, ImpersonationStatus, ImpersonationSession, ImpersonationResult,
   UserBulkImportResult, UserBulkImportRequest
 } from '../types';
@@ -575,6 +576,42 @@ export const adminService = {
 
   previewEmailTemplate: (type: string, data?: Record<string, any>) =>
     apiClient.post<{ html: string; text: string }>(`/v1/admin/email-templates/${type}/preview`, data || {}),
+
+  // Send Test Email
+  sendTestEmail: (type: string, recipientEmail: string) =>
+    apiClient.post<{ message: string; recipient: string }>(`/v1/admin/email-templates/${type}/test`, { recipient_email: recipientEmail }),
+
+  // Validate Template
+  validateEmailTemplate: (type: string, data: { subject: string; html_body: string; text_body?: string }) =>
+    apiClient.post<{ valid: boolean; errors?: string[] }>(`/v1/admin/email-templates/${type}/validate`, data),
+
+  // Template Versions
+  listEmailTemplateVersions: (type: string) =>
+    apiClient.get<{ versions: EmailTemplateVersion[] }>(`/v1/admin/email-templates/${type}/versions`).then(res => res.versions),
+
+  getEmailTemplateVersion: (type: string, versionId: string) =>
+    apiClient.get<EmailTemplateVersion>(`/v1/admin/email-templates/${type}/versions/${versionId}`),
+
+  restoreEmailTemplateVersion: (type: string, versionId: string) =>
+    apiClient.post<{ message: string }>(`/v1/admin/email-templates/${type}/versions/${versionId}/restore`),
+
+  // Email Stats
+  getEmailStats: (days?: number) =>
+    apiClient.get<EmailStats>(`/v1/admin/email-templates/stats${days ? `?days=${days}` : ''}`),
+
+  // Email Bounces
+  listEmailBounces: (bounceType?: string) =>
+    apiClient.get<{ bounces: EmailBounce[] }>(`/v1/admin/email-bounces${bounceType ? `?type=${bounceType}` : ''}`).then(res => res.bounces),
+
+  // Email Suppressions
+  listEmailSuppressions: () =>
+    apiClient.get<{ suppressions: EmailSuppression[] }>('/v1/admin/email-suppressions').then(res => res.suppressions),
+
+  addEmailSuppression: (email: string, reason: string) =>
+    apiClient.post<{ message: string }>('/v1/admin/email-suppressions', { email, reason }),
+
+  removeEmailSuppression: (email: string) =>
+    apiClient.delete<{ message: string }>(`/v1/admin/email-suppressions/${encodeURIComponent(email)}`),
 
   // Email Branding
   getEmailBranding: () =>

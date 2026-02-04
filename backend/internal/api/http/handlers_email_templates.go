@@ -4,7 +4,10 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"html/template"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -13,10 +16,16 @@ import (
 	tenantpkg "github.com/iSundram/ModernAuth/internal/tenant"
 )
 
+// EmailSender interface for sending emails.
+type EmailSender interface {
+	SendEmail(to, subject, htmlBody, textBody string) error
+}
+
 // EmailTemplateHandler handles email template admin endpoints.
 type EmailTemplateHandler struct {
 	storage         storage.EmailTemplateStorage
 	templateService *email.TemplateService
+	emailSender     EmailSender
 }
 
 // NewEmailTemplateHandler creates a new email template handler.
@@ -25,6 +34,11 @@ func NewEmailTemplateHandler(store storage.EmailTemplateStorage, templateService
 		storage:         store,
 		templateService: templateService,
 	}
+}
+
+// SetEmailSender sets the email sender for test emails.
+func (h *EmailTemplateHandler) SetEmailSender(sender EmailSender) {
+	h.emailSender = sender
 }
 
 // EmailTemplateRequest represents a request to create/update a template.
@@ -494,4 +508,430 @@ func brandingToResponse(b *storage.EmailBranding) EmailBrandingResponse {
 		resp.TenantID = &tid
 	}
 	return resp
+}
+
+// ============================================================================
+// Test Email
+// ============================================================================
+
+// SendTestEmailRequest represents a test email request.
+type SendTestEmailRequest struct {
+	RecipientEmail string `json:"recipient_email" validate:"required,email"`
+}
+
+// SendTestEmail sends a test email with the template.
+func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
+	templateType := chi.URLParam(r, "type")
+	if !isValidTemplateType(templateType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid template type"})
+		return
+	}
+
+	var req SendTestEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	// Get branding
+	branding, _ := h.storage.GetEmailBranding(r.Context(), tenantID)
+
+	// Create sample user with recipient email
+	firstName := "Test"
+	lastName := "User"
+	sampleUser := &storage.User{
+		Email:     req.RecipientEmail,
+		FirstName: &firstName,
+		LastName:  &lastName,
+	}
+
+	// Create template variables
+	vars := email.NewTemplateVars(sampleUser, branding)
+
+	// Add sample context variables based on type
+	switch email.TemplateType(templateType) {
+	case email.TemplateVerification:
+		vars.WithVerification("test-token-123", "https://example.com/verify?token=test-token-123")
+	case email.TemplatePasswordReset:
+		vars.WithPasswordReset("test-token-456", "https://example.com/reset?token=test-token-456")
+	case email.TemplateWelcome:
+		vars.WithBaseURL("https://example.com")
+	case email.TemplateLoginAlert:
+		vars.WithDevice(&email.DeviceInfo{
+			DeviceName: "MacBook Pro",
+			Browser:    "Chrome 120",
+			OS:         "macOS Sonoma",
+			IPAddress:  "192.168.1.100",
+			Location:   "San Francisco, CA",
+			Time:       "Test Email - " + time.Now().Format("January 2, 2006 at 3:04 PM"),
+		})
+	case email.TemplateInvitation:
+		vars.WithInvitation(&email.InvitationEmail{
+			InviterName: "Test Admin",
+			TenantName:  "Test Organization",
+			InviteURL:   "https://example.com/invite?token=test-invite",
+			Message:     "This is a test invitation email.",
+			ExpiresAt:   time.Now().AddDate(0, 0, 7).Format("January 2, 2006"),
+		})
+	case email.TemplateSessionRevoked:
+		vars.WithReason("Test session revocation")
+	}
+
+	// Render template
+	subject, htmlBody, textBody, err := h.templateService.RenderTemplate(r.Context(), tenantID, email.TemplateType(templateType), vars)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to render template: " + err.Error()})
+		return
+	}
+
+	// Send the email via the email service (if available)
+	if h.emailSender != nil {
+		if err := h.emailSender.SendEmail(req.RecipientEmail, subject, htmlBody, textBody); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to send test email: " + err.Error()})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message":   "Test email sent successfully",
+		"recipient": req.RecipientEmail,
+	})
+}
+
+// ============================================================================
+// Template Version History
+// ============================================================================
+
+// EmailTemplateVersionResponse represents a version in API responses.
+type EmailTemplateVersionResponse struct {
+	ID           string  `json:"id"`
+	TemplateID   string  `json:"template_id"`
+	Version      int     `json:"version"`
+	Subject      string  `json:"subject"`
+	HTMLBody     string  `json:"html_body"`
+	TextBody     *string `json:"text_body,omitempty"`
+	ChangedBy    *string `json:"changed_by,omitempty"`
+	ChangeReason *string `json:"change_reason,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+// ListTemplateVersions lists version history for a template.
+func (h *EmailTemplateHandler) ListTemplateVersions(w http.ResponseWriter, r *http.Request) {
+	templateType := chi.URLParam(r, "type")
+	if !isValidTemplateType(templateType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid template type"})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	versions, err := h.storage.ListEmailTemplateVersions(r.Context(), tenantID, templateType, 50, 0)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list versions"})
+		return
+	}
+
+	response := make([]EmailTemplateVersionResponse, 0, len(versions))
+	for _, v := range versions {
+		resp := EmailTemplateVersionResponse{
+			ID:           v.ID.String(),
+			TemplateID:   v.TemplateID.String(),
+			Version:      v.Version,
+			Subject:      v.Subject,
+			HTMLBody:     v.HTMLBody,
+			TextBody:     v.TextBody,
+			ChangeReason: v.ChangeReason,
+			CreatedAt:    v.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+		if v.ChangedBy != nil {
+			cb := v.ChangedBy.String()
+			resp.ChangedBy = &cb
+		}
+		response = append(response, resp)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"versions": response})
+}
+
+// GetTemplateVersion gets a specific version.
+func (h *EmailTemplateHandler) GetTemplateVersion(w http.ResponseWriter, r *http.Request) {
+	versionIDStr := chi.URLParam(r, "versionId")
+	versionID, err := uuid.Parse(versionIDStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid version ID"})
+		return
+	}
+
+	version, err := h.storage.GetEmailTemplateVersion(r.Context(), versionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get version"})
+		return
+	}
+	if version == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Version not found"})
+		return
+	}
+
+	resp := EmailTemplateVersionResponse{
+		ID:           version.ID.String(),
+		TemplateID:   version.TemplateID.String(),
+		Version:      version.Version,
+		Subject:      version.Subject,
+		HTMLBody:     version.HTMLBody,
+		TextBody:     version.TextBody,
+		ChangeReason: version.ChangeReason,
+		CreatedAt:    version.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if version.ChangedBy != nil {
+		cb := version.ChangedBy.String()
+		resp.ChangedBy = &cb
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// RestoreTemplateVersionRequest represents a restore request.
+type RestoreTemplateVersionRequest struct {
+	ChangeReason string `json:"change_reason,omitempty"`
+}
+
+// RestoreTemplateVersion restores a template to a previous version.
+func (h *EmailTemplateHandler) RestoreTemplateVersion(w http.ResponseWriter, r *http.Request) {
+	templateType := chi.URLParam(r, "type")
+	if !isValidTemplateType(templateType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid template type"})
+		return
+	}
+
+	versionIDStr := chi.URLParam(r, "versionId")
+	versionID, err := uuid.Parse(versionIDStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid version ID"})
+		return
+	}
+
+	var req RestoreTemplateVersionRequest
+	json.NewDecoder(r.Body).Decode(&req) // Optional body
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	// Get the version to restore
+	version, err := h.storage.GetEmailTemplateVersion(r.Context(), versionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get version"})
+		return
+	}
+	if version == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Version not found"})
+		return
+	}
+
+	// Create new template with restored content
+	template := &storage.EmailTemplate{
+		TenantID: tenantID,
+		Type:     templateType,
+		Subject:  version.Subject,
+		HTMLBody: version.HTMLBody,
+		TextBody: version.TextBody,
+		IsActive: true,
+	}
+
+	if err := h.storage.UpsertEmailTemplate(r.Context(), template); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to restore template"})
+		return
+	}
+
+	// Invalidate cache
+	h.templateService.InvalidateCache(tenantID, email.TemplateType(templateType))
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message":          "Template restored successfully",
+		"restored_version": versionIDStr,
+	})
+}
+
+// ============================================================================
+// Template Validation
+// ============================================================================
+
+// ValidateTemplateRequest represents a template validation request.
+type ValidateTemplateRequest struct {
+	Subject  string  `json:"subject" validate:"required"`
+	HTMLBody string  `json:"html_body" validate:"required"`
+	TextBody *string `json:"text_body,omitempty"`
+}
+
+// ValidateTemplateResponse represents validation results.
+type ValidateTemplateResponse struct {
+	Valid  bool     `json:"valid"`
+	Errors []string `json:"errors,omitempty"`
+}
+
+// ValidateTemplate validates template syntax without saving.
+func (h *EmailTemplateHandler) ValidateTemplate(w http.ResponseWriter, r *http.Request) {
+	templateType := chi.URLParam(r, "type")
+	if !isValidTemplateType(templateType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid template type"})
+		return
+	}
+
+	var req ValidateTemplateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	var validationErrors []string
+
+	// Validate subject template
+	if _, err := template.New("subject").Parse(req.Subject); err != nil {
+		validationErrors = append(validationErrors, "Subject template error: "+err.Error())
+	}
+
+	// Validate HTML body template
+	if _, err := template.New("html").Parse(req.HTMLBody); err != nil {
+		validationErrors = append(validationErrors, "HTML body template error: "+err.Error())
+	}
+
+	// Validate text body template if provided
+	if req.TextBody != nil && *req.TextBody != "" {
+		if _, err := template.New("text").Parse(*req.TextBody); err != nil {
+			validationErrors = append(validationErrors, "Text body template error: "+err.Error())
+		}
+	}
+
+	response := ValidateTemplateResponse{
+		Valid:  len(validationErrors) == 0,
+		Errors: validationErrors,
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// ============================================================================
+// Email Stats
+// ============================================================================
+
+// GetEmailStats retrieves email statistics.
+func (h *EmailTemplateHandler) GetEmailStats(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	// Default to 30 days
+	days := 30
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 365 {
+			days = d
+		}
+	}
+
+	stats, err := h.storage.GetEmailStats(r.Context(), tenantID, days)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get email stats"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// ============================================================================
+// Email Bounces
+// ============================================================================
+
+// ListEmailBounces lists bounce records.
+func (h *EmailTemplateHandler) ListEmailBounces(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+	bounceType := r.URL.Query().Get("type")
+
+	bounces, err := h.storage.ListEmailBounces(r.Context(), tenantID, bounceType, 100, 0)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list bounces"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"bounces": bounces})
+}
+
+// ============================================================================
+// Email Suppressions
+// ============================================================================
+
+// ListSuppressions lists suppressed emails.
+func (h *EmailTemplateHandler) ListSuppressions(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	suppressions, err := h.storage.ListEmailSuppressions(r.Context(), tenantID, 100, 0)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list suppressions"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"suppressions": suppressions})
+}
+
+// AddSuppressionRequest represents a suppression add request.
+type AddSuppressionRequest struct {
+	Email  string `json:"email" validate:"required,email"`
+	Reason string `json:"reason" validate:"required,oneof=hard_bounce complaint unsubscribe manual"`
+}
+
+// AddSuppression adds an email to the suppression list.
+func (h *EmailTemplateHandler) AddSuppression(w http.ResponseWriter, r *http.Request) {
+	var req AddSuppressionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+	source := "admin"
+
+	suppression := &storage.EmailSuppression{
+		TenantID: tenantID,
+		Email:    req.Email,
+		Reason:   req.Reason,
+		Source:   &source,
+	}
+
+	if err := h.storage.CreateEmailSuppression(r.Context(), suppression); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to add suppression"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Email added to suppression list"})
+}
+
+// RemoveSuppression removes an email from the suppression list.
+func (h *EmailTemplateHandler) RemoveSuppression(w http.ResponseWriter, r *http.Request) {
+	email := chi.URLParam(r, "email")
+	if email == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Email required"})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	if err := h.storage.DeleteEmailSuppression(r.Context(), tenantID, email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to remove suppression"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Email removed from suppression list"})
 }
