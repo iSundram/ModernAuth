@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { LoadingBar } from '../components/ui';
 import { CheckCircle, XCircle, Wand2 } from 'lucide-react';
@@ -14,6 +14,7 @@ export function MagicLinkVerifyPage() {
   const { setUser, setTokens } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const verificationAttempted = useRef(false);
 
   const token = searchParams.get('token');
 
@@ -23,6 +24,12 @@ export function MagicLinkVerifyPage() {
       setErrorMessage('No magic link token provided');
       return;
     }
+
+    // Prevent double verification in React Strict Mode
+    if (verificationAttempted.current) {
+      return;
+    }
+    verificationAttempted.current = true;
 
     const verifyToken = async () => {
       try {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { Button, LoadingBar } from '../components/ui';
@@ -16,6 +16,7 @@ export function VerifyEmailPage() {
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const verificationAttempted = useRef(false);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -32,6 +33,12 @@ export function VerifyEmailPage() {
       setMessage('Invalid or missing verification token.');
       return;
     }
+
+    // Prevent double verification in React Strict Mode
+    if (verificationAttempted.current) {
+      return;
+    }
+    verificationAttempted.current = true;
 
     const verify = async () => {
       try {

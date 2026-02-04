@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button, Input, LoadingBar } from '../components/ui';
@@ -17,6 +17,7 @@ export function InvitationAcceptPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string>('');
+  const validationAttempted = useRef(false);
 
   useEffect(() => {
     const validate = async () => {
@@ -24,6 +25,13 @@ export function InvitationAcceptPage() {
         setError('Missing invitation token.');
         return;
       }
+
+      // Prevent double validation in React Strict Mode
+      if (validationAttempted.current) {
+        return;
+      }
+      validationAttempted.current = true;
+
       setIsLoading(true);
       try {
         const res = await invitationService.validate(token);
