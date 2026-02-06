@@ -40,6 +40,10 @@ type rateLimitEntry struct {
 }
 
 // RateLimitedService wraps an email service with rate limiting.
+// NOTE: This implementation uses in-memory rate limit tracking which is NOT
+// distributed. In a multi-server environment, rate limits are per-server and
+// not shared. For production deployments with multiple instances, replace
+// with Redis-based tracking (see queue_redis.go for Redis integration patterns).
 type RateLimitedService struct {
 	inner  Service
 	config *RateLimitConfig
@@ -215,11 +219,11 @@ func (r *RateLimitedService) SendMFAEnabledEmail(ctx context.Context, user *stor
 }
 
 // SendMFACodeEmail sends MFA code with rate limiting.
-func (r *RateLimitedService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
-	if err := r.checkRateLimit(r.mfaCodeLimits, userID, r.config.MFACodeLimit); err != nil {
+func (r *RateLimitedService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
+	if err := r.checkRateLimit(r.mfaCodeLimits, email, r.config.MFACodeLimit); err != nil {
 		return err
 	}
-	return r.inner.SendMFACodeEmail(ctx, userID, code)
+	return r.inner.SendMFACodeEmail(ctx, email, code)
 }
 
 // SendLowBackupCodesEmail sends low backup codes notification (no rate limiting - system triggered).
@@ -238,8 +242,33 @@ func (r *RateLimitedService) SendSessionRevokedEmail(ctx context.Context, user *
 }
 
 // SendMagicLink sends a magic link email (no rate limiting - handled by auth service).
-func (r *RateLimitedService) SendMagicLink(email string, magicLinkURL string) error {
-	return r.inner.SendMagicLink(email, magicLinkURL)
+func (r *RateLimitedService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
+	return r.inner.SendMagicLink(ctx, email, magicLinkURL)
+}
+
+// SendAccountDeactivatedEmail sends account deactivation notification (no rate limiting - admin action).
+func (r *RateLimitedService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	return r.inner.SendAccountDeactivatedEmail(ctx, user, reason, reactivationURL)
+}
+
+// SendEmailChangedEmail sends email change notification (no rate limiting - user action).
+func (r *RateLimitedService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	return r.inner.SendEmailChangedEmail(ctx, user, oldEmail, newEmail)
+}
+
+// SendPasswordExpiryEmail sends password expiry warning (no rate limiting - system triggered).
+func (r *RateLimitedService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	return r.inner.SendPasswordExpiryEmail(ctx, user, daysUntilExpiry, expiryDate, changePasswordURL)
+}
+
+// SendSecurityAlertEmail sends security alert notification (no rate limiting - security critical).
+func (r *RateLimitedService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	return r.inner.SendSecurityAlertEmail(ctx, user, title, message, details, actionURL, actionText)
+}
+
+// SendRateLimitWarningEmail sends rate limit warning notification (no rate limiting).
+func (r *RateLimitedService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	return r.inner.SendRateLimitWarningEmail(ctx, user, actionType, currentCount, maxCount, timeWindow, upgradeURL)
 }
 
 // Verify RateLimitedService implements Service interface

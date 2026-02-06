@@ -16,6 +16,7 @@ import type {
   MFAStatus, WebAuthnCredential, LinkedOAuthProvider,
   EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailBranding,
   EmailTemplateVersion, EmailStats, EmailBounce, EmailSuppression,
+  EmailABTest, EmailABTestResult, EmailBrandingAdvanced,
   MagicLinkVerifyResponse, ImpersonationStatus, ImpersonationSession, ImpersonationResult,
   UserBulkImportResult, UserBulkImportRequest
 } from '../types';
@@ -595,13 +596,75 @@ export const adminService = {
   restoreEmailTemplateVersion: (type: string, versionId: string) =>
     apiClient.post<{ message: string }>(`/v1/admin/email-templates/${type}/versions/${versionId}/restore`),
 
+  // Duplicate Template
+  duplicateEmailTemplate: (type: string, newType: string) =>
+    apiClient.post<EmailTemplate>(`/v1/admin/email-templates/${type}/duplicate`, { new_type: newType }),
+
+  // Export Templates
+  exportEmailTemplates: async (): Promise<Blob> => {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch('/v1/admin/email-templates/export', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to export templates');
+    return response.blob();
+  },
+
+  // Import Templates
+  importEmailTemplates: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('access_token');
+    return fetch('/v1/admin/email-templates/import', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    }).then(res => res.json());
+  },
+
+  // Preview All Templates
+  previewAllTemplates: () =>
+    apiClient.get<Record<string, { html: string; text: string }>>('/v1/admin/email-templates/preview-all'),
+
   // Email Stats
   getEmailStats: (days?: number) =>
     apiClient.get<EmailStats>(`/v1/admin/email-templates/stats${days ? `?days=${days}` : ''}`),
 
+  // Export Email Analytics
+  exportEmailAnalytics: async (format: 'csv' | 'json' = 'csv'): Promise<Blob> => {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`/v1/admin/email-templates/stats/export?format=${format}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error('Failed to export email analytics');
+    return response.blob();
+  },
+
   // Email Bounces
   listEmailBounces: (bounceType?: string) =>
     apiClient.get<{ bounces: EmailBounce[] }>(`/v1/admin/email-bounces${bounceType ? `?type=${bounceType}` : ''}`).then(res => res.bounces),
+
+  // Email A/B Tests
+  listEmailABTests: () =>
+    apiClient.get<{ tests: EmailABTest[] }>('/v1/admin/email-abtests').then(res => res.tests),
+
+  getEmailABTest: (id: string) =>
+    apiClient.get<EmailABTest>(`/v1/admin/email-abtests/${id}`),
+
+  createEmailABTest: (data: { template_type: string; name: string; variant_a: string; variant_b: string; weight_a?: number; weight_b?: number }) =>
+    apiClient.post<EmailABTest>('/v1/admin/email-abtests', data),
+
+  updateEmailABTest: (id: string, data: Partial<EmailABTest>) =>
+    apiClient.put<EmailABTest>(`/v1/admin/email-abtests/${id}`, data),
+
+  deleteEmailABTest: (id: string) =>
+    apiClient.delete<void>(`/v1/admin/email-abtests/${id}`),
+
+  getEmailABTestResults: (id: string) =>
+    apiClient.get<{ results: EmailABTestResult[] }>(`/v1/admin/email-abtests/${id}/results`).then(res => res.results),
+
+  declareEmailABTestWinner: (id: string, variant: 'a' | 'b') =>
+    apiClient.post<EmailABTest>(`/v1/admin/email-abtests/${id}/declare-winner`, { variant }),
 
   // Email Suppressions
   listEmailSuppressions: () =>
@@ -619,6 +682,13 @@ export const adminService = {
 
   updateEmailBranding: (data: EmailBranding) =>
     apiClient.put<EmailBranding>('/v1/admin/email-branding', data),
+
+  // Advanced Branding
+  getEmailBrandingAdvanced: () =>
+    apiClient.get<EmailBrandingAdvanced>('/v1/admin/email-branding/advanced'),
+
+  updateEmailBrandingAdvanced: (data: EmailBrandingAdvanced) =>
+    apiClient.put<EmailBrandingAdvanced>('/v1/admin/email-branding/advanced', data),
 
   // User Impersonation
   impersonateUser: (userId: string, reason?: string) =>

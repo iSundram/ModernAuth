@@ -43,7 +43,7 @@ func (h *Handler) Router() *chi.Mux {
 
 	// Health check
 	r.Get("/health", h.HealthCheck)
-	
+
 	// Metrics
 	r.Handle("/metrics", promhttp.Handler())
 
@@ -91,15 +91,15 @@ func (h *Handler) Router() *chi.Mux {
 				r.Post("/mfa/backup-codes", h.GenerateBackupCodes)
 				r.Get("/mfa/backup-codes/count", h.GetBackupCodeCount)
 				r.Post("/mfa/preferred", h.SetPreferredMFA)
-				
+
 				// Email MFA
 				r.Post("/mfa/email/enable", h.EnableEmailMFA)
 				r.Post("/mfa/email/disable", h.DisableEmailMFA)
-				
+
 				// Device MFA Trust
 				r.Post("/mfa/trust-device", h.TrustDeviceForMFA)
 				r.Post("/mfa/revoke-trust", h.RevokeMFATrust)
-				
+
 				// WebAuthn/Passkeys (Protected - registration)
 				r.Post("/mfa/webauthn/register/begin", h.BeginWebAuthnRegistration)
 				r.Post("/mfa/webauthn/register/finish", h.FinishWebAuthnRegistration)
@@ -109,11 +109,11 @@ func (h *Handler) Router() *chi.Mux {
 
 			// MFA Login with Backup Code (no auth required)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/backup", h.LoginMFABackup)
-			
+
 			// Email MFA (no auth required - during login flow)
 			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/email/send", h.SendEmailMFA)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/email", h.LoginEmailMFA)
-			
+
 			// WebAuthn Login (no auth required - during login flow)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/begin", h.BeginWebAuthnLogin)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/finish", h.FinishWebAuthnLogin)
@@ -132,7 +132,6 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RequirePermission("users:delete")).Delete("/{id}", h.DeleteUser)
 		})
 
-
 		// Audit Logs (requires permission)
 		r.Route("/audit", func(r chi.Router) {
 			r.Use(h.Auth)
@@ -149,16 +148,16 @@ func (h *Handler) Router() *chi.Mux {
 			r.Patch("/settings/{key}", h.UpdateSetting)
 			r.Post("/users/{id}/roles", h.AssignUserRole)
 			r.Delete("/users/{id}/roles/{roleId}", h.RemoveUserRole)
-			
+
 			// User impersonation
 			r.With(h.RequirePermission("users:impersonate")).Post("/users/{id}/impersonate", h.ImpersonateUser)
 			r.Get("/impersonation-sessions", h.ListImpersonationSessions)
-			
+
 			// Bulk user operations
 			r.Post("/users/import", h.ImportUsersJSON)
 			r.Post("/users/import/csv", h.ImportUsersCSV)
 			r.Get("/users/export", h.ExportUsers)
-			
+
 			// Role management
 			r.Get("/roles", h.ListRoles)
 			r.Post("/roles", h.CreateRole)
@@ -168,7 +167,7 @@ func (h *Handler) Router() *chi.Mux {
 			r.Get("/roles/{id}/permissions", h.GetRolePermissions)
 			r.Post("/roles/{id}/permissions", h.AssignPermissionToRole)
 			r.Delete("/roles/{id}/permissions/{permissionId}", h.RemovePermissionFromRole)
-			
+
 			// Permission management
 			r.Get("/permissions", h.ListPermissions)
 
@@ -178,6 +177,10 @@ func (h *Handler) Router() *chi.Mux {
 					r.Get("/", h.emailTemplateHandler.ListTemplates)
 					r.Get("/variables", h.emailTemplateHandler.ListAvailableVariables)
 					r.Get("/stats", h.emailTemplateHandler.GetEmailStats)
+					r.Get("/stats/export", h.emailTemplateHandler.ExportEmailStats)
+					r.Get("/export", h.emailTemplateHandler.ExportTemplates)
+					r.Post("/import", h.emailTemplateHandler.ImportTemplates)
+					r.Get("/preview-all", h.emailTemplateHandler.PreviewAllTemplates)
 					r.Get("/{type}", h.emailTemplateHandler.GetTemplate)
 					r.Put("/{type}", h.emailTemplateHandler.UpdateTemplate)
 					r.Delete("/{type}", h.emailTemplateHandler.DeleteTemplate)
@@ -191,6 +194,8 @@ func (h *Handler) Router() *chi.Mux {
 				r.Route("/email-branding", func(r chi.Router) {
 					r.Get("/", h.emailTemplateHandler.GetBranding)
 					r.Put("/", h.emailTemplateHandler.UpdateBranding)
+					r.Get("/advanced", h.emailTemplateHandler.GetAdvancedBranding)
+					r.Put("/advanced", h.emailTemplateHandler.UpdateAdvancedBranding)
 				})
 				r.Route("/email-bounces", func(r chi.Router) {
 					r.Get("/", h.emailTemplateHandler.ListEmailBounces)
@@ -199,6 +204,12 @@ func (h *Handler) Router() *chi.Mux {
 					r.Get("/", h.emailTemplateHandler.ListSuppressions)
 					r.Post("/", h.emailTemplateHandler.AddSuppression)
 					r.Delete("/{email}", h.emailTemplateHandler.RemoveSuppression)
+				})
+				r.Route("/email-ab-tests", func(r chi.Router) {
+					r.Get("/", h.emailTemplateHandler.ListABTests)
+					r.Post("/", h.emailTemplateHandler.CreateABTest)
+					r.Get("/{testId}", h.emailTemplateHandler.GetABTest)
+					r.Post("/{testId}/winner", h.emailTemplateHandler.DeclareABTestWinner)
 				})
 			}
 		})
@@ -277,6 +288,14 @@ func (h *Handler) Router() *chi.Mux {
 		if h.sendGridWebhookHandler != nil {
 			r.Route("/webhooks/external", func(r chi.Router) {
 				r.Mount("/", h.sendGridWebhookHandler.WebhookRoutes())
+			})
+		}
+
+		// Email tracking pixels (unauthenticated)
+		if h.emailTemplateHandler != nil {
+			r.Route("/email/track", func(r chi.Router) {
+				r.Get("/open/{pixelID}", h.emailTemplateHandler.TrackEmailOpen)
+				r.Get("/click/{trackingID}", h.emailTemplateHandler.TrackEmailClick)
 			})
 		}
 	})

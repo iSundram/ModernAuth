@@ -320,36 +320,24 @@ func (s *SendGridService) SendMFAEnabledEmail(ctx context.Context, user *storage
 }
 
 // SendMFACodeEmail sends MFA verification code email.
-func (s *SendGridService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
+func (s *SendGridService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
 	subject := "Your Verification Code"
 
-	htmlBody := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">Your Verification Code</h1>
-    </div>
-    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-        <p>Use the following verification code to complete your login:</p>
-        <div style="background: #f5f5f5; padding: 25px; border-radius: 10px; margin: 25px 0; text-align: center; border: 2px dashed #667eea;">
-            <p style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #667eea; margin: 0;">%s</p>
-        </div>
-        <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
-        <p style="color: #e74c3c; font-size: 14px;"><strong>Security Note:</strong> If you didn't request this code, please ignore this email or contact support if you're concerned.</p>
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-        <p style="color: #999; font-size: 12px; text-align: center;">Thanks,<br>The ModernAuth Team</p>
-    </div>
-</body>
-</html>`, code)
+	data := map[string]string{
+		"MFACode":      code,
+		"PrimaryColor": DefaultPrimaryColor,
+		"FooterText":   "Thanks, The ModernAuth Team",
+	}
+
+	htmlBody, err := s.renderTemplate(mfaCodeEmailHTML, data)
+	if err != nil {
+		return err
+	}
 
 	textBody := fmt.Sprintf("Hi,\n\nUse the following verification code to complete your login:\n\n%s\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email.\n\nThanks,\nThe ModernAuth Team", code)
 
-	return s.sendEmail(userID, subject, htmlBody, textBody)
+	s.logger.Info("Sending MFA code email", "to", email)
+	return s.sendEmail(email, subject, htmlBody, textBody)
 }
 
 // SendLowBackupCodesEmail sends notification when backup codes are running low.
@@ -421,10 +409,9 @@ func (s *SendGridService) SendSessionRevokedEmail(ctx context.Context, user *sto
 }
 
 // SendMagicLink sends a magic link email for passwordless authentication.
-func (s *SendGridService) SendMagicLink(email string, magicLinkURL string) error {
+func (s *SendGridService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
 	subject := "Sign in to your account"
 
-	// Extract name from email for personalization
 	emailName := email
 	if parts := strings.Split(email, "@"); len(parts) > 0 {
 		emailName = parts[0]
@@ -433,6 +420,7 @@ func (s *SendGridService) SendMagicLink(email string, magicLinkURL string) error
 	data := map[string]string{
 		"Name":         emailName,
 		"MagicLinkURL": magicLinkURL,
+		"PrimaryColor": DefaultPrimaryColor,
 	}
 
 	htmlBody, err := s.renderTemplate(sendGridMagicLinkEmailHTML, data)
@@ -448,7 +436,160 @@ func (s *SendGridService) SendMagicLink(email string, magicLinkURL string) error
 	return s.sendEmail(email, subject, htmlBody, textBody)
 }
 
-// Magic link email HTML template for SendGrid
+func (s *SendGridService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	subject := "Account Deactivated"
+
+	data := map[string]string{
+		"FullName":        buildFullName(user),
+		"Reason":          reason,
+		"ReactivationURL": reactivationURL,
+		"PrimaryColor":    DefaultPrimaryColor,
+		"SecondaryColor":  DefaultSecondaryColor,
+	}
+
+	htmlBody, err := s.renderTemplate(sendGridAccountDeactivatedEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(`Hi,
+
+Your account has been deactivated.
+
+Reason: %s
+
+If you believe this was a mistake, please contact our support team.
+
+Thanks,
+The ModernAuth Team`, reason)
+
+	return s.sendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+func (s *SendGridService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	subject := "Email Address Changed"
+
+	data := map[string]string{
+		"FullName":       buildFullName(user),
+		"OldEmail":       oldEmail,
+		"NewEmail":       newEmail,
+		"PrimaryColor":   DefaultPrimaryColor,
+		"SecondaryColor": DefaultSecondaryColor,
+	}
+
+	htmlBody, err := s.renderTemplate(sendGridEmailChangedEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(`Hi,
+
+Your email address has been changed from %s to %s.
+
+If you didn't make this change, please contact our support team immediately.
+
+Thanks,
+The ModernAuth Team`, oldEmail, newEmail)
+
+	return s.sendEmail(oldEmail, subject, htmlBody, textBody)
+}
+
+func (s *SendGridService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	subject := "Password Expiring Soon"
+
+	data := map[string]string{
+		"FullName":          buildFullName(user),
+		"DaysUntilExpiry":   daysUntilExpiry,
+		"ExpiryDate":        expiryDate,
+		"ChangePasswordURL": changePasswordURL,
+		"PrimaryColor":      DefaultPrimaryColor,
+		"SecondaryColor":    DefaultSecondaryColor,
+	}
+
+	htmlBody, err := s.renderTemplate(sendGridPasswordExpiryEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(`Hi,
+
+Your password will expire in %s days on %s.
+
+Please change your password before it expires.
+
+Thanks,
+The ModernAuth Team`, daysUntilExpiry, expiryDate)
+
+	return s.sendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+func (s *SendGridService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	data := map[string]string{
+		"FullName":       buildFullName(user),
+		"AlertTitle":     title,
+		"AlertMessage":   message,
+		"AlertDetails":   details,
+		"ActionURL":      actionURL,
+		"ActionText":     actionText,
+		"PrimaryColor":   DefaultPrimaryColor,
+		"SecondaryColor": DefaultSecondaryColor,
+	}
+
+	htmlBody, err := s.renderTemplate(sendGridSecurityAlertEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(`Hi,
+
+%s
+
+%s
+
+%s
+
+Thanks,
+The ModernAuth Team`, title, message, details)
+
+	return s.sendEmail(user.Email, title, htmlBody, textBody)
+}
+
+func (s *SendGridService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	subject := "Rate Limit Approaching"
+
+	data := map[string]string{
+		"FullName":       buildFullName(user),
+		"ActionType":     actionType,
+		"CurrentCount":   currentCount,
+		"MaxCount":       maxCount,
+		"TimeWindow":     timeWindow,
+		"UpgradeURL":     upgradeURL,
+		"PrimaryColor":   DefaultPrimaryColor,
+		"SecondaryColor": DefaultSecondaryColor,
+	}
+
+	htmlBody, err := s.renderTemplate(sendGridRateLimitWarningEmailHTML, data)
+	if err != nil {
+		return err
+	}
+
+	textBody := fmt.Sprintf(`Hi,
+
+You're approaching the rate limit for %s actions.
+
+Current Usage: %s / %s
+
+%s
+
+Thanks,
+The ModernAuth Team`, actionType, currentCount, maxCount, timeWindow)
+
+	return s.sendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+// Verify SendGridService implements Service interface
+var _ Service = (*SendGridService)(nil)
+
 const sendGridMagicLinkEmailHTML = `
 <!DOCTYPE html>
 <html>
@@ -457,22 +598,145 @@ const sendGridMagicLinkEmailHTML = `
     <title>Sign in to your account</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
         <h1 style="color: white; margin: 0;">Sign In</h1>
     </div>
     <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
         <p>Hi {{.Name}},</p>
         <p>Click the button below to sign in to your account:</p>
         <div style="text-align: center; margin: 30px 0;">
-            <a href="{{.MagicLinkURL}}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Sign In</a>
+            <a href="{{.MagicLinkURL}}" style="background: {{.PrimaryColor}}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Sign In</a>
         </div>
         <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes.</p>
         <p style="color: #666; font-size: 14px;">If you didn't request this, you can safely ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
             If the button doesn't work, copy and paste this link:<br>
-            <a href="{{.MagicLinkURL}}" style="color: #667eea;">{{.MagicLinkURL}}</a>
+            <a href="{{.MagicLinkURL}}" style="color: {{.PrimaryColor}};">{{.MagicLinkURL}}</a>
         </p>
+    </div>
+</body>
+</html>
+`
+
+const sendGridAccountDeactivatedEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Account Deactivated</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Account Deactivated</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>Your account has been deactivated.</p>
+        <p><strong>Reason:</strong> {{.Reason}}</p>
+        {{if .ReactivationURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ReactivationURL}}" style="background: {{.PrimaryColor}}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reactivate Account</a>
+        </div>
+        {{end}}
+        <p>If you believe this was a mistake, please contact our support team.</p>
+    </div>
+</body>
+</html>
+`
+
+const sendGridEmailChangedEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Email Address Changed</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Email Address Changed</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>The email address for your account has been changed:</p>
+        <p><strong>From:</strong> {{.OldEmail}}</p>
+        <p><strong>To:</strong> {{.NewEmail}}</p>
+        <p>If you didn't make this change, please contact our support team immediately.</p>
+    </div>
+</body>
+</html>
+`
+
+const sendGridPasswordExpiryEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Password Expiring Soon</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Password Expiring Soon</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>Your password will expire in <strong>{{.DaysUntilExpiry}} days</strong> on {{.ExpiryDate}}.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ChangePasswordURL}}" style="background: {{.PrimaryColor}}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Change Password</a>
+        </div>
+        <p>Please change your password before it expires.</p>
+    </div>
+</body>
+</html>
+`
+
+const sendGridSecurityAlertEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{.AlertTitle}}</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">{{.AlertTitle}}</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>{{.AlertMessage}}</p>
+        <p>{{.AlertDetails}}</p>
+        {{if .ActionURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ActionURL}}" style="background: {{.PrimaryColor}}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">{{.ActionText}}</a>
+        </div>
+        {{end}}
+    </div>
+</body>
+</html>
+`
+
+const sendGridRateLimitWarningEmailHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Rate Limit Approaching</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">Rate Limit Approaching</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>You're approaching the rate limit for <strong>{{.ActionType}}</strong> actions.</p>
+        <p><strong>Current Usage:</strong> {{.CurrentCount}} / {{.MaxCount}}</p>
+        <p>{{.TimeWindow}}</p>
+        {{if .UpgradeURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.UpgradeURL}}" style="background: {{.PrimaryColor}}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Upgrade Plan</a>
+        </div>
+        {{end}}
+        <p>To avoid being blocked, please reduce the frequency of this action.</p>
     </div>
 </body>
 </html>

@@ -28,6 +28,13 @@ type TemplateVars struct {
 	FooterText     string
 	CurrentYear    string
 
+	// Common context variables
+	UnsubscribeURL string
+	CurrentDate    string
+	CurrentTime    string
+	UTCOffset      string
+	LanguageCode   string
+
 	// Context variables (set per email type)
 	VerifyURL      string
 	ResetURL       string
@@ -47,12 +54,46 @@ type TemplateVars struct {
 	Reason         string
 	MFACode        string
 	RemainingCodes string
+
+	// Account deactivation
+	ReactivationURL string
+
+	// Email change
+	OldEmail string
+	NewEmail string
+
+	// Password expiry
+	DaysUntilExpiry   string
+	ExpiryDate        string
+	ChangePasswordURL string
+
+	// Security alert
+	AlertTitle   string
+	AlertMessage string
+	AlertDetails string
+	ActionURL    string
+	ActionText   string
+
+	// Rate limit warning
+	ActionType   string
+	CurrentCount string
+	MaxCount     string
+	TimeWindow   string
+	UpgradeURL   string
+
+	// Magic link
+	MagicLinkURL string
 }
 
 // NewTemplateVars creates template variables from user and branding data.
 func NewTemplateVars(user *storage.User, branding *storage.EmailBranding) *TemplateVars {
+	now := time.Now()
 	vars := &TemplateVars{
-		CurrentYear: strconv.Itoa(time.Now().Year()),
+		CurrentYear:  strconv.Itoa(now.Year()),
+		CurrentDate:  now.Format("January 2, 2006"),
+		CurrentTime:  now.Format("3:04 PM"),
+		UTCOffset:    now.Format("-0700"),
+		LanguageCode: "en",
 	}
 
 	// Set user variables
@@ -183,5 +224,65 @@ func (v *TemplateVars) WithMFACode(code string) *TemplateVars {
 // WithRemainingCodes sets the number of remaining backup codes.
 func (v *TemplateVars) WithRemainingCodes(remaining int) *TemplateVars {
 	v.RemainingCodes = strconv.Itoa(remaining)
+	return v
+}
+
+// WithAccountDeactivation sets account deactivation-specific variables.
+func (v *TemplateVars) WithAccountDeactivation(reason, reactivationURL string) *TemplateVars {
+	v.Reason = reason
+	v.ReactivationURL = reactivationURL
+	return v
+}
+
+// WithEmailChange sets email change-specific variables.
+func (v *TemplateVars) WithEmailChange(oldEmail, newEmail string) *TemplateVars {
+	v.OldEmail = oldEmail
+	v.NewEmail = newEmail
+	return v
+}
+
+// WithPasswordExpiry sets password expiry-specific variables.
+func (v *TemplateVars) WithPasswordExpiry(daysUntilExpiry, expiryDate, changePasswordURL string) *TemplateVars {
+	v.DaysUntilExpiry = daysUntilExpiry
+	v.ExpiryDate = expiryDate
+	v.ChangePasswordURL = changePasswordURL
+	return v
+}
+
+// WithSecurityAlert sets security alert-specific variables.
+func (v *TemplateVars) WithSecurityAlert(title, message, details, actionURL, actionText string) *TemplateVars {
+	v.AlertTitle = title
+	v.AlertMessage = message
+	v.AlertDetails = details
+	v.ActionURL = actionURL
+	v.ActionText = actionText
+	return v
+}
+
+// WithRateLimitWarning sets rate limit warning-specific variables.
+func (v *TemplateVars) WithRateLimitWarning(actionType, currentCount, maxCount, timeWindow, upgradeURL string) *TemplateVars {
+	v.ActionType = actionType
+	v.CurrentCount = currentCount
+	v.MaxCount = maxCount
+	v.TimeWindow = timeWindow
+	v.UpgradeURL = upgradeURL
+	return v
+}
+
+// WithMagicLink sets magic link-specific variables.
+func (v *TemplateVars) WithMagicLink(magicLinkURL string) *TemplateVars {
+	v.MagicLinkURL = magicLinkURL
+	return v
+}
+
+// WithUnsubscribeURL sets the unsubscribe URL.
+func (v *TemplateVars) WithUnsubscribeURL(url string) *TemplateVars {
+	v.UnsubscribeURL = url
+	return v
+}
+
+// WithLanguage sets the language code for localization.
+func (v *TemplateVars) WithLanguage(langCode string) *TemplateVars {
+	v.LanguageCode = langCode
 	return v
 }

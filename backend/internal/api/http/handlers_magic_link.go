@@ -3,6 +3,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -88,9 +89,11 @@ func (h *Handler) SendMagicLink(w http.ResponseWriter, r *http.Request) {
 		magicLinkURL := baseURL + "/auth/magic-link?token=" + token
 
 		// Send magic link email
+		// Use background context since the HTTP request may complete before email is sent
+		email := req.Email
 		go func() {
-			if err := h.emailService.SendMagicLink(req.Email, magicLinkURL); err != nil {
-				h.logger.Error("Failed to send magic link email", "error", err, "email", req.Email)
+			if err := h.emailService.SendMagicLink(context.Background(), email, magicLinkURL); err != nil {
+				h.logger.Error("Failed to send magic link email", "error", err, "email", email)
 			}
 		}()
 	}

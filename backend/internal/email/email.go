@@ -28,7 +28,7 @@ type Service interface {
 	SendMFAEnabledEmail(ctx context.Context, user *storage.User) error
 
 	// SendMFACodeEmail sends an MFA verification code to user's email.
-	SendMFACodeEmail(ctx context.Context, userID string, code string) error
+	SendMFACodeEmail(ctx context.Context, email string, code string) error
 
 	// SendLowBackupCodesEmail sends notification when backup codes are running low.
 	SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error
@@ -40,7 +40,22 @@ type Service interface {
 	SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error
 
 	// SendMagicLink sends a magic link email for passwordless authentication.
-	SendMagicLink(email string, magicLinkURL string) error
+	SendMagicLink(ctx context.Context, email string, magicLinkURL string) error
+
+	// SendAccountDeactivatedEmail sends account deactivation notification.
+	SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error
+
+	// SendEmailChangedEmail sends email change notification.
+	SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error
+
+	// SendPasswordExpiryEmail sends password expiry warning.
+	SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error
+
+	// SendSecurityAlertEmail sends security alert notification.
+	SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error
+
+	// SendRateLimitWarningEmail sends rate limit warning notification.
+	SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error
 }
 
 // DeviceInfo contains device information for login alerts.
@@ -79,4 +94,6 @@ type Config struct {
 	FromEmail    string
 	FromName     string
 	BaseURL      string
+	ReplyToEmail string
+	ReplyToName  string
 }

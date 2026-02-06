@@ -219,16 +219,22 @@ func (q *QueuedService) drainQueue() {
 
 // Job type constants
 const (
-	jobTypeVerification    = "verification"
-	jobTypePasswordReset   = "password_reset"
-	jobTypeWelcome         = "welcome"
-	jobTypeLoginAlert      = "login_alert"
-	jobTypeInvitation      = "invitation"
-	jobTypeMFAEnabled      = "mfa_enabled"
-	jobTypeMFACode         = "mfa_code"
-	jobTypeLowBackupCodes  = "low_backup_codes"
-	jobTypePasswordChanged = "password_changed"
-	jobTypeSessionRevoked  = "session_revoked"
+	jobTypeVerification       = "verification"
+	jobTypePasswordReset      = "password_reset"
+	jobTypeWelcome            = "welcome"
+	jobTypeLoginAlert         = "login_alert"
+	jobTypeInvitation         = "invitation"
+	jobTypeMFAEnabled         = "mfa_enabled"
+	jobTypeMFACode            = "mfa_code"
+	jobTypeLowBackupCodes     = "low_backup_codes"
+	jobTypePasswordChanged    = "password_changed"
+	jobTypeSessionRevoked     = "session_revoked"
+	jobTypeMagicLink          = "magic_link"
+	jobTypeAccountDeactivated = "account_deactivated"
+	jobTypeEmailChanged       = "email_changed"
+	jobTypePasswordExpiry     = "password_expiry"
+	jobTypeSecurityAlert      = "security_alert"
+	jobTypeRateLimitWarning   = "rate_limit_warning"
 )
 
 // Payload types for jobs
@@ -258,8 +264,8 @@ type invitationPayload struct {
 }
 
 type mfaCodePayload struct {
-	UserID string
-	Code   string
+	Email string
+	Code  string
 }
 
 type lowBackupCodesPayload struct {
@@ -278,6 +284,48 @@ type passwordChangedPayload struct {
 type sessionRevokedPayload struct {
 	User   *storage.User
 	Reason string
+}
+
+type magicLinkPayload struct {
+	Email        string
+	MagicLinkURL string
+}
+
+type accountDeactivatedPayload struct {
+	User            *storage.User
+	Reason          string
+	ReactivationURL string
+}
+
+type emailChangedPayload struct {
+	User     *storage.User
+	OldEmail string
+	NewEmail string
+}
+
+type passwordExpiryPayload struct {
+	User              *storage.User
+	DaysUntilExpiry   string
+	ExpiryDate        string
+	ChangePasswordURL string
+}
+
+type securityAlertPayload struct {
+	User       *storage.User
+	Title      string
+	Message    string
+	Details    string
+	ActionURL  string
+	ActionText string
+}
+
+type rateLimitWarningPayload struct {
+	User         *storage.User
+	ActionType   string
+	CurrentCount string
+	MaxCount     string
+	TimeWindow   string
+	UpgradeURL   string
 }
 
 // processJob executes the email job.
@@ -305,7 +353,7 @@ func (q *QueuedService) processJob(job *EmailJob) error {
 		return q.inner.SendMFAEnabledEmail(ctx, p.User)
 	case jobTypeMFACode:
 		p := job.Payload.(*mfaCodePayload)
-		return q.inner.SendMFACodeEmail(ctx, p.UserID, p.Code)
+		return q.inner.SendMFACodeEmail(ctx, p.Email, p.Code)
 	case jobTypeLowBackupCodes:
 		p := job.Payload.(*lowBackupCodesPayload)
 		return q.inner.SendLowBackupCodesEmail(ctx, p.User, p.Remaining)
@@ -315,6 +363,24 @@ func (q *QueuedService) processJob(job *EmailJob) error {
 	case jobTypeSessionRevoked:
 		p := job.Payload.(*sessionRevokedPayload)
 		return q.inner.SendSessionRevokedEmail(ctx, p.User, p.Reason)
+	case jobTypeMagicLink:
+		p := job.Payload.(*magicLinkPayload)
+		return q.inner.SendMagicLink(ctx, p.Email, p.MagicLinkURL)
+	case jobTypeAccountDeactivated:
+		p := job.Payload.(*accountDeactivatedPayload)
+		return q.inner.SendAccountDeactivatedEmail(ctx, p.User, p.Reason, p.ReactivationURL)
+	case jobTypeEmailChanged:
+		p := job.Payload.(*emailChangedPayload)
+		return q.inner.SendEmailChangedEmail(ctx, p.User, p.OldEmail, p.NewEmail)
+	case jobTypePasswordExpiry:
+		p := job.Payload.(*passwordExpiryPayload)
+		return q.inner.SendPasswordExpiryEmail(ctx, p.User, p.DaysUntilExpiry, p.ExpiryDate, p.ChangePasswordURL)
+	case jobTypeSecurityAlert:
+		p := job.Payload.(*securityAlertPayload)
+		return q.inner.SendSecurityAlertEmail(ctx, p.User, p.Title, p.Message, p.Details, p.ActionURL, p.ActionText)
+	case jobTypeRateLimitWarning:
+		p := job.Payload.(*rateLimitWarningPayload)
+		return q.inner.SendRateLimitWarningEmail(ctx, p.User, p.ActionType, p.CurrentCount, p.MaxCount, p.TimeWindow, p.UpgradeURL)
 	default:
 		q.logger.Error("Unknown job type", "type", job.Type)
 		return nil
@@ -382,15 +448,12 @@ func (q *QueuedService) SendMFAEnabledEmail(ctx context.Context, user *storage.U
 }
 
 // SendMFACodeEmail sends MFA code email (queued).
-func (q *QueuedService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
-	// For MFA codes, we need to user email - this is a limitation
-	// The auth service should pass email directly instead of userID
-	// For now, enqueue with the userID (service layer should fetch user email)
+func (q *QueuedService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
 	payload := &mfaCodePayload{
-		UserID: userID,
-		Code:   code,
+		Email: email,
+		Code:  code,
 	}
-	return q.enqueue(jobTypeMFACode, userID, payload)
+	return q.enqueue(jobTypeMFACode, email, payload)
 }
 
 // SendLowBackupCodesEmail sends low backup codes notification (queued).
@@ -407,9 +470,28 @@ func (q *QueuedService) SendSessionRevokedEmail(ctx context.Context, user *stora
 }
 
 // SendMagicLink sends a magic link email (synchronously - no queue for time-sensitive emails).
-func (q *QueuedService) SendMagicLink(email string, magicLinkURL string) error {
-	// Magic links are time-sensitive, so we send them directly without queuing
-	return q.inner.SendMagicLink(email, magicLinkURL)
+func (q *QueuedService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
+	return q.inner.SendMagicLink(ctx, email, magicLinkURL)
+}
+
+func (q *QueuedService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	return q.enqueue(jobTypeAccountDeactivated, user.Email, &accountDeactivatedPayload{User: user, Reason: reason, ReactivationURL: reactivationURL})
+}
+
+func (q *QueuedService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	return q.enqueue(jobTypeEmailChanged, oldEmail, &emailChangedPayload{User: user, OldEmail: oldEmail, NewEmail: newEmail})
+}
+
+func (q *QueuedService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	return q.enqueue(jobTypePasswordExpiry, user.Email, &passwordExpiryPayload{User: user, DaysUntilExpiry: daysUntilExpiry, ExpiryDate: expiryDate, ChangePasswordURL: changePasswordURL})
+}
+
+func (q *QueuedService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	return q.enqueue(jobTypeSecurityAlert, user.Email, &securityAlertPayload{User: user, Title: title, Message: message, Details: details, ActionURL: actionURL, ActionText: actionText})
+}
+
+func (q *QueuedService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	return q.enqueue(jobTypeRateLimitWarning, user.Email, &rateLimitWarningPayload{User: user, ActionType: actionType, CurrentCount: currentCount, MaxCount: maxCount, TimeWindow: timeWindow, UpgradeURL: upgradeURL})
 }
 
 // Verify QueuedService implements Service interface

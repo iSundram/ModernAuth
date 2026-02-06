@@ -4,7 +4,9 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -201,6 +203,38 @@ func (h *EmailTemplateHandler) UpdateTemplate(w http.ResponseWriter, r *http.Req
 		isActive = *req.IsActive
 	}
 
+	existingTemplate, err := h.storage.GetEmailTemplate(r.Context(), tenantID, templateType)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get existing template"})
+		return
+	}
+
+	if existingTemplate != nil {
+		version := &storage.EmailTemplateVersion{
+			TemplateID:   existingTemplate.ID,
+			TenantID:     tenantID,
+			TemplateType: templateType,
+			Version:      1,
+			Subject:      existingTemplate.Subject,
+			HTMLBody:     existingTemplate.HTMLBody,
+			TextBody:     existingTemplate.TextBody,
+		}
+
+		list, err := h.storage.ListEmailTemplateVersions(r.Context(), tenantID, templateType, 1, 0)
+		if err == nil && len(list) > 0 {
+			version.Version = list[0].Version + 1
+		}
+
+		if changeReason := r.URL.Query().Get("change_reason"); changeReason != "" {
+			cr := changeReason
+			version.ChangeReason = &cr
+		}
+
+		if err := h.storage.CreateEmailTemplateVersion(r.Context(), version); err != nil {
+			slog.Warn("Failed to create template version", "error", err)
+		}
+	}
+
 	template := &storage.EmailTemplate{
 		TenantID: tenantID,
 		Type:     templateType,
@@ -215,7 +249,6 @@ func (h *EmailTemplateHandler) UpdateTemplate(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Invalidate cache
 	h.templateService.InvalidateCache(tenantID, email.TemplateType(templateType))
 
 	writeJSON(w, http.StatusOK, templateToResponse(template))
@@ -934,4 +967,608 @@ func (h *EmailTemplateHandler) RemoveSuppression(w http.ResponseWriter, r *http.
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Email removed from suppression list"})
+}
+
+// ============================================================================
+// Email A/B Testing
+// ============================================================================
+
+// EmailABTestRequest represents an A/B test creation request.
+type EmailABTestRequest struct {
+	TemplateType string  `json:"template_type" validate:"required"`
+	Name         string  `json:"name" validate:"required,min=1,max=100"`
+	VariantA     string  `json:"variant_a" validate:"required"`
+	VariantB     string  `json:"variant_b" validate:"required"`
+	WeightA      float64 `json:"weight_a,omitempty"`
+	WeightB      float64 `json:"weight_b,omitempty"`
+}
+
+// EmailABTestResponse represents an A/B test in API responses.
+type EmailABTestResponse struct {
+	ID            string  `json:"id"`
+	TenantID      *string `json:"tenant_id,omitempty"`
+	TemplateType  string  `json:"template_type"`
+	Name          string  `json:"name"`
+	VariantA      string  `json:"variant_a"`
+	VariantB      string  `json:"variant_b"`
+	WeightA       float64 `json:"weight_a"`
+	WeightB       float64 `json:"weight_b"`
+	IsActive      bool    `json:"is_active"`
+	WinnerVariant *string `json:"winner_variant,omitempty"`
+	StartDate     *string `json:"start_date,omitempty"`
+	EndDate       *string `json:"end_date,omitempty"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
+// ListABTests lists all A/B tests.
+func (h *EmailTemplateHandler) ListABTests(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	tests, err := h.storage.ListEmailABTests(r.Context(), tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list A/B tests"})
+		return
+	}
+
+	response := make([]EmailABTestResponse, 0, len(tests))
+	for _, t := range tests {
+		resp := EmailABTestResponse{
+			ID:           t.ID.String(),
+			TemplateType: t.TemplateType,
+			Name:         t.Name,
+			VariantA:     t.VariantA,
+			VariantB:     t.VariantB,
+			WeightA:      t.WeightA,
+			WeightB:      t.WeightB,
+			IsActive:     t.IsActive,
+			CreatedAt:    t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:    t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+		if t.TenantID != nil {
+			tid := t.TenantID.String()
+			resp.TenantID = &tid
+		}
+		if t.WinnerVariant != nil {
+			resp.WinnerVariant = t.WinnerVariant
+		}
+		if t.StartDate != nil {
+			resp.StartDate = t.StartDate
+		}
+		if t.EndDate != nil {
+			resp.EndDate = t.EndDate
+		}
+		response = append(response, resp)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"tests": response})
+}
+
+// CreateABTest creates a new A/B test.
+func (h *EmailTemplateHandler) CreateABTest(w http.ResponseWriter, r *http.Request) {
+	var req EmailABTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	weightA := req.WeightA
+	weightB := req.WeightB
+	if weightA == 0 && weightB == 0 {
+		weightA = 50
+		weightB = 50
+	} else if weightA == 0 {
+		weightA = 100 - weightB
+	} else if weightB == 0 {
+		weightB = 100 - weightA
+	}
+
+	test := &storage.EmailABTest{
+		TenantID:     tenantID,
+		TemplateType: req.TemplateType,
+		Name:         req.Name,
+		VariantA:     req.VariantA,
+		VariantB:     req.VariantB,
+		WeightA:      weightA,
+		WeightB:      weightB,
+		IsActive:     true,
+	}
+
+	if err := h.storage.CreateEmailABTest(r.Context(), test); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create A/B test"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":      test.ID.String(),
+		"message": "A/B test created successfully",
+	})
+}
+
+// GetABTest gets a specific A/B test.
+func (h *EmailTemplateHandler) GetABTest(w http.ResponseWriter, r *http.Request) {
+	testID := chi.URLParam(r, "testId")
+	testUUID, err := uuid.Parse(testID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid test ID"})
+		return
+	}
+
+	test, err := h.storage.GetEmailABTest(r.Context(), testUUID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get A/B test"})
+		return
+	}
+	if test == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "A/B test not found"})
+		return
+	}
+
+	resp := EmailABTestResponse{
+		ID:           test.ID.String(),
+		TemplateType: test.TemplateType,
+		Name:         test.Name,
+		VariantA:     test.VariantA,
+		VariantB:     test.VariantB,
+		WeightA:      test.WeightA,
+		WeightB:      test.WeightB,
+		IsActive:     test.IsActive,
+		CreatedAt:    test.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:    test.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if test.TenantID != nil {
+		tid := test.TenantID.String()
+		resp.TenantID = &tid
+	}
+	if test.WinnerVariant != nil {
+		resp.WinnerVariant = test.WinnerVariant
+	}
+	if test.StartDate != nil {
+		resp.StartDate = test.StartDate
+	}
+	if test.EndDate != nil {
+		resp.EndDate = test.EndDate
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// DeclareWinnerRequest represents a request to declare a winner.
+type DeclareWinnerRequest struct {
+	Variant string `json:"variant" validate:"required,oneof=a b"`
+}
+
+// DeclareWinner declares a winner for an A/B test.
+func (h *EmailTemplateHandler) DeclareABTestWinner(w http.ResponseWriter, r *http.Request) {
+	testID := chi.URLParam(r, "testId")
+	testUUID, err := uuid.Parse(testID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid test ID"})
+		return
+	}
+
+	var req DeclareWinnerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Variant != "a" && req.Variant != "b" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Variant must be 'a' or 'b'"})
+		return
+	}
+
+	test, err := h.storage.GetEmailABTest(r.Context(), testUUID)
+	if err != nil || test == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "A/B test not found"})
+		return
+	}
+
+	test.WinnerVariant = &req.Variant
+	test.IsActive = false
+	now := time.Now().Format("2006-01-02")
+	test.EndDate = &now
+
+	if err := h.storage.UpdateEmailABTest(r.Context(), test); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update A/B test"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message":        "Winner declared successfully",
+		"winner_variant": req.Variant,
+	})
+}
+
+// ============================================================================
+// Email Branding - Advanced
+// ============================================================================
+
+// EmailBrandingAdvancedRequest represents advanced branding settings.
+type EmailBrandingAdvancedRequest struct {
+	SocialLinks *SocialLinks `json:"social_links,omitempty"`
+	CustomCSS   *string      `json:"custom_css,omitempty"`
+	HeaderImage *string      `json:"header_image_url,omitempty"`
+	FontFamily  *string      `json:"font_family,omitempty"`
+	FontURL     *string      `json:"font_family_url,omitempty"`
+}
+
+// SocialLinks represents social media links.
+type SocialLinks struct {
+	Facebook  *string `json:"facebook,omitempty"`
+	Twitter   *string `json:"twitter,omitempty"`
+	LinkedIn  *string `json:"linkedin,omitempty"`
+	Instagram *string `json:"instagram,omitempty"`
+}
+
+// EmailBrandingAdvancedResponse represents advanced branding in API responses.
+type EmailBrandingAdvancedResponse struct {
+	ID          string       `json:"id"`
+	TenantID    *string      `json:"tenant_id,omitempty"`
+	SocialLinks *SocialLinks `json:"social_links,omitempty"`
+	CustomCSS   *string      `json:"custom_css,omitempty"`
+	HeaderImage *string      `json:"header_image_url,omitempty"`
+	FontFamily  *string      `json:"font_family,omitempty"`
+	FontURL     *string      `json:"font_family_url,omitempty"`
+	CreatedAt   string       `json:"created_at"`
+	UpdatedAt   string       `json:"updated_at"`
+}
+
+// GetAdvancedBranding gets advanced email branding settings.
+func (h *EmailTemplateHandler) GetAdvancedBranding(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	branding, err := h.storage.GetEmailBrandingAdvanced(r.Context(), tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get advanced branding"})
+		return
+	}
+
+	resp := EmailBrandingAdvancedResponse{
+		ID:          branding.ID.String(),
+		CustomCSS:   branding.CustomCSS,
+		HeaderImage: branding.HeaderImageURL,
+		FontFamily:  branding.FontFamily,
+		FontURL:     branding.FontFamilyURL,
+		CreatedAt:   branding.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:   branding.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if branding.TenantID != nil {
+		tid := branding.TenantID.String()
+		resp.TenantID = &tid
+	}
+	if branding.SocialLinks != nil {
+		resp.SocialLinks = &SocialLinks{
+			Facebook:  branding.SocialLinks.Facebook,
+			Twitter:   branding.SocialLinks.Twitter,
+			LinkedIn:  branding.SocialLinks.LinkedIn,
+			Instagram: branding.SocialLinks.Instagram,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// UpdateAdvancedBranding updates advanced email branding settings.
+func (h *EmailTemplateHandler) UpdateAdvancedBranding(w http.ResponseWriter, r *http.Request) {
+	var req EmailBrandingAdvancedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+
+	socialLinks := (*storage.EmailSocialLinks)(nil)
+	if req.SocialLinks != nil {
+		socialLinks = &storage.EmailSocialLinks{
+			Facebook:  req.SocialLinks.Facebook,
+			Twitter:   req.SocialLinks.Twitter,
+			LinkedIn:  req.SocialLinks.LinkedIn,
+			Instagram: req.SocialLinks.Instagram,
+		}
+	}
+
+	branding := &storage.EmailBrandingAdvanced{
+		TenantID:       tenantID,
+		SocialLinks:    socialLinks,
+		CustomCSS:      req.CustomCSS,
+		HeaderImageURL: req.HeaderImage,
+		FontFamily:     req.FontFamily,
+		FontFamilyURL:  req.FontURL,
+	}
+
+	if err := h.storage.UpsertEmailBrandingAdvanced(r.Context(), branding); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save advanced branding"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Advanced branding updated successfully"})
+}
+
+// ============================================================================
+// Email Stats Export
+// ============================================================================
+
+// ExportEmailStats exports email statistics.
+func (h *EmailTemplateHandler) ExportEmailStats(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	days := 30
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 365 {
+			days = d
+		}
+	}
+
+	stats, err := h.storage.GetEmailStats(r.Context(), tenantID, days)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get email stats"})
+		return
+	}
+
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=email-stats.csv")
+
+		fmt.Fprintln(w, "Metric,Value")
+		fmt.Fprintf(w, "Total Sent,%d\n", stats.TotalSent)
+		fmt.Fprintf(w, "Total Delivered,%d\n", stats.TotalDelivered)
+		fmt.Fprintf(w, "Total Opened,%d\n", stats.TotalOpened)
+		fmt.Fprintf(w, "Total Clicked,%d\n", stats.TotalClicked)
+		fmt.Fprintf(w, "Total Bounced,%d\n", stats.TotalBounced)
+		fmt.Fprintf(w, "Total Dropped,%d\n", stats.TotalDropped)
+		fmt.Fprintln(w, "\nBy Template,Count")
+		for template, count := range stats.ByTemplate {
+			fmt.Fprintf(w, "%s,%d\n", template, count)
+		}
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=email-stats.json")
+		writeJSON(w, http.StatusOK, stats)
+	}
+}
+
+// ============================================================================
+// Template Import/Export
+// ============================================================================
+
+// ExportTemplates exports all email templates.
+func (h *EmailTemplateHandler) ExportTemplates(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	templates, err := h.storage.ListEmailTemplates(r.Context(), tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to list templates"})
+		return
+	}
+
+	branding, err := h.storage.GetEmailBranding(r.Context(), tenantID)
+	if err != nil {
+		branding = &storage.EmailBranding{}
+	}
+
+	export := map[string]interface{}{
+		"version":     "1.0",
+		"exported_at": time.Now().Format("2006-01-02T15:04:05Z"),
+		"templates":   templates,
+		"branding": map[string]interface{}{
+			"app_name":        branding.AppName,
+			"logo_url":        branding.LogoURL,
+			"primary_color":   branding.PrimaryColor,
+			"secondary_color": branding.SecondaryColor,
+			"company_name":    branding.CompanyName,
+			"support_email":   branding.SupportEmail,
+			"footer_text":     branding.FooterText,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=email-templates.json")
+	writeJSON(w, http.StatusOK, export)
+}
+
+// ImportTemplatesRequest represents a template import request.
+type ImportTemplatesRequest struct {
+	Templates []map[string]interface{} `json:"templates"`
+	Branding  map[string]interface{}   `json:"branding"`
+}
+
+// ImportTemplates imports email templates.
+func (h *EmailTemplateHandler) ImportTemplates(w http.ResponseWriter, r *http.Request) {
+	var req ImportTemplatesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	tenantID := getTenantIDFromContext(r.Context())
+	imported := 0
+	errors := []string{}
+
+	for _, t := range req.Templates {
+		templateType, ok := t["type"].(string)
+		if !ok {
+			errors = append(errors, "Template missing type field")
+			continue
+		}
+
+		subject, _ := t["subject"].(string)
+		htmlBody, _ := t["html_body"].(string)
+		textBody, _ := t["text_body"].(string)
+		isActive := true
+
+		if v, ok := t["is_active"].(bool); ok {
+			isActive = v
+		}
+
+		template := &storage.EmailTemplate{
+			TenantID: tenantID,
+			Type:     templateType,
+			Subject:  subject,
+			HTMLBody: htmlBody,
+			TextBody: &textBody,
+			IsActive: isActive,
+		}
+
+		if err := h.storage.UpsertEmailTemplate(r.Context(), template); err != nil {
+			errors = append(errors, fmt.Sprintf("Failed to import %s: %v", templateType, err))
+			continue
+		}
+		imported++
+	}
+
+	if req.Branding != nil {
+		branding := &storage.EmailBranding{
+			TenantID: tenantID,
+		}
+		if v, ok := req.Branding["app_name"].(string); ok {
+			branding.AppName = v
+		}
+		if v, ok := req.Branding["primary_color"].(string); ok {
+			branding.PrimaryColor = v
+		}
+		if v, ok := req.Branding["secondary_color"].(string); ok {
+			branding.SecondaryColor = v
+		}
+		h.storage.UpsertEmailBranding(r.Context(), branding)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"imported": imported,
+		"errors":   errors,
+		"message":  fmt.Sprintf("Imported %d templates", imported),
+	})
+}
+
+// ============================================================================
+// Preview All Templates
+// ============================================================================
+
+// PreviewAllTemplates returns previews of all templates.
+func (h *EmailTemplateHandler) PreviewAllTemplates(w http.ResponseWriter, r *http.Request) {
+	tenantID := getTenantIDFromContext(r.Context())
+
+	branding, _ := h.storage.GetEmailBranding(r.Context(), tenantID)
+
+	sampleUser := &storage.User{
+		Email:     "preview@example.com",
+		FirstName: ptr("John"),
+		LastName:  ptr("Doe"),
+	}
+
+	previews := make(map[string]map[string]string)
+
+	for _, tt := range email.AllTemplateTypes() {
+		vars := email.NewTemplateVars(sampleUser, branding)
+		subject, htmlBody, textBody, err := h.templateService.RenderTemplate(r.Context(), tenantID, tt, vars)
+		if err != nil {
+			continue
+		}
+		previews[string(tt)] = map[string]string{
+			"subject":   subject,
+			"html_body": htmlBody,
+			"text_body": textBody,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, previews)
+}
+
+func ptr(s string) *string {
+	return &s
+}
+
+// ============================================================================
+// Email Tracking Pixel
+// ============================================================================
+
+// TrackEmailOpen handles the tracking pixel URL.
+// GET /v1/email/track/open/{pixelID}
+func (h *EmailTemplateHandler) TrackEmailOpen(w http.ResponseWriter, r *http.Request) {
+	pixelID := chi.URLParam(r, "pixelID")
+	pixelUUID, err := uuid.Parse(pixelID)
+	if err != nil {
+		http.ServeFile(w, r, "")
+		return
+	}
+
+	pixel, err := h.storage.GetEmailTrackingPixel(r.Context(), pixelUUID)
+	if err != nil || pixel == nil || pixel.IsOpened {
+		http.ServeFile(w, r, "")
+		return
+	}
+
+	if err := h.storage.MarkTrackingPixelOpened(r.Context(), pixelUUID); err != nil {
+		slog.Warn("Failed to mark tracking pixel as opened", "error", err)
+	}
+
+	var jobID *string
+	if pixel.EmailJobID != nil {
+		s := pixel.EmailJobID.String()
+		jobID = &s
+	}
+
+	event := &storage.EmailEvent{
+		TenantID:     pixel.TenantID,
+		JobID:        jobID,
+		TemplateType: pixel.TemplateID,
+		EventType:    "opened",
+		Recipient:    pixel.Recipient,
+		CreatedAt:    time.Now(),
+	}
+	h.storage.CreateEmailEvent(r.Context(), event)
+
+	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.Header().Set("Surrogate-Control", "no-store")
+
+	// 1x1 transparent GIF
+	transparentGIF := []byte{
+		0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00,
+		0x80, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x21,
+		0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00,
+		0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
+		0x01, 0x00, 0x3b,
+	}
+	w.Write(transparentGIF)
+}
+
+// TrackEmailClick handles click tracking redirects.
+// GET /v1/email/track/click/{trackingID}
+func (h *EmailTemplateHandler) TrackEmailClick(w http.ResponseWriter, r *http.Request) {
+	trackingID := chi.URLParam(r, "trackingID")
+	originalURL := r.URL.Query().Get("url")
+
+	if originalURL == "" {
+		http.Error(w, "Missing URL parameter", http.StatusBadRequest)
+		return
+	}
+
+	event := &storage.EmailEvent{
+		TenantID:     nil,
+		TemplateType: trackingID,
+		EventType:    "clicked",
+		Recipient:    "",
+		CreatedAt:    time.Now(),
+	}
+	h.storage.CreateEmailEvent(r.Context(), event)
+
+	http.Redirect(w, r, originalURL, http.StatusFound)
 }

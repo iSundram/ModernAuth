@@ -166,10 +166,19 @@ func (s *AuthService) SendEmailMFACode(ctx context.Context, userID uuid.UUID) er
 		return err
 	}
 
-	// Log that email MFA code was generated (code not logged for security)
+	// Send email with code via email service
+	if s.emailService != nil {
+		if emailService, ok := s.emailService.(interface {
+			SendMFACodeEmail(context.Context, string, string) error
+		}); ok {
+			if err := emailService.SendMFACodeEmail(ctx, user.Email, code); err != nil {
+				s.logger.Error("Failed to send MFA code email", "error", err, "user_id", userID)
+				// Don't return error - challenge is created, user can request resend
+			}
+		}
+	}
+
 	s.logger.Info("Email MFA code generated", "user_id", userID)
-	// TODO: Send email with code via email service
-	// For now, code is stored in MFA challenge for verification
 	s.logAuditEvent(ctx, &userID, nil, "mfa.email_code_sent", nil, nil, nil)
 	return nil
 }

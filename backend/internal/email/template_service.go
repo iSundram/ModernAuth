@@ -17,16 +17,22 @@ import (
 type TemplateType string
 
 const (
-	TemplateVerification    TemplateType = "verification"
-	TemplatePasswordReset   TemplateType = "password_reset"
-	TemplateWelcome         TemplateType = "welcome"
-	TemplateLoginAlert      TemplateType = "login_alert"
-	TemplateInvitation      TemplateType = "invitation"
-	TemplateMFAEnabled      TemplateType = "mfa_enabled"
-	TemplateMFACode         TemplateType = "mfa_code"
-	TemplateLowBackupCodes  TemplateType = "low_backup_codes"
-	TemplatePasswordChanged TemplateType = "password_changed"
-	TemplateSessionRevoked  TemplateType = "session_revoked"
+	TemplateVerification       TemplateType = "verification"
+	TemplatePasswordReset      TemplateType = "password_reset"
+	TemplateWelcome            TemplateType = "welcome"
+	TemplateLoginAlert         TemplateType = "login_alert"
+	TemplateInvitation         TemplateType = "invitation"
+	TemplateMFAEnabled         TemplateType = "mfa_enabled"
+	TemplateMFACode            TemplateType = "mfa_code"
+	TemplateLowBackupCodes     TemplateType = "low_backup_codes"
+	TemplatePasswordChanged    TemplateType = "password_changed"
+	TemplateSessionRevoked     TemplateType = "session_revoked"
+	TemplateAccountDeactivated TemplateType = "account_deactivated"
+	TemplateEmailChanged       TemplateType = "email_changed"
+	TemplatePasswordExpiry     TemplateType = "password_expiry"
+	TemplateSecurityAlert      TemplateType = "security_alert"
+	TemplateRateLimitWarning   TemplateType = "rate_limit_warning"
+	TemplateMagicLink          TemplateType = "magic_link"
 )
 
 // AllTemplateTypes returns all available template types.
@@ -38,9 +44,16 @@ func AllTemplateTypes() []TemplateType {
 		TemplateLoginAlert,
 		TemplateInvitation,
 		TemplateMFAEnabled,
+		TemplateMFACode,
 		TemplateLowBackupCodes,
 		TemplatePasswordChanged,
 		TemplateSessionRevoked,
+		TemplateAccountDeactivated,
+		TemplateEmailChanged,
+		TemplatePasswordExpiry,
+		TemplateSecurityAlert,
+		TemplateRateLimitWarning,
+		TemplateMagicLink,
 	}
 }
 
@@ -279,6 +292,54 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 		}
 		textBody = "Hi " + vars.FullName + ",\n\nYour session has been terminated.\n\nReason: " + vars.Reason + "\n\nIf you didn't do this, please check your account security.\n\nThanks,\nThe " + vars.AppName + " Team"
 
+	case TemplateAccountDeactivated:
+		subject = "Account Deactivated"
+		htmlBody, err = s.renderString(accountDeactivatedEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nYour account has been deactivated.\n\nReason: " + vars.Reason + "\n\nIf you believe this was a mistake, please contact our support team.\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateEmailChanged:
+		subject = "Email Address Changed"
+		htmlBody, err = s.renderString(emailChangedEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nYour email address has been changed from " + vars.OldEmail + " to " + vars.NewEmail + ".\n\nIf you didn't make this change, please contact our support team immediately.\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplatePasswordExpiry:
+		subject = "Password Expiring Soon"
+		htmlBody, err = s.renderString(passwordExpiryEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nYour password will expire in " + vars.DaysUntilExpiry + " days on " + vars.ExpiryDate + ".\n\nPlease change your password before it expires.\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateSecurityAlert:
+		subject = vars.AlertTitle
+		htmlBody, err = s.renderString(securityAlertEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\n" + vars.AlertTitle + "\n\n" + vars.AlertMessage + "\n\n" + vars.AlertDetails + "\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateRateLimitWarning:
+		subject = "Rate Limit Approaching"
+		htmlBody, err = s.renderString(rateLimitWarningEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi " + vars.FullName + ",\n\nYou're approaching the rate limit for " + vars.ActionType + " actions.\n\nCurrent Usage: " + vars.CurrentCount + " / " + vars.MaxCount + "\n\n" + vars.TimeWindow + "\n\nThanks,\nThe " + vars.AppName + " Team"
+
+	case TemplateMagicLink:
+		subject = "Sign in to your account"
+		htmlBody, err = s.renderString(magicLinkEmailHTML, vars)
+		if err != nil {
+			return "", "", "", err
+		}
+		textBody = "Hi,\n\nClick the link below to sign in:\n\n" + vars.MagicLinkURL + "\n\nThis link will expire in 15 minutes.\n\nThanks,\nThe " + vars.AppName + " Team"
+
 	default:
 		s.logger.Warn("Unknown template type", "type", templateType)
 		return "", "", "", nil
@@ -305,4 +366,53 @@ func (s *TemplateService) InvalidateAllCache() {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 	s.cache = make(map[string]*cachedTemplate)
+}
+
+// PrewarmCache pre-warms the template cache for a tenant.
+func (s *TemplateService) PrewarmCache(ctx context.Context, tenantID *uuid.UUID) {
+	for _, templateType := range AllTemplateTypes() {
+		go func(tt TemplateType) {
+			_, _ = s.GetTemplate(ctx, tenantID, tt)
+		}(templateType)
+	}
+	_, _ = s.GetBranding(ctx, tenantID)
+}
+
+// DetectLanguage detects the language from various sources.
+func DetectLanguage(ctx context.Context, acceptLanguage, userLanguage string) string {
+	if userLanguage != "" {
+		return extractPrimaryLanguage(userLanguage)
+	}
+
+	if acceptLanguage != "" {
+		return extractPrimaryLanguage(acceptLanguage)
+	}
+
+	return "en"
+}
+
+func extractPrimaryLanguage(lang string) string {
+	if len(lang) >= 2 {
+		return lang[:2]
+	}
+	return "en"
+}
+
+// GetLocalizedTemplate retrieves a template with language-specific override.
+func (s *TemplateService) GetLocalizedTemplate(ctx context.Context, tenantID *uuid.UUID, templateType TemplateType, langCode string) (*storage.EmailTemplate, error) {
+	if langCode == "" || langCode == "en" {
+		return s.GetTemplate(ctx, tenantID, templateType)
+	}
+
+	localizedType := TemplateType(string(templateType) + "_" + langCode)
+	template, err := s.storage.GetEmailTemplate(ctx, tenantID, string(localizedType))
+	if err != nil {
+		return nil, err
+	}
+
+	if template != nil && template.IsActive {
+		return template, nil
+	}
+
+	return s.GetTemplate(ctx, tenantID, templateType)
 }

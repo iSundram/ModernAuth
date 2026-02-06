@@ -604,6 +604,69 @@ export interface EmailSuppression {
   created_at: string;
 }
 
+export interface EmailTemplateExport {
+  version: string;
+  exported_at: string;
+  templates: EmailTemplate[];
+  branding: EmailBranding;
+}
+
+export interface EmailABTest {
+  id: string;
+  template_type: string;
+  name: string;
+  variant_a: string;
+  variant_b: string;
+  weight_a: number;
+  weight_b: number;
+  is_active: boolean;
+  start_date?: string;
+  end_date?: string;
+  winner_variant?: string;
+  created_at: string;
+}
+
+export interface EmailABTestResult {
+  variant: string;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounce_rate: number;
+  open_rate: number;
+  click_rate: number;
+}
+
+export interface EmailBrandingAdvanced {
+  id?: string;
+  tenant_id?: string;
+  social_links?: {
+    facebook?: string;
+    twitter?: string;
+    linkedin?: string;
+    instagram?: string;
+  };
+  custom_css?: string;
+  header_image_url?: string;
+  font_family?: string;
+  font_family_url?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmailPreviewRequest {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  custom_vars?: Record<string, string>;
+}
+
+export interface EmailPreviewResponse {
+  subject: string;
+  html_body: string;
+  text_body: string;
+}
+
 // ============================================================================
 // Magic Link Authentication
 // ============================================================================

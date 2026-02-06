@@ -141,14 +141,14 @@ func (s *ConsoleService) SendMFAEnabledEmail(ctx context.Context, user *storage.
 }
 
 // SendMFACodeEmail logs an MFA code email to console.
-func (s *ConsoleService) SendMFACodeEmail(ctx context.Context, userID, code string) error {
+func (s *ConsoleService) SendMFACodeEmail(ctx context.Context, email, code string) error {
 	s.logger.Info("MFA Code Email",
-		"user_id", userID,
+		"to", email,
 		"subject", "Your verification code",
 		"code", "******",
 	)
 	fmt.Printf("\n=== MFA CODE EMAIL ===\n")
-	fmt.Printf("To User ID: %s\n", userID)
+	fmt.Printf("To: %s\n", email)
 	fmt.Printf("Subject: Your verification code\n")
 	fmt.Printf("Code: ******\n")
 	fmt.Printf("=====================\n")
@@ -199,7 +199,7 @@ func (s *ConsoleService) SendSessionRevokedEmail(ctx context.Context, user *stor
 }
 
 // SendMagicLink logs a magic link email to console.
-func (s *ConsoleService) SendMagicLink(email string, magicLinkURL string) error {
+func (s *ConsoleService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
 	s.logger.Info("Magic Link Email",
 		"to", email,
 		"subject", "Sign in to your account",
@@ -210,6 +210,87 @@ func (s *ConsoleService) SendMagicLink(email string, magicLinkURL string) error 
 	fmt.Printf("Subject: Sign in to your account\n")
 	fmt.Printf("Magic Link URL: [Use email provider logs for actual URL]\n")
 	fmt.Printf("========================\n\n")
+	return nil
+}
+
+// SendAccountDeactivatedEmail logs an account deactivation email to console.
+func (s *ConsoleService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	s.logger.Info("Account Deactivated Email",
+		"to", user.Email,
+		"subject", "Account Deactivated",
+		"reason", reason,
+	)
+	fmt.Printf("\n=== ACCOUNT DEACTIVATED EMAIL ===\n")
+	fmt.Printf("To: %s\n", user.Email)
+	fmt.Printf("Subject: Account Deactivated\n")
+	fmt.Printf("Reason: %s\n", reason)
+	fmt.Printf("=================================\n\n")
+	return nil
+}
+
+// SendEmailChangedEmail logs an email change notification to console.
+func (s *ConsoleService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	s.logger.Info("Email Changed Email",
+		"to", oldEmail,
+		"subject", "Email Address Changed",
+		"old_email", oldEmail,
+		"new_email", newEmail,
+	)
+	fmt.Printf("\n=== EMAIL CHANGED EMAIL ===\n")
+	fmt.Printf("To: %s\n", oldEmail)
+	fmt.Printf("Subject: Email Address Changed\n")
+	fmt.Printf("Old Email: %s\n", oldEmail)
+	fmt.Printf("New Email: %s\n", newEmail)
+	fmt.Printf("=============================\n\n")
+	return nil
+}
+
+// SendPasswordExpiryEmail logs a password expiry warning to console.
+func (s *ConsoleService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	s.logger.Info("Password Expiry Email",
+		"to", user.Email,
+		"subject", "Password Expiring Soon",
+		"days_until_expiry", daysUntilExpiry,
+	)
+	fmt.Printf("\n=== PASSWORD EXPIRY EMAIL ===\n")
+	fmt.Printf("To: %s\n", user.Email)
+	fmt.Printf("Subject: Password Expiring Soon\n")
+	fmt.Printf("Days Until Expiry: %s\n", daysUntilExpiry)
+	fmt.Printf("Expiry Date: %s\n", expiryDate)
+	fmt.Printf("=============================\n\n")
+	return nil
+}
+
+// SendSecurityAlertEmail logs a security alert to console.
+func (s *ConsoleService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	s.logger.Info("Security Alert Email",
+		"to", user.Email,
+		"subject", title,
+		"alert_title", title,
+	)
+	fmt.Printf("\n=== SECURITY ALERT EMAIL ===\n")
+	fmt.Printf("To: %s\n", user.Email)
+	fmt.Printf("Subject: %s\n", title)
+	fmt.Printf("Message: %s\n", message)
+	fmt.Printf("Details: %s\n", details)
+	fmt.Printf("==============================\n\n")
+	return nil
+}
+
+// SendRateLimitWarningEmail logs a rate limit warning to console.
+func (s *ConsoleService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	s.logger.Info("Rate Limit Warning Email",
+		"to", user.Email,
+		"subject", "Rate Limit Approaching",
+		"action", actionType,
+	)
+	fmt.Printf("\n=== RATE LIMIT WARNING EMAIL ===\n")
+	fmt.Printf("To: %s\n", user.Email)
+	fmt.Printf("Subject: Rate Limit Approaching\n")
+	fmt.Printf("Action Type: %s\n", actionType)
+	fmt.Printf("Current: %s / %s\n", currentCount, maxCount)
+	fmt.Printf("Time Window: %s\n", timeWindow)
+	fmt.Printf("===================================\n\n")
 	return nil
 }
 

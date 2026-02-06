@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, Edit2, Eye, Save, RotateCcw, 
-  FileText, Send, History, AlertCircle, Check
+  FileText, Send, History, AlertCircle, Check,
+  Search, Copy, Download,
+  Undo, Redo, Smartphone, Monitor
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, Modal, LoadingBar, Badge } from '../../components/ui';
@@ -11,17 +13,36 @@ import { adminService } from '../../api/services';
 import type { EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailTemplateVersion } from '../../types';
 
 // Template type labels - used as fallback if backend description is missing
-const templateLabels: Record<string, { name: string; description: string }> = {
-  welcome: { name: 'Welcome Email', description: 'Sent when a new user registers' },
-  verification: { name: 'Email Verification', description: 'Email verification link' },
-  password_reset: { name: 'Password Reset', description: 'Password reset instructions' },
-  password_changed: { name: 'Password Changed', description: 'Confirmation of password change' },
-  mfa_enabled: { name: 'MFA Enabled', description: 'Confirmation of MFA setup' },
-  mfa_disabled: { name: 'MFA Disabled', description: 'Confirmation of MFA removal' },
-  login_alert: { name: 'Login Alert', description: 'New login from unknown device' },
-  invitation: { name: 'Invitation', description: 'User invitation to join' },
-  session_revoked: { name: 'Session Revoked', description: 'Session revocation notice' },
+const templateLabels: Record<string, { name: string; description: string; category: string }> = {
+  welcome: { name: 'Welcome Email', description: 'Sent when a new user registers', category: 'onboarding' },
+  verification: { name: 'Email Verification', description: 'Email verification link', category: 'security' },
+  password_reset: { name: 'Password Reset', description: 'Password reset instructions', category: 'security' },
+  password_changed: { name: 'Password Changed', description: 'Confirmation of password change', category: 'security' },
+  password_expiry: { name: 'Password Expiry', description: 'Warning before password expires', category: 'security' },
+  mfa_enabled: { name: 'MFA Enabled', description: 'Confirmation of MFA setup', category: 'security' },
+  mfa_disabled: { name: 'MFA Disabled', description: 'Confirmation of MFA removal', category: 'security' },
+  mfa_code: { name: 'MFA Code', description: 'Verification code for login', category: 'security' },
+  login_alert: { name: 'Login Alert', description: 'New login from unknown device', category: 'security' },
+  security_alert: { name: 'Security Alert', description: 'Generic security notifications', category: 'security' },
+  invitation: { name: 'Invitation', description: 'User invitation to join', category: 'tenant' },
+  session_revoked: { name: 'Session Revoked', description: 'Session revocation notice', category: 'security' },
+  magic_link: { name: 'Magic Link', description: 'Passwordless login link', category: 'authentication' },
+  account_deactivated: { name: 'Account Deactivated', description: 'Account deactivation notice', category: 'account' },
+  email_changed: { name: 'Email Changed', description: 'Email address change confirmation', category: 'account' },
+  rate_limit_warning: { name: 'Rate Limit Warning', description: 'Rate limit approaching notification', category: 'system' },
+  low_backup_codes: { name: 'Low Backup Codes', description: 'Warning about remaining backup codes', category: 'security' },
 };
+
+// Template categories for filtering
+const templateCategories = [
+  { id: 'all', name: 'All Templates' },
+  { id: 'security', name: 'Security' },
+  { id: 'authentication', name: 'Authentication' },
+  { id: 'account', name: 'Account' },
+  { id: 'onboarding', name: 'Onboarding' },
+  { id: 'tenant', name: 'Tenant' },
+  { id: 'system', name: 'System' },
+];
 
 export function AdminEmailTemplatesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
@@ -34,6 +55,16 @@ export function AdminEmailTemplatesPage() {
     html_body: '',
     text_body: '',
   });
+  
+  // New state for enhanced features
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [copiedVariable, setCopiedVariable] = useState<string | null>(null);
+  
+  // Undo/Redo history
+  const [history, setHistory] = useState<Array<typeof editData>>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   // New state for test email
   const [testEmailModal, setTestEmailModal] = useState(false);
@@ -64,6 +95,48 @@ export function AdminEmailTemplatesPage() {
     queryKey: ['email-template-variables'],
     queryFn: () => adminService.getEmailTemplateVariables(),
   });
+
+  // Filter templates by search and category
+  const filteredTemplates = templates.filter(template => {
+    const config = templateLabels[template.type];
+    const matchesSearch = searchQuery === '' || 
+      (config?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+      template.type.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || config?.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Undo/Redo handlers
+  const saveToHistory = useCallback((newData: typeof editData) => {
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      return [...newHistory, newData];
+    });
+    setHistoryIndex(prev => prev + 1);
+    setEditData(newData);
+  }, [historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex(prev => prev - 1);
+      setEditData(history[historyIndex - 1]);
+    }
+  }, [history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(prev => prev + 1);
+      setEditData(history[historyIndex + 1]);
+    }
+  }, [history, historyIndex]);
+
+  // Copy variable to clipboard
+  const handleCopyVariable = useCallback((variable: string) => {
+    navigator.clipboard.writeText(variable);
+    setCopiedVariable(variable);
+    setTimeout(() => setCopiedVariable(null), 2000);
+    showToast({ title: 'Copied', message: `${variable} copied to clipboard`, type: 'success' });
+  }, [showToast]);
 
   // Update mutation
   const updateMutation = useMutation({
@@ -127,6 +200,8 @@ export function AdminEmailTemplatesPage() {
     setLoadingTemplate(true);
     setSelectedType(templateSummary.type);
     setValidationErrors([]);
+    setHistory([]);
+    setHistoryIndex(-1);
     try {
       const fullTemplate = await adminService.getEmailTemplate(templateSummary.type);
       setSelectedTemplate(fullTemplate);
@@ -135,6 +210,12 @@ export function AdminEmailTemplatesPage() {
         html_body: fullTemplate.html_body,
         text_body: fullTemplate.text_body || '',
       });
+      setHistory([{
+        subject: fullTemplate.subject,
+        html_body: fullTemplate.html_body,
+        text_body: fullTemplate.text_body || '',
+      }]);
+      setHistoryIndex(0);
       setEditMode(true);
     } catch (error) {
       showToast({ 
@@ -145,6 +226,15 @@ export function AdminEmailTemplatesPage() {
     } finally {
       setLoadingTemplate(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!selectedTemplate) return;
+    saveToHistory(editData);
+    updateMutation.mutate({
+      type: selectedTemplate.type,
+      data: editData,
+    });
   };
 
   const handlePreview = async (templateSummary: EmailTemplateSummary) => {
@@ -158,14 +248,6 @@ export function AdminEmailTemplatesPage() {
         type: 'error' 
       });
     }
-  };
-
-  const handleSave = () => {
-    if (!selectedTemplate) return;
-    updateMutation.mutate({
-      type: selectedTemplate.type,
-      data: editData,
-    });
   };
 
   // Validate template before save
@@ -245,8 +327,33 @@ export function AdminEmailTemplatesPage() {
         </p>
       </div>
 
+      {/* Search and Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex gap-2 flex-wrap">
+          {templateCategories.map(cat => (
+            <Button
+              key={cat.id}
+              variant={selectedCategory === cat.id ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setSelectedCategory(cat.id)}
+            >
+              {cat.name}
+            </Button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" size={16} />
+          <Input
+            placeholder="Search templates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      </div>
+
       {/* Template List */}
-      {!isLoading && templates.length === 0 ? (
+      {!isLoading && filteredTemplates.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
             <Mail size={48} className="mx-auto text-[var(--color-text-muted)] mb-4" />
@@ -255,87 +362,89 @@ export function AdminEmailTemplatesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {templates.map((template) => {
+          {filteredTemplates.map((template) => {
             const config = templateLabels[template.type] || { 
               name: template.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
-              description: template.description || 'Email template' 
+              description: template.description || 'Email template',
+              category: 'system'
             };
             return (
               <Card key={template.type} className="hover:border-[var(--color-primary)] transition-colors">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
-                      <Mail size={18} className="text-[#D4D4D4]" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-[var(--color-text-primary)]">
-                          {config.name}
-                        </h3>
-                        {template.has_custom && (
-                          <Badge variant="primary" size="sm">Custom</Badge>
-                        )}
-                        {!template.is_active && (
-                          <Badge variant="warning" size="sm">Inactive</Badge>
-                        )}
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
+                        <Mail size={18} className="text-[#D4D4D4]" />
                       </div>
-                      <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-                        {template.description || config.description}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-medium text-[var(--color-text-primary)]">
+                            {config.name}
+                          </h3>
+                          <Badge variant="default" size="sm">{config.category}</Badge>
+                          {template.has_custom && (
+                            <Badge variant="primary" size="sm">Custom</Badge>
+                          )}
+                          {!template.is_active && (
+                            <Badge variant="warning" size="sm">Inactive</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                          {template.description || config.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handlePreview(template)}
-                      title="Preview"
-                    >
-                      <Eye size={16} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(template)}
-                      isLoading={loadingTemplate && selectedType === template.type}
-                      title="Edit"
-                    >
-                      <Edit2 size={16} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleTestEmail(template.type)}
-                      title="Send Test Email"
-                    >
-                      <Send size={16} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleVersionHistory(template.type)}
-                      title="Version History"
-                    >
-                      <History size={16} />
-                    </Button>
-                    {template.has_custom && (
+                    <div className="flex gap-1 flex-wrap">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => resetMutation.mutate(template.type)}
-                        title="Reset to default"
-                        className="text-yellow-500"
+                        onClick={() => handlePreview(template)}
+                        title="Preview"
                       >
-                        <RotateCcw size={16} />
+                        <Eye size={16} />
                       </Button>
-                    )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(template)}
+                        isLoading={loadingTemplate && selectedType === template.type}
+                        title="Edit"
+                      >
+                        <Edit2 size={16} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleTestEmail(template.type)}
+                        title="Send Test Email"
+                      >
+                        <Send size={16} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleVersionHistory(template.type)}
+                        title="Version History"
+                      >
+                        <History size={16} />
+                      </Button>
+                      {template.has_custom && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => resetMutation.mutate(template.type)}
+                          title="Reset to default"
+                          className="text-yellow-500"
+                        >
+                          <RotateCcw size={16} />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -349,28 +458,82 @@ export function AdminEmailTemplatesPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-            Use these variables in your templates. They will be replaced with actual values when emails are sent.
+            Click on any variable to copy it to your clipboard. Use these variables in your templates.
           </p>
           
           {variables && (
             <div className="space-y-6">
+              {/* Common Variables */}
+              <div>
+                <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-2">Common Variables</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    { name: 'FullName', description: 'User\'s full name' },
+                    { name: 'FirstName', description: 'User\'s first name' },
+                    { name: 'LastName', description: 'User\'s last name' },
+                    { name: 'Email', description: 'User\'s email address' },
+                    { name: 'AppName', description: 'Application name' },
+                    { name: 'CurrentYear', description: 'Current year' },
+                    { name: 'CurrentDate', description: 'Current date' },
+                    { name: 'CurrentTime', description: 'Current time' },
+                    { name: 'UnsubscribeURL', description: 'Unsubscribe link' },
+                  ].map((variable) => {
+                    const varName = `{{.${variable.name}}}`;
+                    const isCopied = copiedVariable === varName;
+                    return (
+                      <div 
+                        key={variable.name}
+                        onClick={() => handleCopyVariable(varName)}
+                        className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)] cursor-pointer hover:border-[var(--color-primary)] transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <code className="text-sm font-mono text-[var(--color-primary)]">
+                            {varName}
+                          </code>
+                          {isCopied ? (
+                            <Check size={14} className="text-green-500" />
+                          ) : (
+                            <Copy size={14} className="text-[var(--color-text-muted)]" />
+                          )}
+                        </div>
+                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                          {variable.description}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* User Variables */}
               <div>
                 <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-2">User Variables</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {variables.user?.map((variable) => (
-                    <div 
-                      key={variable.name}
-                      className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]"
-                    >
-                      <code className="text-sm font-mono text-[var(--color-primary)]">
-                        {`{{.User.${variable.name}}}`}
-                      </code>
-                      <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                        {variable.description}
-                      </p>
-                    </div>
-                  ))}
+                  {variables.user?.map((variable) => {
+                    const varName = `{{.${variable.name}}}`;
+                    const isCopied = copiedVariable === varName;
+                    return (
+                      <div 
+                        key={variable.name}
+                        onClick={() => handleCopyVariable(varName)}
+                        className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)] cursor-pointer hover:border-[var(--color-primary)] transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <code className="text-sm font-mono text-[var(--color-primary)]">
+                            {varName}
+                          </code>
+                          {isCopied ? (
+                            <Check size={14} className="text-green-500" />
+                          ) : (
+                            <Copy size={14} className="text-[var(--color-text-muted)]" />
+                          )}
+                        </div>
+                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                          {variable.description}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -378,19 +541,31 @@ export function AdminEmailTemplatesPage() {
               <div>
                 <h4 className="text-sm font-medium text-[var(--color-text-primary)] mb-2">Branding Variables</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {variables.branding?.map((variable) => (
-                    <div 
-                      key={variable.name}
-                      className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]"
-                    >
-                      <code className="text-sm font-mono text-[var(--color-primary)]">
-                        {`{{.Branding.${variable.name}}}`}
-                      </code>
-                      <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                        {variable.description}
-                      </p>
-                    </div>
-                  ))}
+                  {variables.branding?.map((variable) => {
+                    const varName = `{{.${variable.name}}}`;
+                    const isCopied = copiedVariable === varName;
+                    return (
+                      <div 
+                        key={variable.name}
+                        onClick={() => handleCopyVariable(varName)}
+                        className="p-3 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)] cursor-pointer hover:border-[var(--color-primary)] transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <code className="text-sm font-mono text-[var(--color-primary)]">
+                            {varName}
+                          </code>
+                          {isCopied ? (
+                            <Check size={14} className="text-green-500" />
+                          ) : (
+                            <Copy size={14} className="text-[var(--color-text-muted)]" />
+                          )}
+                        </div>
+                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                          {variable.description}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -405,19 +580,31 @@ export function AdminEmailTemplatesPage() {
                         <div key={templateType}>
                           <p className="text-xs text-[var(--color-text-muted)] mb-2 capitalize">{templateType.replace(/_/g, ' ')}:</p>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {vars.map((variable) => (
-                              <div 
-                                key={`${templateType}-${variable.name}`}
-                                className="p-2 rounded bg-[var(--color-surface-hover)] border border-[var(--color-border)]"
-                              >
-                                <code className="text-xs font-mono text-[var(--color-primary)]">
-                                  {`{{.Context.${variable.name}}}`}
-                                </code>
-                                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                                  {variable.description}
-                                </p>
-                              </div>
-                            ))}
+                            {vars.map((variable) => {
+                              const varName = `{{.${variable.name}}}`;
+                              const isCopied = copiedVariable === varName;
+                              return (
+                                <div 
+                                  key={`${templateType}-${variable.name}`}
+                                  onClick={() => handleCopyVariable(varName)}
+                                  className="p-2 rounded bg-[var(--color-surface-hover)] border border-[var(--color-border)] cursor-pointer hover:border-[var(--color-primary)] transition-colors"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <code className="text-xs font-mono text-[var(--color-primary)]">
+                                      {varName}
+                                    </code>
+                                    {isCopied ? (
+                                      <Check size={12} className="text-green-500" />
+                                    ) : (
+                                      <Copy size={12} className="text-[var(--color-text-muted)]" />
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                                    {variable.description}
+                                  </p>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -433,7 +620,7 @@ export function AdminEmailTemplatesPage() {
       {/* Edit Modal */}
       <Modal
         isOpen={editMode && !!selectedTemplate}
-        onClose={() => { setEditMode(false); setSelectedTemplate(null); }}
+        onClose={() => { setEditMode(false); setSelectedTemplate(null); setHistory([]); setHistoryIndex(-1); }}
         title={`Edit Template: ${templateLabels[selectedTemplate?.type || '']?.name || selectedTemplate?.type}`}
         size="xl"
       >
@@ -441,17 +628,39 @@ export function AdminEmailTemplatesPage() {
           <Input
             label="Subject"
             value={editData.subject}
-            onChange={(e) => setEditData({ ...editData, subject: e.target.value })}
+            onChange={(e) => saveToHistory({ ...editData, subject: e.target.value })}
             placeholder="Email subject line"
           />
 
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">
-              HTML Body
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-[var(--color-text-primary)]">
+                HTML Body
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  title="Undo"
+                >
+                  <Undo size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  title="Redo"
+                >
+                  <Redo size={14} />
+                </Button>
+              </div>
+            </div>
             <textarea
               value={editData.html_body}
-              onChange={(e) => setEditData({ ...editData, html_body: e.target.value })}
+              onChange={(e) => saveToHistory({ ...editData, html_body: e.target.value })}
               className="w-full h-64 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               placeholder="HTML template content..."
             />
@@ -463,7 +672,7 @@ export function AdminEmailTemplatesPage() {
             </label>
             <textarea
               value={editData.text_body}
-              onChange={(e) => setEditData({ ...editData, text_body: e.target.value })}
+              onChange={(e) => saveToHistory({ ...editData, text_body: e.target.value })}
               className="w-full h-32 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               placeholder="Plain text fallback..."
             />
@@ -487,7 +696,7 @@ export function AdminEmailTemplatesPage() {
           <div className="flex gap-3 pt-2">
             <Button 
               variant="ghost" 
-              onClick={() => { setEditMode(false); setSelectedTemplate(null); setValidationErrors([]); }}
+              onClick={() => { setEditMode(false); setSelectedTemplate(null); setHistory([]); setHistoryIndex(-1); }}
               className="flex-1"
             >
               Cancel
@@ -520,11 +729,57 @@ export function AdminEmailTemplatesPage() {
         title="Email Preview"
         size="xl"
       >
-        <div className="bg-white rounded-lg border border-[var(--color-border)] overflow-hidden">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex gap-2">
+            <Button
+              variant={previewDevice === 'desktop' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setPreviewDevice('desktop')}
+            >
+              <Monitor size={14} className="mr-1" />
+              Desktop
+            </Button>
+            <Button
+              variant={previewDevice === 'mobile' ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setPreviewDevice('mobile')}
+            >
+              <Smartphone size={14} className="mr-1" />
+              Mobile
+            </Button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const blob = new Blob([previewHtml || ''], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'email-preview.html';
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            <Download size={14} className="mr-1" />
+            Download
+          </Button>
+        </div>
+        <div 
+          className="bg-white rounded-lg border border-[var(--color-border)] overflow-hidden transition-all"
+          style={{ 
+            maxWidth: previewDevice === 'mobile' ? '375px' : '100%',
+            margin: previewDevice === 'mobile' ? '0 auto' : undefined
+          }}
+        >
           <iframe
             srcDoc={previewHtml || ''}
             className="w-full h-[500px] border-0"
             title="Email Preview"
+            style={{ 
+              transform: previewDevice === 'mobile' ? 'scale(0.9)' : 'none',
+              transformOrigin: 'top center'
+            }}
           />
         </div>
       </Modal>

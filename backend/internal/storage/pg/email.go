@@ -153,11 +153,11 @@ func (s *PostgresStorage) GetEmailBranding(ctx context.Context, tenantID *uuid.U
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Return default branding
+			// Return default branding (matches templates.go DefaultPrimaryColor/DefaultSecondaryColor)
 			return &storage.EmailBranding{
 				AppName:        "ModernAuth",
-				PrimaryColor:   "#667eea",
-				SecondaryColor: "#764ba2",
+				PrimaryColor:   "#2B2B2B",
+				SecondaryColor: "#B3B3B3",
 			}, nil
 		}
 		return nil, err
@@ -665,4 +665,241 @@ func (s *PostgresStorage) ListEmailSuppressions(ctx context.Context, tenantID *u
 		suppressions = append(suppressions, sup)
 	}
 	return suppressions, rows.Err()
+}
+
+// ========== Email A/B Testing Storage ==========
+
+// ListEmailABTests lists all A/B tests for a tenant.
+func (s *PostgresStorage) ListEmailABTests(ctx context.Context, tenantID *uuid.UUID) ([]*storage.EmailABTest, error) {
+	query := `
+		SELECT id, tenant_id, template_type, name, variant_a, variant_b, weight_a, weight_b, 
+		       is_active, start_date, end_date, winner_variant, created_at, updated_at
+		FROM email_ab_tests
+		WHERE tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL)
+		ORDER BY created_at DESC
+	`
+	rows, err := s.pool.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tests []*storage.EmailABTest
+	for rows.Next() {
+		t := &storage.EmailABTest{}
+		if err := rows.Scan(
+			&t.ID, &t.TenantID, &t.TemplateType, &t.Name, &t.VariantA, &t.VariantB,
+			&t.WeightA, &t.WeightB, &t.IsActive, &t.StartDate, &t.EndDate,
+			&t.WinnerVariant, &t.CreatedAt, &t.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		tests = append(tests, t)
+	}
+	return tests, rows.Err()
+}
+
+// CreateEmailABTest creates a new A/B test.
+func (s *PostgresStorage) CreateEmailABTest(ctx context.Context, test *storage.EmailABTest) error {
+	query := `
+		INSERT INTO email_ab_tests (id, tenant_id, template_type, name, variant_a, variant_b, 
+		                            weight_a, weight_b, is_active, start_date, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`
+	if test.ID == uuid.Nil {
+		test.ID = uuid.New()
+	}
+	now := time.Now()
+	if test.CreatedAt.IsZero() {
+		test.CreatedAt = now
+	}
+	test.UpdatedAt = now
+
+	startDate := now.Format("2006-01-02")
+	if test.StartDate == nil {
+		test.StartDate = &startDate
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		test.ID, test.TenantID, test.TemplateType, test.Name, test.VariantA, test.VariantB,
+		test.WeightA, test.WeightB, test.IsActive, test.StartDate, test.CreatedAt, test.UpdatedAt,
+	)
+	return err
+}
+
+// GetEmailABTest retrieves a specific A/B test by ID.
+func (s *PostgresStorage) GetEmailABTest(ctx context.Context, id uuid.UUID) (*storage.EmailABTest, error) {
+	query := `
+		SELECT id, tenant_id, template_type, name, variant_a, variant_b, weight_a, weight_b,
+		       is_active, start_date, end_date, winner_variant, created_at, updated_at
+		FROM email_ab_tests
+		WHERE id = $1
+	`
+	t := &storage.EmailABTest{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&t.ID, &t.TenantID, &t.TemplateType, &t.Name, &t.VariantA, &t.VariantB,
+		&t.WeightA, &t.WeightB, &t.IsActive, &t.StartDate, &t.EndDate,
+		&t.WinnerVariant, &t.CreatedAt, &t.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return t, nil
+}
+
+// UpdateEmailABTest updates an existing A/B test.
+func (s *PostgresStorage) UpdateEmailABTest(ctx context.Context, test *storage.EmailABTest) error {
+	query := `
+		UPDATE email_ab_tests SET
+			name = $1, variant_a = $2, variant_b = $3, weight_a = $4, weight_b = $5,
+			is_active = $6, end_date = $7, winner_variant = $8, updated_at = $9
+		WHERE id = $10
+	`
+	test.UpdatedAt = time.Now()
+	_, err := s.pool.Exec(ctx, query,
+		test.Name, test.VariantA, test.VariantB, test.WeightA, test.WeightB,
+		test.IsActive, test.EndDate, test.WinnerVariant, test.UpdatedAt, test.ID,
+	)
+	return err
+}
+
+// DeleteEmailABTest deletes an A/B test.
+func (s *PostgresStorage) DeleteEmailABTest(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM email_ab_tests WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+// ========== Email Advanced Branding Storage ==========
+
+// GetEmailBrandingAdvanced retrieves advanced email branding settings.
+func (s *PostgresStorage) GetEmailBrandingAdvanced(ctx context.Context, tenantID *uuid.UUID) (*storage.EmailBrandingAdvanced, error) {
+	query := `
+		SELECT id, tenant_id, social_facebook, social_twitter, social_linkedin, social_instagram,
+		       custom_css, header_image_url, font_family, font_family_url, created_at, updated_at
+		FROM email_branding_advanced
+		WHERE tenant_id = $1 OR (tenant_id IS NULL AND $1 IS NULL)
+		ORDER BY tenant_id NULLS LAST
+		LIMIT 1
+	`
+	b := &storage.EmailBrandingAdvanced{
+		SocialLinks: &storage.EmailSocialLinks{},
+	}
+	var socialFacebook, socialTwitter, socialLinkedIn, socialInstagram *string
+	err := s.pool.QueryRow(ctx, query, tenantID).Scan(
+		&b.ID, &b.TenantID, &socialFacebook, &socialTwitter, &socialLinkedIn, &socialInstagram,
+		&b.CustomCSS, &b.HeaderImageURL, &b.FontFamily, &b.FontFamilyURL, &b.CreatedAt, &b.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Return default empty advanced branding
+			return &storage.EmailBrandingAdvanced{
+				ID:          uuid.New(),
+				SocialLinks: &storage.EmailSocialLinks{},
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}, nil
+		}
+		return nil, err
+	}
+	b.SocialLinks.Facebook = socialFacebook
+	b.SocialLinks.Twitter = socialTwitter
+	b.SocialLinks.LinkedIn = socialLinkedIn
+	b.SocialLinks.Instagram = socialInstagram
+	return b, nil
+}
+
+// UpsertEmailBrandingAdvanced creates or updates advanced email branding.
+func (s *PostgresStorage) UpsertEmailBrandingAdvanced(ctx context.Context, branding *storage.EmailBrandingAdvanced) error {
+	query := `
+		INSERT INTO email_branding_advanced (id, tenant_id, social_facebook, social_twitter, social_linkedin, social_instagram,
+		                                     custom_css, header_image_url, font_family, font_family_url, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (tenant_id) DO UPDATE SET
+			social_facebook = EXCLUDED.social_facebook,
+			social_twitter = EXCLUDED.social_twitter,
+			social_linkedin = EXCLUDED.social_linkedin,
+			social_instagram = EXCLUDED.social_instagram,
+			custom_css = EXCLUDED.custom_css,
+			header_image_url = EXCLUDED.header_image_url,
+			font_family = EXCLUDED.font_family,
+			font_family_url = EXCLUDED.font_family_url,
+			updated_at = EXCLUDED.updated_at
+	`
+	if branding.ID == uuid.Nil {
+		branding.ID = uuid.New()
+	}
+	now := time.Now()
+	if branding.CreatedAt.IsZero() {
+		branding.CreatedAt = now
+	}
+	branding.UpdatedAt = now
+
+	var socialFacebook, socialTwitter, socialLinkedIn, socialInstagram *string
+	if branding.SocialLinks != nil {
+		socialFacebook = branding.SocialLinks.Facebook
+		socialTwitter = branding.SocialLinks.Twitter
+		socialLinkedIn = branding.SocialLinks.LinkedIn
+		socialInstagram = branding.SocialLinks.Instagram
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		branding.ID, branding.TenantID, socialFacebook, socialTwitter, socialLinkedIn, socialInstagram,
+		branding.CustomCSS, branding.HeaderImageURL, branding.FontFamily, branding.FontFamilyURL,
+		branding.CreatedAt, branding.UpdatedAt,
+	)
+	return err
+}
+
+// ========== Email Tracking Pixel Storage ==========
+
+// CreateEmailTrackingPixel creates a new tracking pixel.
+func (s *PostgresStorage) CreateEmailTrackingPixel(ctx context.Context, pixel *storage.EmailTrackingPixel) error {
+	query := `
+		INSERT INTO email_tracking_pixels (id, email_job_id, tenant_id, recipient, template_id, url, is_opened, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`
+	if pixel.ID == uuid.Nil {
+		pixel.ID = uuid.New()
+	}
+	if pixel.CreatedAt.IsZero() {
+		pixel.CreatedAt = time.Now()
+	}
+
+	_, err := s.pool.Exec(ctx, query,
+		pixel.ID, pixel.EmailJobID, pixel.TenantID, pixel.Recipient,
+		pixel.TemplateID, pixel.URL, pixel.IsOpened, pixel.CreatedAt,
+	)
+	return err
+}
+
+// GetEmailTrackingPixel retrieves a tracking pixel by ID.
+func (s *PostgresStorage) GetEmailTrackingPixel(ctx context.Context, id uuid.UUID) (*storage.EmailTrackingPixel, error) {
+	query := `
+		SELECT id, email_job_id, tenant_id, recipient, template_id, url, is_opened, opened_at, created_at
+		FROM email_tracking_pixels
+		WHERE id = $1
+	`
+	p := &storage.EmailTrackingPixel{}
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&p.ID, &p.EmailJobID, &p.TenantID, &p.Recipient, &p.TemplateID,
+		&p.URL, &p.IsOpened, &p.OpenedAt, &p.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
+// MarkTrackingPixelOpened marks a tracking pixel as opened.
+func (s *PostgresStorage) MarkTrackingPixelOpened(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE email_tracking_pixels SET is_opened = true, opened_at = $1 WHERE id = $2 AND is_opened = false`
+	_, err := s.pool.Exec(ctx, query, time.Now(), id)
+	return err
 }

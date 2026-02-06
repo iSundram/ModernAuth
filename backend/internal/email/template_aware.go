@@ -2,8 +2,10 @@
 package email
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -41,6 +43,21 @@ func NewTemplateAwareService(cfg *TemplateAwareConfig) *TemplateAwareService {
 	}
 }
 
+// renderString renders a template string with the given data.
+func (s *TemplateAwareService) renderString(templateStr string, data map[string]string) (string, error) {
+	tmpl, err := template.New("email").Parse(templateStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
 // getTenantID extracts tenant ID from user if available.
 func getTenantID(user *storage.User) *uuid.UUID {
 	if user != nil {
@@ -76,7 +93,10 @@ func (s *TemplateAwareService) SendVerificationEmail(ctx context.Context, user *
 func (s *TemplateAwareService) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding).WithPasswordReset(token, resetURL)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordReset, vars)
@@ -92,7 +112,10 @@ func (s *TemplateAwareService) SendPasswordResetEmail(ctx context.Context, user 
 func (s *TemplateAwareService) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding)
 	if branding != nil {
 		vars.BaseURL = branding.AppName // Use app name as base context
@@ -111,7 +134,10 @@ func (s *TemplateAwareService) SendWelcomeEmail(ctx context.Context, user *stora
 func (s *TemplateAwareService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding).WithDevice(device)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateLoginAlert, vars)
@@ -126,7 +152,10 @@ func (s *TemplateAwareService) SendLoginAlertEmail(ctx context.Context, user *st
 // SendInvitationEmail sends an invitation email using templates.
 func (s *TemplateAwareService) SendInvitationEmail(ctx context.Context, invitation *InvitationEmail) error {
 	// For invitations, we don't have a user yet, so use nil tenant
-	branding, _ := s.storage.GetEmailBranding(ctx, nil)
+	branding, err := s.storage.GetEmailBranding(ctx, nil)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(nil, branding).WithInvitation(invitation)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateInvitation, vars)
@@ -142,7 +171,10 @@ func (s *TemplateAwareService) SendInvitationEmail(ctx context.Context, invitati
 func (s *TemplateAwareService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateMFAEnabled, vars)
@@ -155,46 +187,31 @@ func (s *TemplateAwareService) SendMFAEnabledEmail(ctx context.Context, user *st
 }
 
 // SendMFACodeEmail sends MFA verification code.
-// Note: This implementation sends without user context due to interface signature differences.
-// In a full implementation, the service layer should handle user lookup.
-func (s *TemplateAwareService) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
-	// Render the MFA code template with the code
-	// We use a minimal vars object since we don't have full user context
-	htmlBody := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">Your Verification Code</h1>
-    </div>
-    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-        <p>Use the following verification code to complete your login:</p>
-        <div style="background: #f5f5f5; padding: 25px; border-radius: 10px; margin: 25px 0; text-align: center; border: 2px dashed #667eea;">
-            <p style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #667eea; margin: 0;">%s</p>
-        </div>
-        <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
-        <p style="color: #e74c3c; font-size: 14px;"><strong>Security Note:</strong> If you didn't request this code, please ignore this email or contact support if you're concerned.</p>
-        <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
-        <p style="color: #999; font-size: 12px; text-align: center;">Thanks,<br>The ModernAuth Team</p>
-    </div>
-</body>
-</html>`, code)
+func (s *TemplateAwareService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
+	branding, err := s.storage.GetEmailBranding(ctx, nil)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 
-	textBody := fmt.Sprintf("Hi,\n\nUse the following verification code to complete your login:\n\n%s\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email.\n\nThanks,\nThe ModernAuth Team", code)
+	vars := NewTemplateVars(nil, branding).WithMFACode(code)
 
-	s.logger.Info("Sending MFA code email", "user_id", userID)
-	return s.sender.SendEmail(userID, "Your Verification Code", htmlBody, textBody)
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateMFACode, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending MFA code email", "to", email)
+	return s.sender.SendEmail(email, subject, htmlBody, textBody)
 }
 
 // SendLowBackupCodesEmail sends notification when backup codes are running low.
 func (s *TemplateAwareService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding).WithRemainingCodes(remaining)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateLowBackupCodes, vars)
@@ -210,7 +227,10 @@ func (s *TemplateAwareService) SendLowBackupCodesEmail(ctx context.Context, user
 func (s *TemplateAwareService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordChanged, vars)
@@ -226,7 +246,10 @@ func (s *TemplateAwareService) SendPasswordChangedEmail(ctx context.Context, use
 func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
 	tenantID := getTenantID(user)
 
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 	vars := NewTemplateVars(user, branding).WithReason(reason)
 
 	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateSessionRevoked, vars)
@@ -238,45 +261,131 @@ func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user
 	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
 }
 
+// SendAccountDeactivatedEmail sends account deactivation notification.
+func (s *TemplateAwareService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	tenantID := getTenantID(user)
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
+	vars := NewTemplateVars(user, branding).WithAccountDeactivation(reason, reactivationURL)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateAccountDeactivated, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending account deactivated email", "to", user.Email)
+	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+// SendEmailChangedEmail sends email change notification.
+func (s *TemplateAwareService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	tenantID := getTenantID(user)
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
+	vars := NewTemplateVars(user, branding).WithEmailChange(oldEmail, newEmail)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateEmailChanged, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending email changed notification", "to", oldEmail, "new_email", newEmail)
+	return s.sender.SendEmail(oldEmail, subject, htmlBody, textBody)
+}
+
+// SendPasswordExpiryEmail sends password expiry warning.
+func (s *TemplateAwareService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	tenantID := getTenantID(user)
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
+	vars := NewTemplateVars(user, branding).WithPasswordExpiry(daysUntilExpiry, expiryDate, changePasswordURL)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordExpiry, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending password expiry warning", "to", user.Email, "days_until_expiry", daysUntilExpiry)
+	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+// SendSecurityAlertEmail sends security alert notification.
+func (s *TemplateAwareService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	tenantID := getTenantID(user)
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
+	vars := NewTemplateVars(user, branding).WithSecurityAlert(title, message, details, actionURL, actionText)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateSecurityAlert, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending security alert", "to", user.Email, "title", title)
+	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
+}
+
+// SendRateLimitWarningEmail sends rate limit warning notification.
+func (s *TemplateAwareService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	tenantID := getTenantID(user)
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
+	vars := NewTemplateVars(user, branding).WithRateLimitWarning(actionType, currentCount, maxCount, timeWindow, upgradeURL)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateRateLimitWarning, vars)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("Sending rate limit warning", "to", user.Email, "action", actionType)
+	return s.sender.SendEmail(user.Email, subject, htmlBody, textBody)
+}
+
 // SendMagicLink sends a magic link email for passwordless authentication.
-func (s *TemplateAwareService) SendMagicLink(email string, magicLinkURL string) error {
-	// Magic links don't need tenant-specific templates for now
-	// Delegate to underlying sender which has basic implementation
+func (s *TemplateAwareService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
 	s.logger.Info("Sending magic link email", "to", email)
 
-	subject := "Sign in to your account"
+	branding, err := s.storage.GetEmailBranding(ctx, nil)
+	if err != nil {
+		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	}
 
-	// Extract name from email
 	emailName := email
-	if idx := len(email) - 1; idx >= 0 {
-		for i := 0; i < len(email); i++ {
-			if email[i] == '@' {
-				emailName = email[:i]
-				break
-			}
+	for i := 0; i < len(email); i++ {
+		if email[i] == '@' {
+			emailName = email[:i]
+			break
 		}
 	}
 
-	htmlBody := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>Sign in</title></head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0;">Sign In</h1>
-    </div>
-    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-        <p>Hi %s,</p>
-        <p>Click the button below to sign in to your account:</p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="%s" style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Sign In</a>
-        </div>
-        <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes.</p>
-    </div>
-</body>
-</html>`, emailName, magicLinkURL)
+	sampleUser := &storage.User{
+		Email: email,
+	}
+	if firstName := emailName; firstName != "" {
+		sampleUser.FirstName = &firstName
+	}
 
-	textBody := fmt.Sprintf("Hi %s,\n\nClick the link below to sign in:\n\n%s\n\nThis link will expire in 15 minutes.\n\nThanks,\nThe ModernAuth Team", emailName, magicLinkURL)
+	vars := NewTemplateVars(sampleUser, branding).WithMagicLink(magicLinkURL)
+
+	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateMagicLink, vars)
+	if err != nil {
+		return err
+	}
 
 	return s.sender.SendEmail(email, subject, htmlBody, textBody)
 }

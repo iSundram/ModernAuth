@@ -16,9 +16,9 @@ import (
 
 const (
 	// Stream and consumer group names
-	emailStream       = "email:queue"
+	emailStream        = "email:queue"
 	emailConsumerGroup = "email:workers"
-	deadLetterStream  = "email:dead_letters"
+	deadLetterStream   = "email:dead_letters"
 
 	// Consumer configuration
 	defaultConsumerName = "worker"
@@ -229,6 +229,18 @@ func (q *RedisStreamQueue) processJob(ctx context.Context, jobType, recipient st
 		return q.processPasswordChangedEmail(ctx, payloadMap)
 	case jobTypeSessionRevoked:
 		return q.processSessionRevokedEmail(ctx, payloadMap)
+	case jobTypeMagicLink:
+		return q.processMagicLinkEmail(ctx, payloadMap)
+	case jobTypeAccountDeactivated:
+		return q.processAccountDeactivatedEmail(ctx, payloadMap)
+	case jobTypeEmailChanged:
+		return q.processEmailChangedEmail(ctx, payloadMap)
+	case jobTypePasswordExpiry:
+		return q.processPasswordExpiryEmail(ctx, payloadMap)
+	case jobTypeSecurityAlert:
+		return q.processSecurityAlertEmail(ctx, payloadMap)
+	case jobTypeRateLimitWarning:
+		return q.processRateLimitWarningEmail(ctx, payloadMap)
 	default:
 		q.logger.Warn("Unknown job type", "type", jobType)
 		return nil
@@ -272,9 +284,9 @@ func (q *RedisStreamQueue) processMFAEnabledEmail(ctx context.Context, payload m
 }
 
 func (q *RedisStreamQueue) processMFACodeEmail(ctx context.Context, payload map[string]interface{}) error {
-	userID, _ := payload["user_id"].(string)
+	email, _ := payload["email"].(string)
 	code, _ := payload["code"].(string)
-	return q.inner.SendMFACodeEmail(ctx, userID, code)
+	return q.inner.SendMFACodeEmail(ctx, email, code)
 }
 
 func (q *RedisStreamQueue) processLowBackupCodesEmail(ctx context.Context, payload map[string]interface{}) error {
@@ -292,6 +304,54 @@ func (q *RedisStreamQueue) processSessionRevokedEmail(ctx context.Context, paylo
 	user := q.extractUser(payload)
 	reason, _ := payload["reason"].(string)
 	return q.inner.SendSessionRevokedEmail(ctx, user, reason)
+}
+
+func (q *RedisStreamQueue) processMagicLinkEmail(ctx context.Context, payload map[string]interface{}) error {
+	email, _ := payload["email"].(string)
+	magicLinkURL, _ := payload["magic_link_url"].(string)
+	return q.inner.SendMagicLink(ctx, email, magicLinkURL)
+}
+
+func (q *RedisStreamQueue) processAccountDeactivatedEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	reason, _ := payload["reason"].(string)
+	reactivationURL, _ := payload["reactivation_url"].(string)
+	return q.inner.SendAccountDeactivatedEmail(ctx, user, reason, reactivationURL)
+}
+
+func (q *RedisStreamQueue) processEmailChangedEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	oldEmail, _ := payload["old_email"].(string)
+	newEmail, _ := payload["new_email"].(string)
+	return q.inner.SendEmailChangedEmail(ctx, user, oldEmail, newEmail)
+}
+
+func (q *RedisStreamQueue) processPasswordExpiryEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	daysUntilExpiry, _ := payload["days_until_expiry"].(string)
+	expiryDate, _ := payload["expiry_date"].(string)
+	changePasswordURL, _ := payload["change_password_url"].(string)
+	return q.inner.SendPasswordExpiryEmail(ctx, user, daysUntilExpiry, expiryDate, changePasswordURL)
+}
+
+func (q *RedisStreamQueue) processSecurityAlertEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	title, _ := payload["alert_title"].(string)
+	message, _ := payload["alert_message"].(string)
+	details, _ := payload["alert_details"].(string)
+	actionURL, _ := payload["action_url"].(string)
+	actionText, _ := payload["action_text"].(string)
+	return q.inner.SendSecurityAlertEmail(ctx, user, title, message, details, actionURL, actionText)
+}
+
+func (q *RedisStreamQueue) processRateLimitWarningEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	actionType, _ := payload["action_type"].(string)
+	currentCount, _ := payload["current_count"].(string)
+	maxCount, _ := payload["max_count"].(string)
+	timeWindow, _ := payload["time_window"].(string)
+	upgradeURL, _ := payload["upgrade_url"].(string)
+	return q.inner.SendRateLimitWarningEmail(ctx, user, actionType, currentCount, maxCount, timeWindow, upgradeURL)
 }
 
 // extractUser extracts user information from payload.
@@ -548,10 +608,10 @@ func (q *RedisStreamQueue) SendMFAEnabledEmail(ctx context.Context, user *storag
 	})
 }
 
-func (q *RedisStreamQueue) SendMFACodeEmail(ctx context.Context, userID string, code string) error {
-	return q.enqueue(jobTypeMFACode, userID, map[string]interface{}{
-		"user_id": userID,
-		"code":    code,
+func (q *RedisStreamQueue) SendMFACodeEmail(ctx context.Context, email string, code string) error {
+	return q.enqueue(jobTypeMFACode, email, map[string]interface{}{
+		"email": email,
+		"code":  code,
 	})
 }
 
@@ -575,9 +635,55 @@ func (q *RedisStreamQueue) SendSessionRevokedEmail(ctx context.Context, user *st
 	})
 }
 
-func (q *RedisStreamQueue) SendMagicLink(email string, magicLinkURL string) error {
-	// Magic links are time-sensitive, send directly
-	return q.inner.SendMagicLink(email, magicLinkURL)
+func (q *RedisStreamQueue) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
+	return q.inner.SendMagicLink(ctx, email, magicLinkURL)
+}
+
+func (q *RedisStreamQueue) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
+	return q.enqueue(jobTypeAccountDeactivated, user.Email, map[string]interface{}{
+		"user":             map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"reason":           reason,
+		"reactivation_url": reactivationURL,
+	})
+}
+
+func (q *RedisStreamQueue) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
+	return q.enqueue(jobTypeEmailChanged, oldEmail, map[string]interface{}{
+		"user":      map[string]interface{}{"email": newEmail, "first_name": user.FirstName, "last_name": user.LastName},
+		"old_email": oldEmail,
+		"new_email": newEmail,
+	})
+}
+
+func (q *RedisStreamQueue) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
+	return q.enqueue(jobTypePasswordExpiry, user.Email, map[string]interface{}{
+		"user":                map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"days_until_expiry":   daysUntilExpiry,
+		"expiry_date":         expiryDate,
+		"change_password_url": changePasswordURL,
+	})
+}
+
+func (q *RedisStreamQueue) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
+	return q.enqueue(jobTypeSecurityAlert, user.Email, map[string]interface{}{
+		"user":          map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"alert_title":   title,
+		"alert_message": message,
+		"alert_details": details,
+		"action_url":    actionURL,
+		"action_text":   actionText,
+	})
+}
+
+func (q *RedisStreamQueue) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
+	return q.enqueue(jobTypeRateLimitWarning, user.Email, map[string]interface{}{
+		"user":          map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"action_type":   actionType,
+		"current_count": currentCount,
+		"max_count":     maxCount,
+		"time_window":   timeWindow,
+		"upgrade_url":   upgradeURL,
+	})
 }
 
 // GetQueueStats returns statistics about the email queue.
@@ -600,10 +706,10 @@ func (q *RedisStreamQueue) GetQueueStats(ctx context.Context) (*QueueStats, erro
 	deadLetterLen, _ := q.rdb.XLen(ctx, deadLetterStream).Result()
 
 	return &QueueStats{
-		TotalMessages:    info.Length,
-		PendingMessages:  pending,
-		DeadLetterCount:  deadLetterLen,
-		ConsumerGroups:   len(groups),
+		TotalMessages:   info.Length,
+		PendingMessages: pending,
+		DeadLetterCount: deadLetterLen,
+		ConsumerGroups:  len(groups),
 	}, nil
 }
 

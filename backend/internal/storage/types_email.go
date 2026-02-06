@@ -113,3 +113,67 @@ type EmailStats struct {
 	ByTemplate     map[string]int `json:"by_template"`
 	ByDay          map[string]int `json:"by_day"`
 }
+
+// EmailABTest represents an A/B test configuration for a template.
+type EmailABTest struct {
+	ID            uuid.UUID  `json:"id"`
+	TenantID      *uuid.UUID `json:"tenant_id,omitempty"`
+	TemplateType  string     `json:"template_type"`
+	Name          string     `json:"name"`
+	VariantA      string     `json:"variant_a"`
+	VariantB      string     `json:"variant_b"`
+	WeightA       float64    `json:"weight_a"` // 0.0 to 1.0 (e.g., 0.5 = 50%)
+	WeightB       float64    `json:"weight_b"` // 0.0 to 1.0 (e.g., 0.5 = 50%)
+	IsActive      bool       `json:"is_active"`
+	StartDate     *string    `json:"start_date,omitempty"`
+	EndDate       *string    `json:"end_date,omitempty"`
+	WinnerVariant *string    `json:"winner_variant,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// EmailABTestResult stores results for an A/B test variant.
+type EmailABTestResult struct {
+	ID           uuid.UUID  `json:"id"`
+	ABTestID     uuid.UUID  `json:"ab_test_id"`
+	TenantID     *uuid.UUID `json:"tenant_id,omitempty"`
+	Variant      string     `json:"variant"` // "a" or "b"
+	Recipient    string     `json:"recipient"`
+	TemplateType string     `json:"template_type"`
+	EventType    string     `json:"event_type"` // sent, delivered, opened, clicked
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// EmailSocialLinks represents social media links for email branding.
+type EmailSocialLinks struct {
+	Facebook  *string `json:"facebook,omitempty"`
+	Twitter   *string `json:"twitter,omitempty"`
+	LinkedIn  *string `json:"linkedin,omitempty"`
+	Instagram *string `json:"instagram,omitempty"`
+}
+
+// EmailBrandingAdvanced represents advanced email branding settings.
+type EmailBrandingAdvanced struct {
+	ID             uuid.UUID         `json:"id"`
+	TenantID       *uuid.UUID        `json:"tenant_id,omitempty"`
+	SocialLinks    *EmailSocialLinks `json:"social_links,omitempty"`
+	CustomCSS      *string           `json:"custom_css,omitempty"`
+	HeaderImageURL *string           `json:"header_image_url,omitempty"`
+	FontFamily     *string           `json:"font_family,omitempty"`
+	FontFamilyURL  *string           `json:"font_family_url,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+}
+
+// EmailTrackingPixel represents a tracking pixel for email opens.
+type EmailTrackingPixel struct {
+	ID         uuid.UUID  `json:"id"`
+	EmailJobID *uuid.UUID `json:"email_job_id,omitempty"`
+	TenantID   *uuid.UUID `json:"tenant_id,omitempty"`
+	Recipient  string     `json:"recipient"`
+	TemplateID string     `json:"template_id"`
+	URL        string     `json:"url"`
+	IsOpened   bool       `json:"is_opened"`
+	OpenedAt   *time.Time `json:"opened_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}

@@ -261,6 +261,22 @@ type EmailTemplateStorage interface {
 	GetEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) (*EmailSuppression, error)
 	DeleteEmailSuppression(ctx context.Context, tenantID *uuid.UUID, email string) error
 	ListEmailSuppressions(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*EmailSuppression, error)
+
+	// A/B Testing operations
+	ListEmailABTests(ctx context.Context, tenantID *uuid.UUID) ([]*EmailABTest, error)
+	CreateEmailABTest(ctx context.Context, test *EmailABTest) error
+	GetEmailABTest(ctx context.Context, id uuid.UUID) (*EmailABTest, error)
+	UpdateEmailABTest(ctx context.Context, test *EmailABTest) error
+	DeleteEmailABTest(ctx context.Context, id uuid.UUID) error
+
+	// Advanced Branding operations
+	GetEmailBrandingAdvanced(ctx context.Context, tenantID *uuid.UUID) (*EmailBrandingAdvanced, error)
+	UpsertEmailBrandingAdvanced(ctx context.Context, branding *EmailBrandingAdvanced) error
+
+	// Tracking pixel operations
+	CreateEmailTrackingPixel(ctx context.Context, pixel *EmailTrackingPixel) error
+	GetEmailTrackingPixel(ctx context.Context, id uuid.UUID) (*EmailTrackingPixel, error)
+	MarkTrackingPixelOpened(ctx context.Context, id uuid.UUID) error
 }
 
 // PasswordHistoryStorage defines password history storage operations.

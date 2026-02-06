@@ -3,13 +3,13 @@ package email
 
 // Default theme colors - can be overridden via branding settings
 const (
-	DefaultPrimaryColor    = "#2B2B2B"  // Dark - headers, buttons
-	DefaultSecondaryColor  = "#B3B3B3"  // Medium gray - accents
-	DefaultBackgroundColor = "#FFFFFF"  // White - content background
-	DefaultBorderColor     = "#D4D4D4"  // Light gray - borders
-	DefaultTextPrimary     = "#2B2B2B"  // Dark - primary text
-	DefaultTextSecondary   = "#B3B3B3"  // Medium gray - secondary text
-	DefaultTextMuted       = "#D4D4D4"  // Light gray - footer text
+	DefaultPrimaryColor    = "#2B2B2B" // Dark - headers, buttons
+	DefaultSecondaryColor  = "#B3B3B3" // Medium gray - accents
+	DefaultBackgroundColor = "#FFFFFF" // White - content background
+	DefaultBorderColor     = "#D4D4D4" // Light gray - borders
+	DefaultTextPrimary     = "#2B2B2B" // Dark - primary text
+	DefaultTextSecondary   = "#B3B3B3" // Medium gray - secondary text
+	DefaultTextMuted       = "#D4D4D4" // Light gray - footer text
 )
 
 // Email HTML templates with inline styles for better email client compatibility.
@@ -306,3 +306,142 @@ const sessionRevokedEmailHTML = `<!DOCTYPE html>
     </div>
 </body>
 </html>`
+
+const accountDeactivatedEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Account Deactivated</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>Your account has been deactivated.</p>
+        {{if .Reason}}
+        <div style="background: #F5F5F5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0; color: #B3B3B3;"><strong>Reason:</strong> {{.Reason}}</p>
+        </div>
+        {{end}}
+        {{if .ReactivationURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ReactivationURL}}" style="background: {{.PrimaryColor}}; color: #FFFFFF; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reactivate Account</a>
+        </div>
+        {{end}}
+        <p style="color: #B3B3B3; font-size: 14px;">If you believe this was a mistake, please contact our support team.</p>
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const emailChangedEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Email Address Changed</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>The email address associated with your account has been changed from <strong>{{.OldEmail}}</strong> to <strong>{{.NewEmail}}</strong>.</p>
+        <div style="background: #FFF9E6; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid {{.SecondaryColor}};">
+            <p style="margin: 0; color: #2B2B2B;"><strong>Didn't make this change?</strong> If you didn't authorize this change, please contact our support team immediately and consider changing your password.</p>
+        </div>
+        <p style="color: #B3B3B3; font-size: 14px;">If you made this change, no further action is needed.</p>
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const passwordExpiryEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Password Expiring Soon</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>Your password will expire in <strong>{{.DaysUntilExpiry}} days</strong> on {{.ExpiryDate}}.</p>
+        <p style="color: #B3B3B3; font-size: 14px;">To avoid any disruption to your access, please update your password before it expires.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ChangePasswordURL}}" style="background: {{.PrimaryColor}}; color: #FFFFFF; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Change Password</a>
+        </div>
+        <p style="color: #B3B3B3; font-size: 14px;">If you didn't request this change, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const securityAlertEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Security Alert</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p><strong>{{.AlertTitle}}</strong></p>
+        <div style="background: #F5F5F5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0 0 10px 0;">{{.AlertMessage}}</p>
+            {{if .AlertDetails}}
+            <p style="margin: 0; color: #B3B3B3; font-size: 14px;">{{.AlertDetails}}</p>
+            {{end}}
+        </div>
+        {{if .ActionURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.ActionURL}}" style="background: {{.PrimaryColor}}; color: #FFFFFF; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">{{.ActionText}}</a>
+        </div>
+        {{end}}
+        <p style="color: #B3B3B3; font-size: 14px;">If you have any questions about this alert, please contact our support team.</p>
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const rateLimitWarningEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Rate Limit Approaching</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi {{.FullName}},</p>
+        <p>You're approaching the rate limit for <strong>{{.ActionType}}</strong> actions on your account.</p>
+        <div style="background: #F5F5F5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0 0 5px 0;"><strong>Current Usage:</strong> {{.CurrentCount}} / {{.MaxCount}}</p>
+            <p style="margin: 0; color: #B3B3B3; font-size: 14px;">{{.TimeWindow}}</p>
+        </div>
+        <p style="color: #B3B3B3; font-size: 14px;">To avoid being blocked, please reduce the frequency of this action or contact us to increase your limits.</p>
+        {{if .UpgradeURL}}
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.UpgradeURL}}" style="background: {{.PrimaryColor}}; color: #FFFFFF; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Upgrade Plan</a>
+        </div>
+        {{end}}
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+
+const TrackingPixel = `<img src="{{.BaseURL}}/api/email/track/{{.Email}}/{{.TemplateType}}/{{.EventID}}" width="1" height="1" alt="" style="display:none;" />`
