@@ -207,9 +207,20 @@ func (s *PostgresStorage) AssignRoleToUser(ctx context.Context, userID, roleID u
 	query := `
 		INSERT INTO user_roles (user_id, role_id, assigned_at, assigned_by)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (user_id, role_id) DO NOTHING
+		ON CONFLICT (user_id, role_id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000')) DO NOTHING
 	`
 	_, err := s.pool.Exec(ctx, query, userID, roleID, time.Now(), assignedBy)
+	return err
+}
+
+// AssignRoleToUserInTenant assigns a role to a user within a specific tenant.
+func (s *PostgresStorage) AssignRoleToUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID, assignedBy *uuid.UUID) error {
+	query := `
+		INSERT INTO user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id, role_id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000')) DO NOTHING
+	`
+	_, err := s.pool.Exec(ctx, query, userID, roleID, tenantID, time.Now(), assignedBy)
 	return err
 }
 
@@ -218,6 +229,39 @@ func (s *PostgresStorage) RemoveRoleFromUser(ctx context.Context, userID, roleID
 	query := `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2`
 	_, err := s.pool.Exec(ctx, query, userID, roleID)
 	return err
+}
+
+// RemoveRoleFromUserInTenant removes a role from a user within a specific tenant.
+func (s *PostgresStorage) RemoveRoleFromUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID) error {
+	query := `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2 AND tenant_id = $3`
+	_, err := s.pool.Exec(ctx, query, userID, roleID, tenantID)
+	return err
+}
+
+// GetUserRolesByTenant retrieves all roles assigned to a user within a specific tenant.
+func (s *PostgresStorage) GetUserRolesByTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*storage.Role, error) {
+	query := `
+		SELECT r.id, r.tenant_id, r.name, r.description, r.is_system, r.created_at
+		FROM roles r
+		INNER JOIN user_roles ur ON r.id = ur.role_id
+		WHERE ur.user_id = $1 AND (ur.tenant_id = $2 OR ur.tenant_id IS NULL)
+		ORDER BY r.name
+	`
+	rows, err := s.pool.Query(ctx, query, userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []*storage.Role
+	for rows.Next() {
+		role := &storage.Role{}
+		if err := rows.Scan(&role.ID, &role.TenantID, &role.Name, &role.Description, &role.IsSystem, &role.CreatedAt); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
 }
 
 // UserHasRole checks if a user has a specific role.
@@ -231,6 +275,35 @@ func (s *PostgresStorage) UserHasRole(ctx context.Context, userID uuid.UUID, rol
 	`
 	var exists bool
 	err := s.pool.QueryRow(ctx, query, userID, roleName).Scan(&exists)
+	return exists, err
+}
+
+// UserHasRoleInTenant checks if a user has a specific role within a tenant context.
+func (s *PostgresStorage) UserHasRoleInTenant(ctx context.Context, userID uuid.UUID, roleName string, tenantID uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM user_roles ur
+			INNER JOIN roles r ON ur.role_id = r.id
+			WHERE ur.user_id = $1 AND r.name = $2 AND (ur.tenant_id = $3 OR ur.tenant_id IS NULL)
+		)
+	`
+	var exists bool
+	err := s.pool.QueryRow(ctx, query, userID, roleName, tenantID).Scan(&exists)
+	return exists, err
+}
+
+// UserHasPermissionInTenant checks if a user has a specific permission within a tenant context.
+func (s *PostgresStorage) UserHasPermissionInTenant(ctx context.Context, userID uuid.UUID, permissionName string, tenantID uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM permissions p
+			INNER JOIN role_permissions rp ON p.id = rp.permission_id
+			INNER JOIN user_roles ur ON rp.role_id = ur.role_id
+			WHERE ur.user_id = $1 AND p.name = $2 AND (ur.tenant_id = $3 OR ur.tenant_id IS NULL)
+		)
+	`
+	var exists bool
+	err := s.pool.QueryRow(ctx, query, userID, permissionName, tenantID).Scan(&exists)
 	return exists, err
 }
 

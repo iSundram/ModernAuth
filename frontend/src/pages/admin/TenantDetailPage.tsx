@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, Button, Badge, Modal, Input, 
 import { tenantService } from '../../api/services';
 import { useToast } from '../../components/ui/Toast';
 import type { TenantAPIKey, TenantFeatures } from '../../types';
+import Papa from 'papaparse';
 
 export function TenantDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -162,12 +163,35 @@ export function TenantDetailPage() {
 
   const handleBulkImport = () => {
     try {
-      const lines = importData.trim().split('\n');
-      const users = lines.map(line => {
-        const [email, first_name, last_name] = line.split(',').map(s => s.trim());
-        return { email, first_name: first_name || undefined, last_name: last_name || undefined };
+      Papa.parse(importData.trim(), {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+           if (results.errors.length > 0) {
+            showToast({
+              title: 'Error',
+              message: `Failed to parse CSV: ${results.errors[0].message}`,
+              type: 'error'
+            });
+            return;
+          }
+
+          const users = results.data.map((row: any) => ({
+            email: row.email,
+            first_name: row.first_name || undefined,
+            last_name: row.last_name || undefined
+          })).filter(u => u.email);
+
+          if (users.length === 0) {
+             showToast({ title: 'Error', type: 'error', message: 'No valid users found in CSV' });
+             return;
+          }
+          bulkImportMutation.mutate(users);
+        },
+        error: (error: any) => {
+             showToast({ title: 'Error', type: 'error', message: `CSV Error: ${error.message}` });
+        }
       });
-      bulkImportMutation.mutate(users);
     } catch {
       showToast({ title: 'Error', type: 'error', message: 'Invalid import format' });
     }
@@ -393,6 +417,60 @@ export function TenantDetailPage() {
                 </button>
               </div>
             ))}
+            
+            <div className="pt-4 border-t border-[var(--color-border)]">
+              <h3 className="font-medium mb-3">Custom Flags</h3>
+               {features.custom_flags && Object.keys(features.custom_flags).length > 0 ? (
+                 <div className="space-y-2 mb-4">
+                   {Object.entries(features.custom_flags).map(([key, value]) => (
+                     <div key={key} className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-surface-hover)]">
+                       <span className="font-medium">{key}</span>
+                       <div className="flex items-center gap-2">
+                         <span className={value ? "text-green-500" : "text-gray-500"}>
+                           {value ? "Enabled" : "Disabled"}
+                         </span>
+                         <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                                const newFlags = { ...features.custom_flags };
+                                delete newFlags[key];
+                                updateFeaturesMutation.mutate({ custom_flags: newFlags });
+                            }}
+                         >
+                            <Trash2 size={14} className="text-red-500"/>
+                         </Button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               ) : (
+                 <p className="text-sm text-[var(--color-text-muted)] mb-4">No custom flags defined.</p>
+               )}
+
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                   <Input
+                      label="New Flag Key"
+                      placeholder="e.g. beta_feature"
+                      id="new-flag-key"
+                   />
+                </div>
+                 <Button
+                    onClick={() => {
+                        const input = document.getElementById('new-flag-key') as HTMLInputElement;
+                        const key = input.value.trim();
+                        if (key) {
+                           const newFlags = { ...features.custom_flags, [key]: true };
+                           updateFeaturesMutation.mutate({ custom_flags: newFlags });
+                           input.value = '';
+                        }
+                    }}
+                 >
+                    Add Flag
+                 </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -467,12 +545,43 @@ export function TenantDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-[var(--color-text-secondary)]">
-              Import multiple users at once. Format: email,first_name,last_name (one per line)
+              Import multiple users at once. Upload a CSV file or paste content below.
+              <br />
+              Format: email, first_name, last_name (with headers)
             </p>
+
+            <div className="border-2 border-dashed border-[var(--color-border)] rounded-lg p-8 text-center hover:border-[var(--color-primary)] transition-colors">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      setImportData(event.target?.result as string);
+                    };
+                    reader.readAsText(file);
+                  }
+                }}
+                className="hidden"
+                id="tenant-csv-upload"
+              />
+              <label htmlFor="tenant-csv-upload" className="cursor-pointer">
+                <Upload className="w-12 h-12 mx-auto text-[var(--color-text-muted)] mb-4" />
+                <p className="text-[var(--color-text-primary)] font-medium mb-1">
+                  Click to upload CSV file
+                </p>
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  or paste content below
+                </p>
+              </label>
+            </div>
+
             <textarea
               value={importData}
               onChange={e => setImportData(e.target.value)}
-              placeholder={"john@example.com,John,Doe\njane@example.com,Jane,Smith"}
+              placeholder={"email,first_name,last_name\njohn@example.com,John,Doe\njane@example.com,Jane,Smith"}
               className="w-full h-40 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm"
             />
             <Button

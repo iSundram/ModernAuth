@@ -7,17 +7,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/tenant"
 )
 
 // TenantHandler provides HTTP handlers for tenant management.
 type TenantHandler struct {
 	tenantService *tenant.Service
+	authService   *auth.AuthService
 }
 
 // NewTenantHandler creates a new tenant handler.
-func NewTenantHandler(service *tenant.Service) *TenantHandler {
-	return &TenantHandler{tenantService: service}
+func NewTenantHandler(service *tenant.Service, authService *auth.AuthService) *TenantHandler {
+	return &TenantHandler{tenantService: service, authService: authService}
 }
 
 // TenantRoutes returns chi routes for tenant management.
@@ -37,6 +39,7 @@ func (h *TenantHandler) TenantRoutes() chi.Router {
 
 	// Suspension endpoints
 	r.Post("/{id}/suspend", h.SuspendTenant)
+
 	r.Post("/{id}/activate", h.ActivateTenant)
 
 	// Audit export
@@ -57,6 +60,20 @@ func (h *TenantHandler) TenantRoutes() chi.Router {
 	// Feature flags
 	r.Get("/{id}/features", h.GetTenantFeatures)
 	r.Put("/{id}/features", h.UpdateTenantFeatures)
+
+	// Onboarding Status
+	r.Get("/{id}/onboarding-status", h.GetTenantOnboardingStatus)
+
+	// Tenant RBAC
+	r.Get("/{id}/roles", h.ListTenantRoles)
+	r.Post("/{id}/roles", h.CreateTenantRole)
+	r.Put("/{id}/roles/{roleId}", h.UpdateTenantRole)
+	r.Delete("/{id}/roles/{roleId}", h.DeleteTenantRole)
+	r.Get("/{id}/roles/{roleId}/permissions", h.GetTenantRolePermissions)
+	r.Post("/{id}/roles/{roleId}/permissions", h.AssignPermissionToTenantRole)
+	r.Delete("/{id}/roles/{roleId}/permissions/{permissionId}", h.RemovePermissionFromTenantRole)
+	r.Post("/{id}/users/{userId}/roles", h.AssignTenantUserRole)
+	r.Delete("/{id}/users/{userId}/roles/{roleId}", h.RemoveTenantUserRole)
 
 	return r
 }
@@ -518,13 +535,13 @@ func (h *TenantHandler) ExportTenantAuditLogs(w http.ResponseWriter, r *http.Req
 
 // TenantAPIKeyResponse represents an API key in responses.
 type TenantAPIKeyResponse struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	KeyPrefix   string  `json:"key_prefix"`
-	Scopes      []string `json:"scopes,omitempty"`
-	ExpiresAt   *string `json:"expires_at,omitempty"`
-	LastUsedAt  *string `json:"last_used_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	KeyPrefix  string   `json:"key_prefix"`
+	Scopes     []string `json:"scopes,omitempty"`
+	ExpiresAt  *string  `json:"expires_at,omitempty"`
+	LastUsedAt *string  `json:"last_used_at,omitempty"`
+	CreatedAt  string   `json:"created_at"`
 }
 
 // TenantCreateAPIKeyRequest represents a request to create a tenant API key.
@@ -673,10 +690,10 @@ func (h *TenantHandler) RevokeTenantAPIKey(w http.ResponseWriter, r *http.Reques
 
 // DomainVerificationResponse represents domain verification status.
 type DomainVerificationResponse struct {
-	Domain         string `json:"domain"`
-	TXTRecord      string `json:"txt_record"`
-	VerifiedAt     *string `json:"verified_at,omitempty"`
-	Status         string `json:"status"` // pending, verified, failed
+	Domain     string  `json:"domain"`
+	TXTRecord  string  `json:"txt_record"`
+	VerifiedAt *string `json:"verified_at,omitempty"`
+	Status     string  `json:"status"` // pending, verified, failed
 }
 
 // InitiateDomainVerification starts domain verification for a tenant.
@@ -756,14 +773,15 @@ type BulkUserEntry struct {
 
 // BulkImportUsersResponse represents the result of bulk import.
 type BulkImportUsersResponse struct {
-	Total     int              `json:"total"`
-	Succeeded int              `json:"succeeded"`
-	Failed    int              `json:"failed"`
+	Total     int               `json:"total"`
+	Succeeded int               `json:"succeeded"`
+	Failed    int               `json:"failed"`
 	Errors    []BulkImportError `json:"errors,omitempty"`
 }
 
 // BulkImportError represents an error for a specific user.
 type BulkImportError struct {
+	Row    int    `json:"row"`
 	Email  string `json:"email"`
 	Reason string `json:"reason"`
 }
@@ -829,6 +847,7 @@ func (h *TenantHandler) BulkImportUsers(w http.ResponseWriter, r *http.Request) 
 	}
 	for _, e := range result.Errors {
 		response.Errors = append(response.Errors, BulkImportError{
+			Row:    e.Row,
 			Email:  e.Email,
 			Reason: e.Reason,
 		})
@@ -839,20 +858,22 @@ func (h *TenantHandler) BulkImportUsers(w http.ResponseWriter, r *http.Request) 
 
 // TenantFeaturesResponse represents tenant feature flags.
 type TenantFeaturesResponse struct {
-	SSOEnabled       bool `json:"sso_enabled"`
-	APIAccessEnabled bool `json:"api_access_enabled"`
-	WebhooksEnabled  bool `json:"webhooks_enabled"`
-	MFARequired      bool `json:"mfa_required"`
-	CustomBranding   bool `json:"custom_branding"`
+	SSOEnabled       bool                   `json:"sso_enabled"`
+	APIAccessEnabled bool                   `json:"api_access_enabled"`
+	WebhooksEnabled  bool                   `json:"webhooks_enabled"`
+	MFARequired      bool                   `json:"mfa_required"`
+	CustomBranding   bool                   `json:"custom_branding"`
+	CustomFlags      map[string]interface{} `json:"custom_flags,omitempty"`
 }
 
 // UpdateTenantFeaturesRequest represents a request to update feature flags.
 type UpdateTenantFeaturesRequest struct {
-	SSOEnabled       *bool `json:"sso_enabled,omitempty"`
-	APIAccessEnabled *bool `json:"api_access_enabled,omitempty"`
-	WebhooksEnabled  *bool `json:"webhooks_enabled,omitempty"`
-	MFARequired      *bool `json:"mfa_required,omitempty"`
-	CustomBranding   *bool `json:"custom_branding,omitempty"`
+	SSOEnabled       *bool                  `json:"sso_enabled,omitempty"`
+	APIAccessEnabled *bool                  `json:"api_access_enabled,omitempty"`
+	WebhooksEnabled  *bool                  `json:"webhooks_enabled,omitempty"`
+	MFARequired      *bool                  `json:"mfa_required,omitempty"`
+	CustomBranding   *bool                  `json:"custom_branding,omitempty"`
+	CustomFlags      map[string]interface{} `json:"custom_flags,omitempty"`
 }
 
 // GetTenantFeatures retrieves feature flags for a tenant.
@@ -880,7 +901,366 @@ func (h *TenantHandler) GetTenantFeatures(w http.ResponseWriter, r *http.Request
 		WebhooksEnabled:  features.WebhooksEnabled,
 		MFARequired:      features.MFARequired,
 		CustomBranding:   features.CustomBranding,
+		CustomFlags:      features.CustomFlags,
 	})
+}
+
+// AssignTenantUserRole handles assigning a role to a tenant user.
+func (h *TenantHandler) AssignTenantUserRole(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	userIDStr := chi.URLParam(r, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID", err)
+		return
+	}
+
+	var req AssignUserRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	roleID, err := uuid.Parse(req.RoleID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	// Get actor ID from context
+	actorID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	err = h.authService.AssignRole(r.Context(), userID, roleID, &tenantID, &actorID)
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to assign role to user", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Role assigned successfully"})
+}
+
+// RemoveTenantUserRole handles removing a role from a tenant user.
+func (h *TenantHandler) RemoveTenantUserRole(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	userIDStr := chi.URLParam(r, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID", err)
+		return
+	}
+
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	// Get actor ID from context
+	actorID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	err = h.authService.RemoveRole(r.Context(), userID, roleID, &tenantID, &actorID)
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to remove role from user", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Role removed successfully"})
+}
+
+// ListTenantRoles handles listing roles for a tenant.
+func (h *TenantHandler) ListTenantRoles(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	roles, err := h.authService.ListRolesByTenant(r.Context(), tenantID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list tenant roles", err)
+		return
+	}
+
+	response := make([]RoleResponse, len(roles))
+	for i, role := range roles {
+		response[i] = RoleResponse{
+			ID:          role.ID.String(),
+			Name:        role.Name,
+			Description: role.Description,
+			IsSystem:    role.IsSystem,
+			CreatedAt:   role.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+		if role.TenantID != nil {
+			tenantIDStr := role.TenantID.String()
+			response[i].TenantID = &tenantIDStr
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data":  response,
+		"count": len(response),
+	})
+}
+
+// CreateTenantRole handles creating a new role for a tenant.
+func (h *TenantHandler) CreateTenantRole(w http.ResponseWriter, r *http.Request) {
+	tenantIDStr := chi.URLParam(r, "id")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	var req CreateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if validationErrors := ValidateStruct(req); validationErrors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": validationErrors,
+		})
+		return
+	}
+
+	role, err := h.authService.CreateRole(r.Context(), &auth.CreateRoleRequest{
+		TenantID:    &tenantID,
+		Name:        req.Name,
+		Description: req.Description,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrRoleExists:
+			writeError(w, http.StatusConflict, "Role with this name already exists", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to create role", err)
+		}
+		return
+	}
+
+	response := RoleResponse{
+		ID:          role.ID.String(),
+		Name:        role.Name,
+		Description: role.Description,
+		IsSystem:    role.IsSystem,
+		CreatedAt:   role.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if role.TenantID != nil {
+		tenantIDStr := role.TenantID.String()
+		response.TenantID = &tenantIDStr
+	}
+
+	writeJSON(w, http.StatusCreated, response)
+}
+
+// UpdateTenantRole handles updating a tenant role.
+func (h *TenantHandler) UpdateTenantRole(w http.ResponseWriter, r *http.Request) {
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	var req UpdateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	role, err := h.authService.UpdateRole(r.Context(), roleID, &auth.UpdateRoleRequest{
+		Name:        req.Name,
+		Description: req.Description,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		case auth.ErrCannotModifySystemRole:
+			writeError(w, http.StatusForbidden, "Cannot modify system role", err)
+		case auth.ErrRoleExists:
+			writeError(w, http.StatusConflict, "Role with this name already exists", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to update role", err)
+		}
+		return
+	}
+
+	response := RoleResponse{
+		ID:          role.ID.String(),
+		Name:        role.Name,
+		Description: role.Description,
+		IsSystem:    role.IsSystem,
+		CreatedAt:   role.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if role.TenantID != nil {
+		tenantIDStr := role.TenantID.String()
+		response.TenantID = &tenantIDStr
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+// DeleteTenantRole handles deleting a tenant role.
+func (h *TenantHandler) DeleteTenantRole(w http.ResponseWriter, r *http.Request) {
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	err = h.authService.DeleteRole(r.Context(), roleID)
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		case auth.ErrCannotModifySystemRole:
+			writeError(w, http.StatusForbidden, "Cannot delete system role", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to delete role", err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetTenantRolePermissions handles getting permissions for a tenant role.
+func (h *TenantHandler) GetTenantRolePermissions(w http.ResponseWriter, r *http.Request) {
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	permissions, err := h.authService.GetRolePermissions(r.Context(), roleID)
+	if err != nil {
+		if err == auth.ErrRoleNotFound {
+			writeError(w, http.StatusNotFound, "Role not found", err)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to get role permissions", err)
+		return
+	}
+
+	response := make([]PermissionResponse, len(permissions))
+	for i, p := range permissions {
+		response[i] = PermissionResponse{
+			ID:          p.ID.String(),
+			Name:        p.Name,
+			Description: p.Description,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data":  response,
+		"count": len(response),
+	})
+}
+
+// AssignPermissionToTenantRole handles assigning a permission to a tenant role.
+func (h *TenantHandler) AssignPermissionToTenantRole(w http.ResponseWriter, r *http.Request) {
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	var req AssignPermissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	permissionID, err := uuid.Parse(req.PermissionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid permission ID", err)
+		return
+	}
+
+	err = h.authService.AssignPermissionToRole(r.Context(), roleID, permissionID)
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		case auth.ErrPermissionNotFound:
+			writeError(w, http.StatusNotFound, "Permission not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to assign permission to role", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Permission assigned successfully"})
+}
+
+// RemovePermissionFromTenantRole handles removing a permission from a tenant role.
+func (h *TenantHandler) RemovePermissionFromTenantRole(w http.ResponseWriter, r *http.Request) {
+	roleIDStr := chi.URLParam(r, "roleId")
+	roleID, err := uuid.Parse(roleIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid role ID", err)
+		return
+	}
+
+	permissionIDStr := chi.URLParam(r, "permissionId")
+	permissionID, err := uuid.Parse(permissionIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid permission ID", err)
+		return
+	}
+
+	err = h.authService.RemovePermissionFromRole(r.Context(), roleID, permissionID)
+	if err != nil {
+		switch err {
+		case auth.ErrRoleNotFound:
+			writeError(w, http.StatusNotFound, "Role not found", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to remove permission from role", err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // UpdateTenantFeatures updates feature flags for a tenant.
@@ -904,6 +1284,7 @@ func (h *TenantHandler) UpdateTenantFeatures(w http.ResponseWriter, r *http.Requ
 		WebhooksEnabled:  req.WebhooksEnabled,
 		MFARequired:      req.MFARequired,
 		CustomBranding:   req.CustomBranding,
+		CustomFlags:      req.CustomFlags,
 	})
 	if err != nil {
 		if err == tenant.ErrTenantNotFound {
@@ -920,5 +1301,41 @@ func (h *TenantHandler) UpdateTenantFeatures(w http.ResponseWriter, r *http.Requ
 		WebhooksEnabled:  features.WebhooksEnabled,
 		MFARequired:      features.MFARequired,
 		CustomBranding:   features.CustomBranding,
+		CustomFlags:      features.CustomFlags,
+	})
+}
+
+// TenantOnboardingStatusResponse represents the onboarding status.
+type TenantOnboardingStatusResponse struct {
+	IsDomainVerified bool `json:"is_domain_verified"`
+	HasUsers         bool `json:"has_users"`
+	HasFeatureFlags  bool `json:"has_feature_flags"`
+	IsComplete       bool `json:"is_complete"`
+}
+
+// GetTenantOnboardingStatus retrieves the onboarding status for a tenant.
+func (h *TenantHandler) GetTenantOnboardingStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
+	status, err := h.tenantService.GetTenantOnboardingStatus(r.Context(), id)
+	if err != nil {
+		if err == tenant.ErrTenantNotFound {
+			writeError(w, http.StatusNotFound, "Tenant not found", err)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to get onboarding status", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, TenantOnboardingStatusResponse{
+		IsDomainVerified: status.IsDomainVerified,
+		HasUsers:         status.HasUsers,
+		HasFeatureFlags:  status.HasFeatureFlags,
+		IsComplete:       status.IsComplete,
 	})
 }

@@ -26,6 +26,7 @@ type BulkImportResult struct {
 
 // BulkImportError represents an error for a specific user.
 type BulkImportError struct {
+	Row    int    `json:"row"`
 	Email  string `json:"email"`
 	Reason string `json:"reason"`
 }
@@ -50,12 +51,13 @@ func (s *Service) BulkImportUsers(ctx context.Context, tenantID uuid.UUID, users
 		Errors: []BulkImportError{},
 	}
 
-	for _, entry := range users {
+	for i, entry := range users {
 		// Check if user already exists
 		existingUser, err := s.storage.GetUserByEmail(ctx, entry.Email)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BulkImportError{
+				Row:    i + 2, // +2 because 0-index + 1 for header
 				Email:  entry.Email,
 				Reason: "Failed to check existing user",
 			})
@@ -69,10 +71,16 @@ func (s *Service) BulkImportUsers(ctx context.Context, tenantID uuid.UUID, users
 			if err := s.storage.UpdateUser(ctx, existingUser); err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, BulkImportError{
+					Row:    i + 2, // +2 because 0-index + 1 for header
 					Email:  entry.Email,
 					Reason: "Failed to assign existing user to tenant",
 				})
 				continue
+			}
+
+			// Assign requested roles
+			for _, roleID := range entry.RoleIDs {
+				_ = s.storage.AssignRoleToUserInTenant(ctx, existingUser.ID, roleID, tenantID, nil)
 			}
 		} else {
 			// Create new user with invitation flow
@@ -91,10 +99,16 @@ func (s *Service) BulkImportUsers(ctx context.Context, tenantID uuid.UUID, users
 			if err := s.storage.CreateUser(ctx, newUser); err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, BulkImportError{
+					Row:    i + 2, // +2 because 0-index + 1 for header
 					Email:  entry.Email,
 					Reason: "Failed to create user: " + err.Error(),
 				})
 				continue
+			}
+
+			// Assign requested roles
+			for _, roleID := range entry.RoleIDs {
+				_ = s.storage.AssignRoleToUserInTenant(ctx, newUser.ID, roleID, tenantID, nil)
 			}
 		}
 

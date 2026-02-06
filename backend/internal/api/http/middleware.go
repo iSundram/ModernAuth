@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -128,7 +129,7 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 					retryAfter = 1
 				}
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-				
+
 				h.logger.Warn("Rate limit exceeded", "ip", ip, "path", r.URL.Path)
 				h.writeError(w, http.StatusTooManyRequests, "Rate limit exceeded", nil)
 				return
@@ -154,10 +155,10 @@ func (rw *responseWriter) WriteHeader(code int) {
 func (h *Handler) Metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
+
 		rw := &responseWriter{w, http.StatusOK}
 		next.ServeHTTP(rw, r)
-		
+
 		duration := time.Since(start).Seconds()
 		path := r.URL.Path
 		method := r.Method
@@ -184,7 +185,37 @@ func (h *Handler) RequireRole(roleName string) func(http.Handler) http.Handler {
 				return
 			}
 
-			hasRole, err := h.authService.UserHasRole(r.Context(), userID, roleName)
+			var hasRole bool
+
+			// Check if we are in a tenant context (e.g. via URL param or header if implemented)
+			// For now, let's look for a tenant ID in the request context or URL
+			// This is a simplified check - in a real app, tenant ID might come from
+			// a parent middleware or route param. Let's assume there's a way to get it.
+			// Since we don't have a standard way to get tenant ID here yet, we'll
+			// default to checking global roles, unless we can find a tenant ID.
+
+			// NOTE: This implementation assumes tenant ID might be available in context
+			// or we might need to update this middleware signature or logic if we want strict
+			// tenant scoping here. For now, we'll use the existing UserHasRole for backwards compat
+			// if no tenant is found, but we should upgrade this.
+
+			// Let's see if we can get tenant ID from chi URL param if it exists in the path
+			tenantIDStr := chi.URLParam(r, "tenantId")
+			if tenantIDStr == "" {
+				// Try "id" parameter if the route is /tenants/{id}/...
+				// Be careful not to pick up other IDs.
+				// For now, let's stick to the non-tenant check if not explicit.
+				hasRole, err = h.authService.UserHasRole(r.Context(), userID, roleName)
+			} else {
+				tenantID, tErr := uuid.Parse(tenantIDStr)
+				if tErr == nil {
+					hasRole, err = h.authService.UserHasRoleInTenant(r.Context(), userID, roleName, tenantID)
+				} else {
+					// Fallback
+					hasRole, err = h.authService.UserHasRole(r.Context(), userID, roleName)
+				}
+			}
+
 			if err != nil {
 				h.writeError(w, http.StatusInternalServerError, "Failed to check role", err)
 				return
@@ -216,7 +247,21 @@ func (h *Handler) RequirePermission(permissionName string) func(http.Handler) ht
 				return
 			}
 
-			hasPermission, err := h.authService.UserHasPermission(r.Context(), userID, permissionName)
+			var hasPermission bool
+
+			// Same tenant logic as RequireRole
+			tenantIDStr := chi.URLParam(r, "tenantId")
+			if tenantIDStr == "" {
+				hasPermission, err = h.authService.UserHasPermission(r.Context(), userID, permissionName)
+			} else {
+				tenantID, tErr := uuid.Parse(tenantIDStr)
+				if tErr == nil {
+					hasPermission, err = h.authService.UserHasPermissionInTenant(r.Context(), userID, permissionName, tenantID)
+				} else {
+					hasPermission, err = h.authService.UserHasPermission(r.Context(), userID, permissionName)
+				}
+			}
+
 			if err != nil {
 				h.writeError(w, http.StatusInternalServerError, "Failed to check permission", err)
 				return

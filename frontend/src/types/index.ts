@@ -377,6 +377,14 @@ export interface TenantFeatures {
   webhooks_enabled: boolean;
   mfa_required: boolean;
   custom_branding: boolean;
+  custom_flags?: Record<string, boolean | string | number>;
+}
+
+export interface TenantOnboardingStatusResponse {
+  is_domain_verified: boolean;
+  has_users: boolean;
+  has_feature_flags: boolean;
+  is_complete: boolean;
 }
 
 // ============================================================================

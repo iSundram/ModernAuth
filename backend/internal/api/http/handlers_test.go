@@ -243,7 +243,19 @@ func (m *mockStorage) GetRoleByName(ctx context.Context, name string) (*storage.
 	return nil, nil
 }
 
+func (m *mockStorage) GetRoleByNameAndTenant(ctx context.Context, name string, tenantID *uuid.UUID) (*storage.Role, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) GetRoleByIDAndTenant(ctx context.Context, id uuid.UUID, tenantID *uuid.UUID) (*storage.Role, error) {
+	return nil, nil
+}
+
 func (m *mockStorage) ListRoles(ctx context.Context) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
+func (m *mockStorage) ListRolesByTenant(ctx context.Context, tenantID uuid.UUID) ([]*storage.Role, error) {
 	return []*storage.Role{}, nil
 }
 
@@ -251,7 +263,15 @@ func (m *mockStorage) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*st
 	return []*storage.Role{}, nil
 }
 
+func (m *mockStorage) GetUserRolesByTenant(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) ([]*storage.Role, error) {
+	return []*storage.Role{}, nil
+}
+
 func (m *mockStorage) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) AssignRoleToUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID, assignedBy *uuid.UUID) error {
 	return nil
 }
 
@@ -259,7 +279,15 @@ func (m *mockStorage) RemoveRoleFromUser(ctx context.Context, userID, roleID uui
 	return nil
 }
 
+func (m *mockStorage) RemoveRoleFromUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID) error {
+	return nil
+}
+
 func (m *mockStorage) UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStorage) UserHasRoleInTenant(ctx context.Context, userID uuid.UUID, roleName string, tenantID uuid.UUID) (bool, error) {
 	return false, nil
 }
 
@@ -272,6 +300,10 @@ func (m *mockStorage) GetUserPermissions(ctx context.Context, userID uuid.UUID) 
 }
 
 func (m *mockStorage) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockStorage) UserHasPermissionInTenant(ctx context.Context, userID uuid.UUID, permissionName string, tenantID uuid.UUID) (bool, error) {
 	return false, nil
 }
 
@@ -518,6 +550,26 @@ func (m *mockStorage) ListAuditLogsByTenant(ctx context.Context, tenantID uuid.U
 		end = len(m.auditLogs)
 	}
 	return m.auditLogs[offset:end], nil
+}
+
+func (m *mockStorage) ListAuditLogsByEventTypes(ctx context.Context, eventTypes []string, limit, offset int) ([]*storage.AuditLog, error) {
+	return []*storage.AuditLog{}, nil
+}
+
+func (m *mockStorage) CountAuditLogsByEventTypes(ctx context.Context, eventTypes []string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockStorage) GetUserByEmailAndTenant(ctx context.Context, email string, tenantID *uuid.UUID) (*storage.User, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
+	return []*storage.User{}, nil
+}
+
+func (m *mockStorage) CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	return 0, nil
 }
 
 func setupTestHandler() *Handler {

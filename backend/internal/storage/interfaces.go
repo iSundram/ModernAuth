@@ -117,19 +117,27 @@ type RBACStorage interface {
 
 	// User role operations
 	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*Role, error)
+	GetUserRolesByTenant(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) ([]*Role, error)
 	AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error
+	AssignRoleToUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID, assignedBy *uuid.UUID) error
 	RemoveRoleFromUser(ctx context.Context, userID, roleID uuid.UUID) error
+	RemoveRoleFromUserInTenant(ctx context.Context, userID, roleID, tenantID uuid.UUID) error
 	UserHasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error)
+	UserHasRoleInTenant(ctx context.Context, userID uuid.UUID, roleName string, tenantID uuid.UUID) (bool, error)
 
 	// Permission operations
 	GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]*Permission, error)
 	GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]*Permission, error)
 	UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error)
+	UserHasPermissionInTenant(ctx context.Context, userID uuid.UUID, permissionName string, tenantID uuid.UUID) (bool, error)
 	AssignPermissionToRole(ctx context.Context, roleID, permissionID uuid.UUID) error
 	RemovePermissionFromRole(ctx context.Context, roleID, permissionID uuid.UUID) error
 	GetPermissionByID(ctx context.Context, id uuid.UUID) (*Permission, error)
+	GetRoleByIDAndTenant(ctx context.Context, id uuid.UUID, tenantID *uuid.UUID) (*Role, error)
 	GetPermissionByName(ctx context.Context, name string) (*Permission, error)
+	GetRoleByNameAndTenant(ctx context.Context, name string, tenantID *uuid.UUID) (*Role, error)
 	ListPermissions(ctx context.Context) ([]*Permission, error)
+	ListRolesByTenant(ctx context.Context, tenantID uuid.UUID) ([]*Role, error)
 }
 
 // TenantStorage defines tenant-related storage operations.

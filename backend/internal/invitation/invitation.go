@@ -226,8 +226,8 @@ func (s *Service) ValidateInvitation(ctx context.Context, token string) (*storag
 
 // AcceptInvitationRequest represents a request to accept an invitation.
 type AcceptInvitationRequest struct {
-	Token    string `json:"token"`
-	Password string `json:"password"`
+	Token    string  `json:"token"`
+	Password string  `json:"password"`
 	Username *string `json:"username,omitempty"`
 }
 
@@ -275,7 +275,14 @@ func (s *Service) AcceptInvitation(ctx context.Context, req *AcceptInvitationReq
 	// Assign roles from invitation if RBAC storage is configured
 	if s.rbacStorage != nil && len(invitation.RoleIDs) > 0 {
 		for _, roleID := range invitation.RoleIDs {
-			if err := s.rbacStorage.AssignRoleToUser(ctx, user.ID, roleID, invitation.InvitedBy); err != nil {
+			var err error
+			if invitation.TenantID != nil {
+				err = s.rbacStorage.AssignRoleToUserInTenant(ctx, user.ID, roleID, *invitation.TenantID, invitation.InvitedBy)
+			} else {
+				err = s.rbacStorage.AssignRoleToUser(ctx, user.ID, roleID, invitation.InvitedBy)
+			}
+
+			if err != nil {
 				s.logger.Error("Failed to assign role to user from invitation",
 					"error", err,
 					"user_id", user.ID,

@@ -28,6 +28,7 @@ type Permission struct {
 type UserRole struct {
 	UserID     uuid.UUID  `json:"user_id"`
 	RoleID     uuid.UUID  `json:"role_id"`
+	TenantID   *uuid.UUID `json:"tenant_id,omitempty"`
 	AssignedAt time.Time  `json:"assigned_at"`
 	AssignedBy *uuid.UUID `json:"assigned_by,omitempty"`
 }

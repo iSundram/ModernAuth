@@ -8,13 +8,16 @@ import {
   Monitor,
   AlertCircle,
   CheckCircle,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { LoadingBar, Badge } from '../components/ui';
+import { LoadingBar, Badge, Button } from '../components/ui';
 import { OnboardingWizard } from '../components/onboarding';
 import { useAuth } from '../hooks/useAuth';
-import { deviceService, auditService, sessionService, authService } from '../api/services';
-import { Link } from 'react-router-dom';
+import { useTenant } from '../hooks/useTenant';
+import { deviceService, auditService, sessionService, authService, tenantService } from '../api/services';
+import { Link, useNavigate } from 'react-router-dom';
 import type { AuditLog, MFAStatus } from '../types';
 
 interface StatCardProps {
@@ -53,6 +56,8 @@ function StatCard({ title, value, icon, description, variant = 'default' }: Stat
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const { tenant } = useTenant();
+  const navigate = useNavigate();
 
   // Fetch devices
   const { data: devices = [], isLoading: devicesLoading } = useQuery({
@@ -79,7 +84,16 @@ export function DashboardPage() {
     retry: false,
   });
 
-  const isLoading = devicesLoading || auditLoading || sessionsLoading;
+  // Check if tenant admin and get tenant status
+  const isTenantAdmin = user?.role === 'admin';
+  const { data: tenantStatus, isLoading: tenantStatusLoading } = useQuery({
+      queryKey: ['tenant-onboarding-status', tenant?.id],
+      queryFn: () => tenant ? tenantService.getOnboardingStatus(tenant.id) : null,
+      enabled: !!isTenantAdmin && !!tenant,
+      retry: false
+  });
+
+  const isLoading = devicesLoading || auditLoading || sessionsLoading || tenantStatusLoading;
 
   // Calculate stats
   const activeSessions = sessions.length;
@@ -102,12 +116,44 @@ export function DashboardPage() {
 
   const securityScore = getSecurityScore();
   const securityLevel = securityScore >= 75 ? 'Strong' : securityScore >= 50 ? 'Good' : 'Weak';
+  
+  // Show setup banner if tenant admin and incomplete
+  const showSetupBanner = isTenantAdmin && tenantStatus && !tenantStatus.is_complete;
 
   return (
     <div className="space-y-6">
       <OnboardingWizard />
       <LoadingBar isLoading={isLoading} message="Loading dashboard..." />
       
+      {/* Setup Banner */}
+      {showSetupBanner && (
+        <div className="rounded-xl p-6 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-between">
+            <div className="flex items-start gap-4">
+                <div className="p-3 bg-blue-500/20 rounded-lg text-blue-400">
+                    <Sparkles size={24} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">Complete Your Setup</h3>
+                    <p className="text-[var(--color-text-secondary)] mt-1">
+                        Finish setting up your tenant to unlock all features. Verify your domain, invite users, and configure branding.
+                    </p>
+                </div>
+            </div>
+            <Button 
+                onClick={() => {
+                    localStorage.removeItem(`onboarding-dismissed-${user?.id}`);
+                    if (tenant) {
+                        navigate(`/admin/tenants/${tenant.id}`);
+                    }
+                }} 
+                variant="primary" 
+                className="shrink-0"
+            >
+                Continue Setup <ArrowRight size={16} className="ml-2" />
+            </Button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Dashboard</h1>

@@ -10,7 +10,7 @@ import type {
   UserInvitation, CreateInvitationRequest,
   Tenant, CreateTenantRequest, UpdateTenantRequest, TenantStats, TenantSecurityStats,
   TenantAPIKey, CreateAPIKeyRequest as CreateTenantAPIKeyRequest, CreateAPIKeyResponse,
-  DomainVerificationResult, BulkUserEntry, BulkImportResult, TenantFeatures,
+  DomainVerificationResult, BulkUserEntry, BulkImportResult, TenantFeatures, TenantOnboardingStatusResponse,
   SystemStats, ServiceStatus, SystemSetting,
   TokensResponse,
   MFAStatus, WebAuthnCredential, LinkedOAuthProvider,
@@ -475,6 +475,9 @@ export const tenantService = {
 
   updateFeatures: (id: string, features: Partial<TenantFeatures>) =>
     apiClient.put<TenantFeatures>(`/v1/tenants/${id}/features`, features),
+
+  getOnboardingStatus: (id: string) =>
+    apiClient.get<TenantOnboardingStatusResponse>(`/v1/tenants/${id}/onboarding-status`),
 };
 
 // ============================================================================

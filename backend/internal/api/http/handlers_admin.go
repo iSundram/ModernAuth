@@ -28,7 +28,7 @@ func (h *Handler) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 // GetServicesStatus handles requests for service status.
 func (h *Handler) GetServicesStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	services := []map[string]interface{}{}
 
 	// Postgres Check
@@ -36,10 +36,10 @@ func (h *Handler) GetServicesStatus(w http.ResponseWriter, r *http.Request) {
 	// (In a real app, we'd ping the DB here, but let's assume it's up if the app is running
 	// or we could expose the HealthCheck logic better. For now, we'll just say it's up)
 	services = append(services, map[string]interface{}{
-		"name": "Database",
-		"status": pgStatus,
-		"uptime": "99.9%", // Placeholder
-		"latency": "2ms",  // Placeholder
+		"name":    "Database",
+		"status":  pgStatus,
+		"uptime":  "99.9%", // Placeholder
+		"latency": "2ms",   // Placeholder
 	})
 
 	// Redis Check
@@ -52,17 +52,17 @@ func (h *Handler) GetServicesStatus(w http.ResponseWriter, r *http.Request) {
 		redisStatus = "not_configured"
 	}
 	services = append(services, map[string]interface{}{
-		"name": "Redis Cache",
-		"status": redisStatus,
-		"uptime": "99.9%",
+		"name":    "Redis Cache",
+		"status":  redisStatus,
+		"uptime":  "99.9%",
 		"latency": "1ms",
 	})
 
 	// Auth Service
 	services = append(services, map[string]interface{}{
-		"name": "Auth Service",
-		"status": "healthy",
-		"uptime": "100%",
+		"name":    "Auth Service",
+		"status":  "healthy",
+		"uptime":  "100%",
 		"version": "1.0.0",
 	})
 
@@ -405,7 +405,8 @@ func (h *Handler) AssignUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.authService.AssignRole(r.Context(), userID, roleID, &actorID)
+	// Admin role assignment is global (no tenant ID)
+	err = h.authService.AssignRole(r.Context(), userID, roleID, nil, &actorID)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to assign role", err)
 		return
@@ -437,7 +438,8 @@ func (h *Handler) RemoveUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.authService.RemoveRole(r.Context(), userID, roleID, &actorID)
+	// Admin role removal is global (no tenant ID)
+	err = h.authService.RemoveRole(r.Context(), userID, roleID, nil, &actorID)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to remove role", err)
 		return

@@ -8,16 +8,19 @@ import (
 
 // Tenant represents a tenant in a multi-tenant system.
 type Tenant struct {
-	ID        uuid.UUID              `json:"id"`
-	Name      string                 `json:"name"`
-	Slug      string                 `json:"slug"`
-	Domain    *string                `json:"domain,omitempty"`
-	LogoURL   *string                `json:"logo_url,omitempty"`
-	Settings  map[string]interface{} `json:"settings,omitempty"`
-	Plan      string                 `json:"plan"`
-	IsActive  bool                   `json:"is_active"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
+	ID       uuid.UUID              `json:"id"`
+	Name     string                 `json:"name"`
+	Slug     string                 `json:"slug"`
+	Domain   *string                `json:"domain,omitempty"`
+	LogoURL  *string                `json:"logo_url,omitempty"`
+	Settings map[string]interface{} `json:"settings,omitempty"`
+	// RateLimits is a map of path patterns to rate limit configuration.
+	// Key can be a specific path (e.g. "/api/v1/users") or "global".
+	RateLimits map[string]RateLimitConfig `json:"rate_limits,omitempty"`
+	Plan       string                     `json:"plan"`
+	IsActive   bool                       `json:"is_active"`
+	CreatedAt  time.Time                  `json:"created_at"`
+	UpdatedAt  time.Time                  `json:"updated_at"`
 }
 
 // UserGroup represents a group of users within a tenant.
@@ -54,4 +57,10 @@ type UserInvitation struct {
 	ExpiresAt  time.Time   `json:"expires_at"`
 	AcceptedAt *time.Time  `json:"accepted_at,omitempty"`
 	CreatedAt  time.Time   `json:"created_at"`
+}
+
+// RateLimitConfig represents rate limit configuration.
+type RateLimitConfig struct {
+	Limit         int `json:"limit"`
+	WindowSeconds int `json:"window_seconds"`
 }

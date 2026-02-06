@@ -168,14 +168,14 @@ type AssignUserRoleRequest struct {
 
 // SessionResponse represents a session in API responses.
 type SessionResponse struct {
-	ID         string                 `json:"id"`
-	UserID     string                 `json:"user_id"`
-	TenantID   *string                `json:"tenant_id,omitempty"`
-	DeviceID   *string                `json:"device_id,omitempty"`
-	Fingerprint *string               `json:"fingerprint,omitempty"`
-	CreatedAt  string                 `json:"created_at"`
-	ExpiresAt  string                 `json:"expires_at"`
-	Revoked    bool                   `json:"revoked"`
-	IsCurrent  bool                   `json:"is_current"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	UserID      string                 `json:"user_id"`
+	TenantID    *string                `json:"tenant_id,omitempty"`
+	DeviceID    *string                `json:"device_id,omitempty"`
+	Fingerprint *string                `json:"fingerprint,omitempty"`
+	CreatedAt   string                 `json:"created_at"`
+	ExpiresAt   string                 `json:"expires_at"`
+	Revoked     bool                   `json:"revoked"`
+	IsCurrent   bool                   `json:"is_current"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }

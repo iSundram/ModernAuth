@@ -6,11 +6,15 @@ import {
   Fingerprint, 
   ArrowRight, 
   X,
-  Sparkles
+  Sparkles,
+  Users,
+  Globe,
+  Palette
 } from 'lucide-react';
 import { Button, Modal } from '../ui';
 import { useAuth } from '../../hooks/useAuth';
-import { authService } from '../../api/services';
+import { authService, tenantService } from '../../api/services';
+import { useTenant } from '../../hooks/useTenant';
 
 interface OnboardingStep {
   id: string;
@@ -29,12 +33,22 @@ interface OnboardingWizardProps {
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const { user } = useAuth();
+  const { tenant } = useTenant();
   const [isOpen, setIsOpen] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<{
     totp_enabled: boolean;
     email_enabled: boolean;
     webauthn_enabled: boolean;
   } | null>(null);
+  const [tenantStatus, setTenantStatus] = useState<{
+    is_domain_verified: boolean;
+    has_users: boolean;
+    has_feature_flags: boolean;
+    is_complete: boolean;
+  } | null>(null);
+
+  // Check if user is tenant admin
+  const isTenantAdmin = user?.role === 'admin';
 
   // Check if onboarding should be shown
   useEffect(() => {
@@ -46,16 +60,34 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       if (dismissed) return;
 
       // Fetch MFA status
+      let fetchedMfaStatus = mfaStatus;
       try {
-        const status = await authService.getMfaStatus();
-        setMfaStatus(status);
+        fetchedMfaStatus = await authService.getMfaStatus();
+        setMfaStatus(fetchedMfaStatus);
       } catch {
         // Ignore errors
       }
 
+      // Fetch Tenant Status if admin
+      let fetchedTenantStatus = tenantStatus;
+      if (isTenantAdmin && tenant) {
+        try {
+          fetchedTenantStatus = await tenantService.getOnboardingStatus(tenant.id);
+          setTenantStatus(fetchedTenantStatus);
+        } catch {
+          // Ignore
+        }
+      }
+
       // Show onboarding if email not verified or no MFA
-      const needsOnboarding = !user.is_email_verified || 
-        (!mfaStatus?.totp_enabled && !mfaStatus?.email_enabled && !mfaStatus?.webauthn_enabled);
+      let needsOnboarding = !user.is_email_verified || 
+        (!fetchedMfaStatus?.totp_enabled && !fetchedMfaStatus?.email_enabled && !fetchedMfaStatus?.webauthn_enabled);
+
+      if (isTenantAdmin && fetchedTenantStatus) {
+        if (!fetchedTenantStatus.is_complete) {
+            needsOnboarding = true;
+        }
+      }
       
       if (needsOnboarding) {
         // Delay showing to not interrupt initial page load
@@ -64,7 +96,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     };
 
     checkOnboarding();
-  }, [user, mfaStatus?.totp_enabled, mfaStatus?.email_enabled, mfaStatus?.webauthn_enabled]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, tenant?.id, isTenantAdmin]);
 
   const handleDismiss = () => {
     if (user) {
@@ -82,7 +115,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     onComplete?.();
   };
 
-  const steps: OnboardingStep[] = [
+  const userSteps: OnboardingStep[] = [
     {
       id: 'email',
       title: 'Verify Your Email',
@@ -123,6 +156,44 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       optional: true,
     },
   ];
+
+  const tenantSteps: OnboardingStep[] = [
+      {
+          id: 'domain',
+          title: 'Verify Domain',
+          description: 'Verify your custom domain to enable branded emails and login pages.',
+          icon: <Globe size={24} />,
+          completed: tenantStatus?.is_domain_verified || false,
+          action: () => {
+              window.location.href = '/admin/settings';
+          },
+          actionLabel: 'Verify Domain',
+      },
+      {
+          id: 'users',
+          title: 'Invite Team Members',
+          description: 'Invite your colleagues to join your tenant.',
+          icon: <Users size={24} />,
+          completed: tenantStatus?.has_users || false,
+          action: () => {
+              window.location.href = '/admin/users';
+          },
+          actionLabel: 'Invite Users',
+      },
+      {
+          id: 'branding',
+          title: 'Configure Branding',
+          description: 'Customize the look and feel of your emails and login pages.',
+          icon: <Palette size={24} />,
+          completed: tenantStatus?.has_feature_flags || false, // Using this as proxy for now
+          action: () => {
+              window.location.href = '/admin/email/branding';
+          },
+          actionLabel: 'Setup Branding',
+      }
+  ];
+
+  const steps = isTenantAdmin ? [...userSteps, ...tenantSteps] : userSteps;
 
   const completedSteps = steps.filter(s => s.completed).length;
   const progress = (completedSteps / steps.length) * 100;

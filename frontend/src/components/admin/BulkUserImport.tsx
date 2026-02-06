@@ -4,6 +4,7 @@ import { Button, Modal } from '../ui';
 import { adminService } from '../../api/services';
 import { useToast } from '../ui/Toast';
 import type { UserBulkImportResult, BulkUserRecord } from '../../types';
+import Papa from 'papaparse';
 
 interface BulkUserImportProps {
   isOpen: boolean;
@@ -29,51 +30,44 @@ export function BulkUserImport({ isOpen, onClose, onSuccess }: BulkUserImportPro
 
     setFile(selectedFile);
 
-    // Parse CSV file
-    try {
-      const text = await selectedFile.text();
-      const lines = text.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      
-      const parsedUsers: BulkUserRecord[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const values = line.split(',').map(v => v.trim());
-        const user: BulkUserRecord = {
-          email: '',
-          active: true,
-        };
-
-        headers.forEach((header, idx) => {
-          const value = values[idx] || '';
-          switch (header) {
-            case 'email': user.email = value; break;
-            case 'first_name': user.first_name = value; break;
-            case 'last_name': user.last_name = value; break;
-            case 'username': user.username = value; break;
-            case 'phone': user.phone = value; break;
-            case 'roles': user.roles = value; break;
-            case 'password': user.password = value; break;
-            case 'active': user.active = value === 'true' || value === '1'; break;
-          }
-        });
-
-        if (user.email) {
-          parsedUsers.push(user);
+    // Parse CSV file using papaparse
+    Papa.parse(selectedFile, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        if (results.errors.length > 0) {
+          showToast({
+            title: 'Error',
+            message: `Failed to parse CSV: ${results.errors[0].message}`,
+            type: 'error'
+          });
+          return;
         }
-      }
 
-      setUsers(parsedUsers);
-      setMode('preview');
-    } catch (err) {
-      showToast({
-        title: 'Error',
-        message: 'Failed to parse CSV file',
-        type: 'error'
-      });
-    }
+        const parsedUsers: BulkUserRecord[] = results.data.map((row: any) => {
+          return {
+            email: row.email || '',
+            first_name: row.first_name || '',
+            last_name: row.last_name || '',
+            username: row.username || '',
+            phone: row.phone || '',
+            roles: row.roles || '',
+            password: row.password || '',
+            active: row.active === 'true' || row.active === '1' || row.active === true,
+          };
+        }).filter(u => u.email); // Ensure email exists
+
+        setUsers(parsedUsers);
+        setMode('preview');
+      },
+      error: (error) => {
+        showToast({
+          title: 'Error',
+          message: `Failed to read file: ${error.message}`,
+          type: 'error'
+        });
+      }
+    });
   };
 
   const handleImport = async () => {

@@ -243,7 +243,7 @@ func main() {
 	handler.SetMFALockout(mfaLockout)
 
 	// Initialize specialized handlers
-	tenantHandler := httpapi.NewTenantHandler(tenantService)
+	tenantHandler := httpapi.NewTenantHandler(tenantService, authService)
 	deviceHandler := httpapi.NewDeviceHandler(deviceService)
 	apiKeyHandler := httpapi.NewAPIKeyHandler(apiKeyService)
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)

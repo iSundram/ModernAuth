@@ -54,24 +54,50 @@ func (s *AuthService) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]*st
 }
 
 // AssignRole assigns a role to a user.
-func (s *AuthService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID) error {
-	if err := s.storage.AssignRoleToUser(ctx, userID, roleID, assignedBy); err != nil {
+func (s *AuthService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, tenantID *uuid.UUID, assignedBy *uuid.UUID) error {
+	var err error
+	if tenantID != nil {
+		err = s.storage.AssignRoleToUserInTenant(ctx, userID, roleID, *tenantID, assignedBy)
+	} else {
+		err = s.storage.AssignRoleToUser(ctx, userID, roleID, assignedBy)
+	}
+
+	if err != nil {
 		return err
 	}
-	s.logAuditEvent(ctx, &userID, assignedBy, "role.assigned", nil, nil, map[string]interface{}{
+
+	details := map[string]interface{}{
 		"role_id": roleID.String(),
-	})
+	}
+	if tenantID != nil {
+		details["tenant_id"] = tenantID.String()
+	}
+
+	s.logAuditEvent(ctx, &userID, assignedBy, "role.assigned", nil, nil, details)
 	return nil
 }
 
 // RemoveRole removes a role from a user.
-func (s *AuthService) RemoveRole(ctx context.Context, userID, roleID uuid.UUID, actorID *uuid.UUID) error {
-	if err := s.storage.RemoveRoleFromUser(ctx, userID, roleID); err != nil {
+func (s *AuthService) RemoveRole(ctx context.Context, userID, roleID uuid.UUID, tenantID *uuid.UUID, actorID *uuid.UUID) error {
+	var err error
+	if tenantID != nil {
+		err = s.storage.RemoveRoleFromUserInTenant(ctx, userID, roleID, *tenantID)
+	} else {
+		err = s.storage.RemoveRoleFromUser(ctx, userID, roleID)
+	}
+
+	if err != nil {
 		return err
 	}
-	s.logAuditEvent(ctx, &userID, actorID, "role.removed", nil, nil, map[string]interface{}{
+
+	details := map[string]interface{}{
 		"role_id": roleID.String(),
-	})
+	}
+	if tenantID != nil {
+		details["tenant_id"] = tenantID.String()
+	}
+
+	s.logAuditEvent(ctx, &userID, actorID, "role.removed", nil, nil, details)
 	return nil
 }
 
@@ -80,9 +106,19 @@ func (s *AuthService) UserHasRole(ctx context.Context, userID uuid.UUID, roleNam
 	return s.storage.UserHasRole(ctx, userID, roleName)
 }
 
+// UserHasRoleInTenant checks if a user has a specific role within a tenant context.
+func (s *AuthService) UserHasRoleInTenant(ctx context.Context, userID uuid.UUID, roleName string, tenantID uuid.UUID) (bool, error) {
+	return s.storage.UserHasRoleInTenant(ctx, userID, roleName, tenantID)
+}
+
 // UserHasPermission checks if a user has a specific permission.
 func (s *AuthService) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionName string) (bool, error) {
 	return s.storage.UserHasPermission(ctx, userID, permissionName)
+}
+
+// UserHasPermissionInTenant checks if a user has a specific permission within a tenant context.
+func (s *AuthService) UserHasPermissionInTenant(ctx context.Context, userID uuid.UUID, permissionName string, tenantID uuid.UUID) (bool, error) {
+	return s.storage.UserHasPermissionInTenant(ctx, userID, permissionName, tenantID)
 }
 
 // GetRolePermissions retrieves all permissions for a role.
@@ -95,10 +131,15 @@ func (s *AuthService) ListRoles(ctx context.Context) ([]*storage.Role, error) {
 	return s.storage.ListRoles(ctx)
 }
 
+// ListRolesByTenant retrieves roles for a specific tenant.
+func (s *AuthService) ListRolesByTenant(ctx context.Context, tenantID uuid.UUID) ([]*storage.Role, error) {
+	return s.storage.ListRolesByTenant(ctx, tenantID)
+}
+
 // CreateRole creates a new role.
 func (s *AuthService) CreateRole(ctx context.Context, req *CreateRoleRequest) (*storage.Role, error) {
 	// Check if role name already exists
-	existing, err := s.storage.GetRoleByName(ctx, req.Name)
+	existing, err := s.storage.GetRoleByNameAndTenant(ctx, req.Name, req.TenantID)
 	if err != nil {
 		return nil, err
 	}

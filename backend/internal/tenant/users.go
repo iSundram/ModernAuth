@@ -77,6 +77,13 @@ func (s *Service) AssignUserToTenant(ctx context.Context, tenantID, userID uuid.
 		return err
 	}
 
+	// Assign default role (e.g., 'user') if available
+	// This is a placeholder - ideally, we should look up a default role for the tenant
+	// For now, we won't fail if we can't find it
+	if defaultRole, err := s.storage.GetRoleByNameAndTenant(ctx, "user", &tenantID); err == nil && defaultRole != nil {
+		_ = s.storage.AssignRoleToUserInTenant(ctx, userID, defaultRole.ID, tenantID, nil)
+	}
+
 	s.logger.Info("User assigned to tenant", "user_id", userID, "tenant_id", tenantID)
 	return nil
 }
@@ -113,6 +120,13 @@ func (s *Service) RemoveUserFromTenant(ctx context.Context, tenantID, userID uui
 		return err
 	}
 
+	// Remove all roles for this user in this tenant
+	if roles, err := s.storage.GetUserRolesByTenant(ctx, userID, tenantID); err == nil {
+		for _, role := range roles {
+			_ = s.storage.RemoveRoleFromUserInTenant(ctx, userID, role.ID, tenantID)
+		}
+	}
+
 	s.logger.Info("User removed from tenant", "user_id", userID, "tenant_id", tenantID)
 	return nil
 }
@@ -140,9 +154,19 @@ func (s *Service) IsUserTenantMember(ctx context.Context, userID, tenantID uuid.
 		return false, err
 	}
 	for _, role := range roles {
+		// Global admin check
 		if role.Name == "admin" || role.Name == "super_admin" {
 			return true, nil
 		}
+	}
+
+	// Check tenant specific roles
+	tenantRoles, err := s.storage.GetUserRolesByTenant(ctx, userID, tenantID)
+	if err != nil {
+		return false, err
+	}
+	if len(tenantRoles) > 0 {
+		return true, nil
 	}
 
 	return false, nil
@@ -160,12 +184,24 @@ func (s *Service) IsUserTenantAdmin(ctx context.Context, userID, tenantID uuid.U
 	}
 
 	// Check if user has admin role
+	// Global admin check
 	roles, err := s.storage.GetUserRoles(ctx, userID)
 	if err != nil {
 		return false, err
 	}
 	for _, role := range roles {
-		if role.Name == "admin" || role.Name == "super_admin" || role.Name == "tenant_admin" {
+		if role.Name == "admin" || role.Name == "super_admin" {
+			return true, nil
+		}
+	}
+
+	// Tenant specific admin check
+	tenantRoles, err := s.storage.GetUserRolesByTenant(ctx, userID, tenantID)
+	if err != nil {
+		return false, err
+	}
+	for _, role := range tenantRoles {
+		if role.Name == "admin" || role.Name == "tenant_admin" {
 			return true, nil
 		}
 	}

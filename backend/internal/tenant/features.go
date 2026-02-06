@@ -9,20 +9,22 @@ import (
 
 // TenantFeatures represents feature flags for a tenant.
 type TenantFeatures struct {
-	SSOEnabled       bool `json:"sso_enabled"`
-	APIAccessEnabled bool `json:"api_access_enabled"`
-	WebhooksEnabled  bool `json:"webhooks_enabled"`
-	MFARequired      bool `json:"mfa_required"`
-	CustomBranding   bool `json:"custom_branding"`
+	SSOEnabled       bool                   `json:"sso_enabled"`
+	APIAccessEnabled bool                   `json:"api_access_enabled"`
+	WebhooksEnabled  bool                   `json:"webhooks_enabled"`
+	MFARequired      bool                   `json:"mfa_required"`
+	CustomBranding   bool                   `json:"custom_branding"`
+	CustomFlags      map[string]interface{} `json:"custom_flags,omitempty"`
 }
 
 // UpdateFeaturesRequest represents a request to update feature flags.
 type UpdateFeaturesRequest struct {
-	SSOEnabled       *bool `json:"sso_enabled,omitempty"`
-	APIAccessEnabled *bool `json:"api_access_enabled,omitempty"`
-	WebhooksEnabled  *bool `json:"webhooks_enabled,omitempty"`
-	MFARequired      *bool `json:"mfa_required,omitempty"`
-	CustomBranding   *bool `json:"custom_branding,omitempty"`
+	SSOEnabled       *bool                  `json:"sso_enabled,omitempty"`
+	APIAccessEnabled *bool                  `json:"api_access_enabled,omitempty"`
+	WebhooksEnabled  *bool                  `json:"webhooks_enabled,omitempty"`
+	MFARequired      *bool                  `json:"mfa_required,omitempty"`
+	CustomBranding   *bool                  `json:"custom_branding,omitempty"`
+	CustomFlags      map[string]interface{} `json:"custom_flags,omitempty"`
 }
 
 // GetFeatures retrieves feature flags for a tenant.
@@ -70,6 +72,16 @@ func (s *Service) UpdateFeatures(ctx context.Context, tenantID uuid.UUID, req *U
 		features.CustomBranding = *req.CustomBranding
 	}
 
+	if req.CustomFlags != nil {
+		// Merge custom flags
+		if features.CustomFlags == nil {
+			features.CustomFlags = make(map[string]interface{})
+		}
+		for k, v := range req.CustomFlags {
+			features.CustomFlags[k] = v
+		}
+	}
+
 	// Store features in settings
 	tenant.Settings["features"] = map[string]interface{}{
 		"sso_enabled":        features.SSOEnabled,
@@ -77,6 +89,7 @@ func (s *Service) UpdateFeatures(ctx context.Context, tenantID uuid.UUID, req *U
 		"webhooks_enabled":   features.WebhooksEnabled,
 		"mfa_required":       features.MFARequired,
 		"custom_branding":    features.CustomBranding,
+		"custom_flags":       features.CustomFlags,
 	}
 	tenant.UpdatedAt = time.Now()
 
@@ -91,8 +104,8 @@ func (s *Service) UpdateFeatures(ctx context.Context, tenantID uuid.UUID, req *U
 func (s *Service) extractFeaturesFromSettings(settings map[string]interface{}) *TenantFeatures {
 	features := &TenantFeatures{
 		SSOEnabled:       false,
-		APIAccessEnabled: true,  // Default enabled
-		WebhooksEnabled:  true,  // Default enabled
+		APIAccessEnabled: true, // Default enabled
+		WebhooksEnabled:  true, // Default enabled
 		MFARequired:      false,
 		CustomBranding:   false,
 	}
@@ -120,6 +133,9 @@ func (s *Service) extractFeaturesFromSettings(settings map[string]interface{}) *
 	}
 	if v, ok := featuresData["custom_branding"].(bool); ok {
 		features.CustomBranding = v
+	}
+	if v, ok := featuresData["custom_flags"].(map[string]interface{}); ok {
+		features.CustomFlags = v
 	}
 
 	return features

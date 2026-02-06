@@ -15,14 +15,64 @@ import (
 // TenantStorage methods
 // ============================================================================
 
+func (s *PostgresStorage) extractRateLimits(settings map[string]interface{}) map[string]storage.RateLimitConfig {
+	if settings == nil {
+		return nil
+	}
+	limitsData, ok := settings["rate_limits"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	limits := make(map[string]storage.RateLimitConfig)
+	for k, v := range limitsData {
+		if configMap, ok := v.(map[string]interface{}); ok {
+			limit := 0
+			window := 0
+			if l, ok := configMap["limit"].(float64); ok {
+				limit = int(l)
+			}
+			if w, ok := configMap["window_seconds"].(float64); ok {
+				window = int(w)
+			}
+			limits[k] = storage.RateLimitConfig{
+				Limit:         limit,
+				WindowSeconds: window,
+			}
+		}
+	}
+	return limits
+}
+
+func (s *PostgresStorage) injectRateLimits(settings map[string]interface{}, limits map[string]storage.RateLimitConfig) map[string]interface{} {
+	if limits == nil {
+		return settings
+	}
+	if settings == nil {
+		settings = make(map[string]interface{})
+	}
+	// Convert to map[string]interface{} for JSON serialization
+	limitsMap := make(map[string]interface{})
+	for k, v := range limits {
+		limitsMap[k] = map[string]interface{}{
+			"limit":          v.Limit,
+			"window_seconds": v.WindowSeconds,
+		}
+	}
+	settings["rate_limits"] = limitsMap
+	return settings
+}
+
 func (s *PostgresStorage) CreateTenant(ctx context.Context, tenant *storage.Tenant) error {
 	query := `
 		INSERT INTO tenants (id, name, slug, domain, logo_url, settings, plan, is_active, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
+	// Inject RateLimits into Settings for storage
+	settings := s.injectRateLimits(tenant.Settings, tenant.RateLimits)
+
 	_, err := s.pool.Exec(ctx, query,
 		tenant.ID, tenant.Name, tenant.Slug, tenant.Domain, tenant.LogoURL,
-		tenant.Settings, tenant.Plan, tenant.IsActive, tenant.CreatedAt, tenant.UpdatedAt,
+		settings, tenant.Plan, tenant.IsActive, tenant.CreatedAt, tenant.UpdatedAt,
 	)
 	return err
 }
@@ -43,6 +93,8 @@ func (s *PostgresStorage) GetTenantByID(ctx context.Context, id uuid.UUID) (*sto
 		}
 		return nil, err
 	}
+	// Extract RateLimits from Settings
+	tenant.RateLimits = s.extractRateLimits(tenant.Settings)
 	return tenant, nil
 }
 
@@ -62,6 +114,7 @@ func (s *PostgresStorage) GetTenantBySlug(ctx context.Context, slug string) (*st
 		}
 		return nil, err
 	}
+	tenant.RateLimits = s.extractRateLimits(tenant.Settings)
 	return tenant, nil
 }
 
@@ -81,6 +134,7 @@ func (s *PostgresStorage) GetTenantByDomain(ctx context.Context, domain string) 
 		}
 		return nil, err
 	}
+	tenant.RateLimits = s.extractRateLimits(tenant.Settings)
 	return tenant, nil
 }
 
@@ -105,6 +159,7 @@ func (s *PostgresStorage) ListTenants(ctx context.Context, limit, offset int) ([
 		if err != nil {
 			return nil, err
 		}
+		tenant.RateLimits = s.extractRateLimits(tenant.Settings)
 		tenants = append(tenants, tenant)
 	}
 	return tenants, rows.Err()
@@ -117,9 +172,11 @@ func (s *PostgresStorage) UpdateTenant(ctx context.Context, tenant *storage.Tena
 		WHERE id = $1
 	`
 	tenant.UpdatedAt = time.Now()
+	settings := s.injectRateLimits(tenant.Settings, tenant.RateLimits)
+
 	_, err := s.pool.Exec(ctx, query,
 		tenant.ID, tenant.Name, tenant.Slug, tenant.Domain, tenant.LogoURL,
-		tenant.Settings, tenant.Plan, tenant.IsActive, tenant.UpdatedAt,
+		settings, tenant.Plan, tenant.IsActive, tenant.UpdatedAt,
 	)
 	return err
 }

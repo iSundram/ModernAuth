@@ -207,7 +207,48 @@ func (s *Service) UpdateTenant(ctx context.Context, req *UpdateTenantRequest) (*
 	return tenant, nil
 }
 
+// TenantOnboardingStatus represents the onboarding status of a tenant.
+type TenantOnboardingStatus struct {
+	IsDomainVerified bool `json:"is_domain_verified"`
+	HasUsers         bool `json:"has_users"`
+	HasFeatureFlags  bool `json:"has_feature_flags"`
+	IsComplete       bool `json:"is_complete"`
+}
+
+// GetTenantOnboardingStatus retrieves the onboarding status for a tenant.
+func (s *Service) GetTenantOnboardingStatus(ctx context.Context, id uuid.UUID) (*TenantOnboardingStatus, error) {
+	tenant, err := s.storage.GetTenantByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if tenant == nil {
+		return nil, ErrTenantNotFound
+	}
+
+	// Check domain
+	isDomainVerified := tenant.Domain != nil && *tenant.Domain != ""
+
+	// Check user count
+	userCount, err := s.storage.CountTenantUsers(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	hasUsers := userCount > 1
+
+	// Check feature flags
+	features := s.extractFeaturesFromSettings(tenant.Settings)
+	hasFeatureFlags := features.SSOEnabled || features.MFARequired || features.CustomBranding
+
+	return &TenantOnboardingStatus{
+		IsDomainVerified: isDomainVerified,
+		HasUsers:         hasUsers,
+		HasFeatureFlags:  hasFeatureFlags,
+		IsComplete:       isDomainVerified && hasUsers && hasFeatureFlags,
+	}, nil
+}
+
 // DeleteTenant deletes a tenant.
+
 func (s *Service) DeleteTenant(ctx context.Context, id uuid.UUID) error {
 	tenant, err := s.storage.GetTenantByID(ctx, id)
 	if err != nil {
