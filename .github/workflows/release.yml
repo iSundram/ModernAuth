@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build binaries
+        working-directory: backend
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o bin/auth-server-linux-amd64 ./cmd/auth-server
+          GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o bin/auth-server-linux-arm64 ./cmd/auth-server
+          GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o bin/auth-server-darwin-amd64 ./cmd/auth-server
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o bin/auth-server-darwin-arm64 ./cmd/auth-server
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            backend/bin/auth-server-*
+          generate_release_notes: true
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest

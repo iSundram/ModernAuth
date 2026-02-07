@@ -47,6 +47,9 @@ export const authService = {
   getPublicSettings: () =>
     apiClient.get<Record<string, any>>('/v1/auth/settings'),
 
+  getCaptchaConfig: () =>
+    apiClient.get<{ provider: string; site_key: string }>('/v1/auth/captcha/config'),
+
   // Email Verification
   verifyEmail: (token: string) =>
     apiClient.post<{ message: string }>('/v1/auth/verify-email', { token }),
@@ -107,14 +110,15 @@ export const authService = {
     return {
       totp_enabled: methods.includes('totp'),
       email_enabled: methods.includes('email'),
+      sms_enabled: methods.includes('sms'),
       webauthn_enabled: methods.includes('webauthn'),
       backup_codes_remaining: res.backup_codes_remaining || 0,
-      preferred_method: res.is_enabled && res.preferred_method ? (res.preferred_method as 'totp' | 'email' | 'webauthn') : null,
+      preferred_method: res.is_enabled && res.preferred_method ? (res.preferred_method as 'totp' | 'email' | 'sms' | 'webauthn') : null,
       methods: methods,
     };
   },
 
-  setPreferredMfaMethod: (method: 'totp' | 'email' | 'webauthn') =>
+  setPreferredMfaMethod: (method: 'totp' | 'email' | 'sms' | 'webauthn') =>
     apiClient.post<{ message: string }>('/v1/auth/mfa/preferred', { method }),
 
   // Email MFA
@@ -129,6 +133,19 @@ export const authService = {
 
   verifyEmailMfa: (userId: string, code: string) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa/email', { user_id: userId, code }),
+
+  // SMS MFA
+  enableSmsMfa: (phoneNumber: string) =>
+    apiClient.post<{ message: string }>('/v1/auth/mfa/sms/enable', { phone_number: phoneNumber }),
+
+  disableSmsMfa: () =>
+    apiClient.post<{ message: string }>('/v1/auth/mfa/sms/disable'),
+
+  sendSmsMfaCode: (userId: string) =>
+    apiClient.post<{ message: string }>('/v1/auth/login/mfa/sms/send', { user_id: userId }),
+
+  verifySmsMfa: (userId: string, code: string) =>
+    apiClient.post<LoginResponse>('/v1/auth/login/mfa/sms', { user_id: userId, code }),
 
   // Backup Code Login (backend expects backup_code, not code)
   loginWithBackupCode: (userId: string, backupCode: string) =>
@@ -198,6 +215,21 @@ export const authService = {
 
   endImpersonation: () =>
     apiClient.post<{ message: string }>('/v1/auth/impersonation/end'),
+
+  // Account Self-Deletion (GDPR)
+  deleteAccount: (password: string) =>
+    apiClient.post<{ message: string }>('/v1/auth/delete-account', { password }),
+
+  // Google One Tap Login
+  googleOneTap: (credential: string) =>
+    apiClient.post<LoginResponse>('/v1/auth/google/one-tap', { credential }),
+
+  // Waitlist
+  joinWaitlist: (email: string, name?: string) =>
+    apiClient.post<{ message: string; position?: number }>('/v1/auth/waitlist', { email, name }),
+
+  getWaitlistStatus: (email: string) =>
+    apiClient.get<{ position: number; total: number; status: string }>(`/v1/auth/waitlist/status?email=${encodeURIComponent(email)}`),
 };
 
 // ============================================================================

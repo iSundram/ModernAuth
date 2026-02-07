@@ -1,5 +1,7 @@
 # Security Policy
 
+**Homepage**: [modernauth.net](https://modernauth.net) | **Docs**: [docs.modernauth.net](https://docs.modernauth.net)
+
 ## Reporting a Vulnerability
 
 We take security vulnerabilities seriously. If you discover a security issue, please report it responsibly.
@@ -31,9 +33,18 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Password Strength Validation**: Configurable policies with common password blocking
 - **Password History**: Prevents reuse of recent passwords (default last 5)
 - **Password Change**: Authenticated endpoint requiring current password verification
+- **Breached Password Detection**: Have I Been Pwned k-Anonymity API integration (SHA-1, 5-char prefix) with Redis caching and fail-open behavior
+
+### CAPTCHA / Bot Protection
+- **reCAPTCHA v2**: Checkbox challenge widget
+- **reCAPTCHA v3**: Invisible, score-based verification with configurable minimum score threshold
+- **Cloudflare Turnstile**: Privacy-focused alternative to reCAPTCHA
+- **Protected Endpoints**: CAPTCHA middleware on registration and login endpoints
+- **Configurable**: Enable/disable and switch providers via environment variables
 
 ### OAuth2 Social Login
-- **Providers**: Google, GitHub, Microsoft with easy extensibility
+- **11 Providers**: Google, GitHub, Microsoft, Apple, Facebook, LinkedIn, Discord, Twitter/X, GitLab, Slack, Spotify
+- **Google One Tap**: One-click sign-in via Google One Tap JWT credential flow with tokeninfo verification
 - **Account Linking**: Link multiple social providers to a single user account
 - **Secure State**: CSRF protection via state parameter validation
 - **PKCE Support**: Proof Key for Code Exchange (S256) for public clients (SPAs, mobile apps)
@@ -56,6 +67,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Permissions**: Granular permissions (users:read, users:write, users:delete, audit:read, admin:access, roles:manage)
 - **Middleware**: `RequireRole` and `RequirePermission` middleware for endpoint protection
 - **Role Assignment**: Admin-only endpoints for assigning/removing roles
+- **Tenant-Scoped RBAC**: Roles and permissions scoped to individual tenants
 
 ### Account Protection
 - **Account Lockout**: Configurable brute-force protection
@@ -71,6 +83,9 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
   - Magic Link: 3 requests/hour
   - Token refresh: 100 requests/15 minutes
   - Password reset: 5 requests/hour
+  - Waitlist: 5 requests/hour
+  - SMS MFA send: 5 requests/15 minutes
+  - Google One Tap: 10 requests/15 minutes
 - **Rate Limit Headers**: Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`
 - **Request Size Limits**: Maximum 1MB request body to prevent DoS attacks
 
@@ -79,8 +94,9 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Secure Storage**: TOTP secrets stored in database
 - **Backup Codes**: Single-use recovery codes generated on demand, stored as SHA-256 hashes
 - **Email MFA**: Alternative MFA via secure email verification codes
+- **SMS MFA**: Twilio-powered SMS-based MFA with 6-digit codes and 10-minute TTL
 - **WebAuthn/Passkeys**: FIDO2 support for hardware security keys and platform authenticators
-- **MFA Preferences**: User-selectable preferred MFA method with fallback options
+- **MFA Preferences**: User-selectable preferred MFA method (TOTP, Email, SMS, WebAuthn) with fallback options
 - **Device MFA Trust**: Skip MFA on trusted devices for configurable duration
 
 ### API Key Security
@@ -118,6 +134,17 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 - **Tenant Ownership Validation**: Users can only access resources within their assigned tenant
 - **Tenant Admin Checks**: Administrative operations require tenant admin privileges
 - **Cross-Tenant Protection**: System-level roles and tenant-specific roles are properly separated
+- **Tenant-Scoped RBAC**: Roles and permissions are scoped per tenant
+- **Per-Tenant Rate Limiting**: Configurable rate limits per tenant
+
+### User Groups
+- **Group Management**: Full CRUD for user groups with membership tracking
+- **Access Control**: Group-based access control for resources
+
+### GDPR / Privacy Compliance
+- **Account Self-Deletion**: Users can delete their own account with password verification via `POST /v1/auth/delete-account`
+- **Data Minimization**: Only necessary data is collected and stored
+- **Audit Trail**: All account actions are logged for compliance
 
 ### Admin Audit Logging
 - **Comprehensive Tracking**: 20+ admin action types are logged with full context
@@ -150,6 +177,9 @@ All responses include security headers to protect against common web vulnerabili
 4. **Database security**: Use SSL for database connections
 5. **Redis security**: Use authentication and TLS for Redis
 6. **Environment variables**: Never commit secrets to version control
+7. **Enable CAPTCHA**: Use reCAPTCHA or Turnstile on registration/login in production
+8. **Enable HIBP**: Turn on breached password detection for improved password security
+9. **Configure SMS**: Use Twilio in production for SMS MFA (not the console provider)
 - **Constant-Time Comparison**: Password and token verification use constant-time comparison
 - **No User Enumeration**: Password reset returns success regardless of email existence
 - **Audit Logging**: All authentication events are logged with IP and user agent

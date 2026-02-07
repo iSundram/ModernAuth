@@ -2,12 +2,15 @@
 package http
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/iSundram/ModernAuth/internal/captcha"
 )
 
 // Router returns the configured chi router with all routes.
@@ -17,7 +20,7 @@ func (h *Handler) Router() *chi.Mux {
 	// Global middleware - CORS
 	corsOptions := cors.Options{
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Tenant-ID"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Tenant-ID", "X-Captcha-Token"},
 		ExposedHeaders:   []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -51,13 +54,23 @@ func (h *Handler) Router() *chi.Mux {
 	r.Route("/v1", func(r chi.Router) {
 		// Auth routes (login, register, logout, refresh, MFA, sessions)
 		r.Route("/auth", func(r chi.Router) {
-			r.With(h.RateLimit(5, time.Hour)).Post("/register", h.Register)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login", h.Login)
+			// Build a captcha middleware (no-op when captcha is disabled).
+			var captchaMW func(http.Handler) http.Handler
+			if h.captchaService != nil {
+				captchaMW = captcha.Middleware(h.captchaService)
+			} else {
+				captchaMW = func(next http.Handler) http.Handler { return next }
+			}
+
+			r.With(captchaMW, h.RateLimit(5, time.Hour)).Post("/register", h.Register)
+			r.With(captchaMW, h.RateLimit(10, 15*time.Minute)).Post("/login", h.Login)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa", h.LoginMFA)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/google/one-tap", h.GoogleOneTapLogin)
 			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
 			r.With(h.Auth).Post("/logout", h.Logout)
 			r.With(h.Auth).Get("/me", h.Me)
 			r.Get("/settings", h.GetPublicSettings)
+			r.Get("/captcha/config", h.GetCaptchaConfig)
 
 			// Email Verification
 			r.With(h.RateLimit(5, time.Hour)).Post("/verify-email", h.VerifyEmail)
@@ -96,6 +109,10 @@ func (h *Handler) Router() *chi.Mux {
 				r.Post("/mfa/email/enable", h.EnableEmailMFA)
 				r.Post("/mfa/email/disable", h.DisableEmailMFA)
 
+				// SMS MFA
+				r.Post("/mfa/sms/enable", h.EnableSMSMFA)
+				r.Post("/mfa/sms/disable", h.DisableSMSMFA)
+
 				// Device MFA Trust
 				r.Post("/mfa/trust-device", h.TrustDeviceForMFA)
 				r.Post("/mfa/revoke-trust", h.RevokeMFATrust)
@@ -114,12 +131,23 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/email/send", h.SendEmailMFA)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/email", h.LoginEmailMFA)
 
+			// SMS MFA (no auth required - during login flow)
+			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/sms/send", h.SendSMSMFA)
+			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/sms", h.LoginSMSMFA)
+
 			// WebAuthn Login (no auth required - during login flow)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/begin", h.BeginWebAuthnLogin)
 			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/finish", h.FinishWebAuthnLogin)
 
 			// Password Change (Protected)
 			r.With(h.Auth).Post("/change-password", h.ChangePassword)
+
+			// Account Self-Deletion (Protected, GDPR)
+			r.With(h.Auth).Post("/delete-account", h.DeleteOwnAccount)
+
+			// Waitlist (Public)
+			r.With(h.RateLimit(5, time.Hour)).Post("/waitlist", h.JoinWaitlist)
+			r.Get("/waitlist/status", h.GetWaitlistStatus)
 		})
 
 		// User Management (requires permissions)
@@ -265,6 +293,14 @@ func (h *Handler) Router() *chi.Mux {
 			// Public invitation routes (no auth required)
 			r.Route("/invitations/public", func(r chi.Router) {
 				r.Mount("/", h.invitationHandler.PublicInvitationRoutes())
+			})
+		}
+
+		// Group Management (requires auth)
+		if h.groupHandler != nil {
+			r.Route("/groups", func(r chi.Router) {
+				r.Use(h.Auth)
+				r.Mount("/", h.groupHandler.GroupRoutes())
 			})
 		}
 

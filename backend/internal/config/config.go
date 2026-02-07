@@ -16,14 +16,17 @@ type Config struct {
 	Email    EmailConfig    `yaml:"email"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
 	Audit    AuditConfig    `yaml:"audit"`
+	Captcha  CaptchaConfig  `yaml:"captcha"`
+	HIBP     HIBPConfig     `yaml:"hibp"`
+	SMS      SMSConfig      `yaml:"sms"`
 }
 
 type AppConfig struct {
-	Name         string   `yaml:"name" env:"APP_NAME" env-default:"ModernAuth"`
-	Port         string   `yaml:"port" env:"PORT" env-default:"8080"`
-	Env          string   `yaml:"env" env:"APP_ENV" env-default:"development"`
-	CORSOrigins  []string `yaml:"cors_origins" env:"CORS_ORIGINS" env-default:"*" env-separator:","`
-	BaseURL      string   `yaml:"base_url" env:"APP_BASE_URL" env-default:""`
+	Name        string   `yaml:"name" env:"APP_NAME" env-default:"ModernAuth"`
+	Port        string   `yaml:"port" env:"PORT" env-default:"8080"`
+	Env         string   `yaml:"env" env:"APP_ENV" env-default:"development"`
+	CORSOrigins []string `yaml:"cors_origins" env:"CORS_ORIGINS" env-default:"*" env-separator:","`
+	BaseURL     string   `yaml:"base_url" env:"APP_BASE_URL" env-default:""`
 }
 
 type DatabaseConfig struct {
@@ -81,15 +84,49 @@ type OAuthConfig struct {
 	// Google OAuth
 	GoogleClientID     string `yaml:"google_client_id" env:"OAUTH_GOOGLE_CLIENT_ID" env-default:""`
 	GoogleClientSecret string `yaml:"google_client_secret" env:"OAUTH_GOOGLE_CLIENT_SECRET" env-default:""`
-	
+
 	// GitHub OAuth
 	GitHubClientID     string `yaml:"github_client_id" env:"OAUTH_GITHUB_CLIENT_ID" env-default:""`
 	GitHubClientSecret string `yaml:"github_client_secret" env:"OAUTH_GITHUB_CLIENT_SECRET" env-default:""`
-	
+
 	// Microsoft OAuth
 	MicrosoftClientID     string `yaml:"microsoft_client_id" env:"OAUTH_MICROSOFT_CLIENT_ID" env-default:""`
 	MicrosoftClientSecret string `yaml:"microsoft_client_secret" env:"OAUTH_MICROSOFT_CLIENT_SECRET" env-default:""`
-	
+
+	// Apple OAuth
+	AppleClientID     string `yaml:"apple_client_id" env:"OAUTH_APPLE_CLIENT_ID" env-default:""`
+	AppleClientSecret string `yaml:"apple_client_secret" env:"OAUTH_APPLE_CLIENT_SECRET" env-default:""`
+	AppleTeamID       string `yaml:"apple_team_id" env:"OAUTH_APPLE_TEAM_ID" env-default:""`
+	AppleKeyID        string `yaml:"apple_key_id" env:"OAUTH_APPLE_KEY_ID" env-default:""`
+
+	// Facebook OAuth
+	FacebookClientID     string `yaml:"facebook_client_id" env:"OAUTH_FACEBOOK_CLIENT_ID" env-default:""`
+	FacebookClientSecret string `yaml:"facebook_client_secret" env:"OAUTH_FACEBOOK_CLIENT_SECRET" env-default:""`
+
+	// LinkedIn OAuth
+	LinkedInClientID     string `yaml:"linkedin_client_id" env:"OAUTH_LINKEDIN_CLIENT_ID" env-default:""`
+	LinkedInClientSecret string `yaml:"linkedin_client_secret" env:"OAUTH_LINKEDIN_CLIENT_SECRET" env-default:""`
+
+	// Discord OAuth
+	DiscordClientID     string `yaml:"discord_client_id" env:"OAUTH_DISCORD_CLIENT_ID" env-default:""`
+	DiscordClientSecret string `yaml:"discord_client_secret" env:"OAUTH_DISCORD_CLIENT_SECRET" env-default:""`
+
+	// Twitter OAuth
+	TwitterClientID     string `yaml:"twitter_client_id" env:"OAUTH_TWITTER_CLIENT_ID" env-default:""`
+	TwitterClientSecret string `yaml:"twitter_client_secret" env:"OAUTH_TWITTER_CLIENT_SECRET" env-default:""`
+
+	// GitLab OAuth
+	GitLabClientID     string `yaml:"gitlab_client_id" env:"OAUTH_GITLAB_CLIENT_ID" env-default:""`
+	GitLabClientSecret string `yaml:"gitlab_client_secret" env:"OAUTH_GITLAB_CLIENT_SECRET" env-default:""`
+
+	// Slack OAuth
+	SlackClientID     string `yaml:"slack_client_id" env:"OAUTH_SLACK_CLIENT_ID" env-default:""`
+	SlackClientSecret string `yaml:"slack_client_secret" env:"OAUTH_SLACK_CLIENT_SECRET" env-default:""`
+
+	// Spotify OAuth
+	SpotifyClientID     string `yaml:"spotify_client_id" env:"OAUTH_SPOTIFY_CLIENT_ID" env-default:""`
+	SpotifyClientSecret string `yaml:"spotify_client_secret" env:"OAUTH_SPOTIFY_CLIENT_SECRET" env-default:""`
+
 	// Redirect URLs
 	RedirectBaseURL     string   `yaml:"redirect_base_url" env:"OAUTH_REDIRECT_BASE_URL" env-default:""`
 	AllowedRedirectURLs []string `yaml:"allowed_redirect_urls" env:"OAUTH_ALLOWED_REDIRECT_URLS" env-default:"" env-separator:","`
@@ -99,6 +136,34 @@ type OAuthConfig struct {
 type AuditConfig struct {
 	RetentionPeriod time.Duration `yaml:"retention_period" env:"AUDIT_RETENTION_PERIOD" env-default:"8760h"` // Default: 1 year
 	CleanupInterval time.Duration `yaml:"cleanup_interval" env:"AUDIT_CLEANUP_INTERVAL" env-default:"24h"`   // Default: daily
+}
+
+// CaptchaConfig holds CAPTCHA / bot-detection configuration.
+type CaptchaConfig struct {
+	Provider  string  `yaml:"provider" env:"CAPTCHA_PROVIDER" env-default:"none"`
+	SiteKey   string  `yaml:"site_key" env:"CAPTCHA_SITE_KEY" env-default:""`
+	SecretKey string  `yaml:"secret_key" env:"CAPTCHA_SECRET_KEY" env-default:""`
+	MinScore  float64 `yaml:"min_score" env:"CAPTCHA_MIN_SCORE" env-default:"0.5"`
+}
+
+// HIBPConfig holds HaveIBeenPwned breached password detection configuration.
+type HIBPConfig struct {
+	Enabled  bool          `yaml:"enabled" env:"HIBP_ENABLED" env-default:"false"`
+	APIKey   string        `yaml:"api_key" env:"HIBP_API_KEY" env-default:""`
+	CacheTTL time.Duration `yaml:"cache_ttl" env:"HIBP_CACHE_TTL" env-default:"24h"`
+}
+
+// SMSConfig holds SMS service configuration.
+type SMSConfig struct {
+	Provider          string `yaml:"provider" env:"SMS_PROVIDER" env-default:"console"`
+	TwilioAccountSID  string `yaml:"twilio_account_sid" env:"TWILIO_ACCOUNT_SID" env-default:""`
+	TwilioAuthToken   string `yaml:"twilio_auth_token" env:"TWILIO_AUTH_TOKEN" env-default:""`
+	TwilioPhoneNumber string `yaml:"twilio_phone_number" env:"TWILIO_PHONE_NUMBER" env-default:""`
+}
+
+// IsTwilioConfigured returns true if Twilio SMS is configured.
+func (c *SMSConfig) IsTwilioConfigured() bool {
+	return c.Provider == "twilio" && c.TwilioAccountSID != "" && c.TwilioAuthToken != "" && c.TwilioPhoneNumber != ""
 }
 
 // IsGoogleConfigured returns true if Google OAuth is configured.
@@ -114,6 +179,46 @@ func (c *OAuthConfig) IsGitHubConfigured() bool {
 // IsMicrosoftConfigured returns true if Microsoft OAuth is configured.
 func (c *OAuthConfig) IsMicrosoftConfigured() bool {
 	return c.MicrosoftClientID != "" && c.MicrosoftClientSecret != ""
+}
+
+// IsAppleConfigured returns true if Apple OAuth is configured.
+func (c *OAuthConfig) IsAppleConfigured() bool {
+	return c.AppleClientID != "" && c.AppleClientSecret != ""
+}
+
+// IsFacebookConfigured returns true if Facebook OAuth is configured.
+func (c *OAuthConfig) IsFacebookConfigured() bool {
+	return c.FacebookClientID != "" && c.FacebookClientSecret != ""
+}
+
+// IsLinkedInConfigured returns true if LinkedIn OAuth is configured.
+func (c *OAuthConfig) IsLinkedInConfigured() bool {
+	return c.LinkedInClientID != "" && c.LinkedInClientSecret != ""
+}
+
+// IsDiscordConfigured returns true if Discord OAuth is configured.
+func (c *OAuthConfig) IsDiscordConfigured() bool {
+	return c.DiscordClientID != "" && c.DiscordClientSecret != ""
+}
+
+// IsTwitterConfigured returns true if Twitter OAuth is configured.
+func (c *OAuthConfig) IsTwitterConfigured() bool {
+	return c.TwitterClientID != "" && c.TwitterClientSecret != ""
+}
+
+// IsGitLabConfigured returns true if GitLab OAuth is configured.
+func (c *OAuthConfig) IsGitLabConfigured() bool {
+	return c.GitLabClientID != "" && c.GitLabClientSecret != ""
+}
+
+// IsSlackConfigured returns true if Slack OAuth is configured.
+func (c *OAuthConfig) IsSlackConfigured() bool {
+	return c.SlackClientID != "" && c.SlackClientSecret != ""
+}
+
+// IsSpotifyConfigured returns true if Spotify OAuth is configured.
+func (c *OAuthConfig) IsSpotifyConfigured() bool {
+	return c.SpotifyClientID != "" && c.SpotifyClientSecret != ""
 }
 
 // IsSMTPConfigured returns true if SMTP email is configured with the

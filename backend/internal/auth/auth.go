@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iSundram/ModernAuth/internal/hibp"
 	"github.com/iSundram/ModernAuth/internal/storage"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 var (
@@ -53,8 +55,24 @@ type AuthService struct {
 	storage      storage.Storage
 	tokenService *TokenService
 	emailService interface{}
-	sessionTTL   time.Duration
-	logger       *slog.Logger
+	hibpService  *hibp.Service
+	smsService   interface {
+		SendSMS(ctx context.Context, to string, message string) error
+	}
+	sessionTTL time.Duration
+	logger     *slog.Logger
+}
+
+// SetHIBPService sets the HIBP breached password detection service.
+func (s *AuthService) SetHIBPService(svc *hibp.Service) {
+	s.hibpService = svc
+}
+
+// SetSMSService sets the SMS service for SMS MFA.
+func (s *AuthService) SetSMSService(svc interface {
+	SendSMS(ctx context.Context, to string, message string) error
+}) {
+	s.smsService = svc
 }
 
 // NewAuthService creates a new authentication service.
@@ -84,6 +102,11 @@ func (s *AuthService) logAuditEvent(ctx context.Context, userID, actorID *uuid.U
 		CreatedAt: time.Now(),
 	}
 	return s.storage.CreateAuditLog(ctx, log)
+}
+
+// LogAuditEventPublic creates an audit log entry (public API for use by handlers).
+func (s *AuthService) LogAuditEventPublic(ctx context.Context, userID, actorID *uuid.UUID, eventType string, ip, userAgent *string, data map[string]interface{}) error {
+	return s.logAuditEvent(ctx, userID, actorID, eventType, ip, userAgent, data)
 }
 
 // GetUserByID retrieves a user by their ID.
@@ -137,4 +160,45 @@ func (s *AuthService) ListUsers(ctx context.Context, limit, offset int) (*ListUs
 		Offset:  offset,
 		HasMore: offset+len(users) < total,
 	}, nil
+}
+
+// DeleteOwnAccountRequest represents a request to self-delete a user account.
+type DeleteOwnAccountRequest struct {
+	UserID   uuid.UUID `json:"user_id"`
+	Password string    `json:"password"`
+}
+
+// DeleteOwnAccount allows a user to delete their own account after password confirmation.
+func (s *AuthService) DeleteOwnAccount(ctx context.Context, req *DeleteOwnAccountRequest) error {
+	user, err := s.storage.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Verify the user's password before allowing deletion
+	match, err := utils.VerifyPassword(req.Password, user.HashedPassword)
+	if err != nil {
+		return err
+	}
+	if !match {
+		return ErrInvalidCredentials
+	}
+
+	// Revoke all sessions first
+	if err := s.storage.RevokeUserSessions(ctx, req.UserID); err != nil {
+		s.logger.Error("Failed to revoke sessions during self-deletion", "error", err, "user_id", req.UserID)
+	}
+
+	// Delete the user
+	if err := s.storage.DeleteUser(ctx, req.UserID); err != nil {
+		return err
+	}
+
+	// Log the audit event
+	s.logAuditEvent(ctx, &req.UserID, &req.UserID, "user.self_deleted", nil, nil, nil)
+
+	return nil
 }

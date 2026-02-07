@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/captcha"
 	"github.com/iSundram/ModernAuth/internal/email"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/redis/go-redis/v9"
@@ -28,16 +29,20 @@ type Handler struct {
 		Ping(ctx context.Context) error
 	}
 
+	// CAPTCHA / bot detection
+	captchaService captcha.Service
+
 	// Specialized handlers
-	tenantHandler           *TenantHandler
-	deviceHandler           *DeviceHandler
-	apiKeyHandler           *APIKeyHandler
-	webhookHandler          *WebhookHandler
-	invitationHandler       *InvitationHandler
-	oauthHandler            *OAuthHandler
-	emailTemplateHandler    *EmailTemplateHandler
-	analyticsHandler        *AnalyticsHandler
-	sendGridWebhookHandler  *SendGridWebhookHandler
+	tenantHandler          *TenantHandler
+	deviceHandler          *DeviceHandler
+	apiKeyHandler          *APIKeyHandler
+	webhookHandler         *WebhookHandler
+	invitationHandler      *InvitationHandler
+	oauthHandler           *OAuthHandler
+	emailTemplateHandler   *EmailTemplateHandler
+	analyticsHandler       *AnalyticsHandler
+	sendGridWebhookHandler *SendGridWebhookHandler
+	groupHandler           *GroupHandler
 }
 
 // NewHandler creates a new HTTP handler.
@@ -118,10 +123,35 @@ func (h *Handler) SetSendGridWebhookHandler(handler *SendGridWebhookHandler) {
 	h.sendGridWebhookHandler = handler
 }
 
+// SetGroupHandler sets the group handler.
+func (h *Handler) SetGroupHandler(handler *GroupHandler) {
+	h.groupHandler = handler
+}
+
+// SetCaptchaService sets the CAPTCHA verification service.
+func (h *Handler) SetCaptchaService(svc captcha.Service) {
+	h.captchaService = svc
+}
+
+// GetCaptchaConfig returns the public captcha configuration so the frontend
+// knows which provider widget to render and the corresponding site key.
+func (h *Handler) GetCaptchaConfig(w http.ResponseWriter, r *http.Request) {
+	provider := "none"
+	siteKey := ""
+	if h.captchaService != nil && h.captchaService.IsEnabled() {
+		provider = string(h.captchaService.GetProvider())
+		siteKey = h.captchaService.GetSiteKey()
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"provider": provider,
+		"site_key": siteKey,
+	})
+}
+
 // HealthCheck handles health check requests.
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	// Check Redis connectivity
 	redisStatus := "healthy"
 	if h.rdb != nil {
@@ -169,6 +199,7 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 		"site.logo_url",
 		"auth.allow_registration",
 		"auth.mfa_enabled",
+		"auth.waitlist_enabled",
 	}
 
 	response := make(map[string]interface{})

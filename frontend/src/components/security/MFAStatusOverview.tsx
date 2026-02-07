@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Shield, Smartphone, Mail, Fingerprint, CheckCircle, AlertCircle } from 'lucide-react';
+import { Shield, Smartphone, Mail, Fingerprint, MessageSquare, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui';
 import { authService } from '../../api/services';
@@ -44,6 +44,13 @@ export function MFAStatusOverview({ onRefresh }: MFAStatusOverviewProps) {
       icon: Mail, 
       enabled: mfaStatus?.email_enabled,
       description: 'Receive codes via email'
+    },
+    { 
+      key: 'sms', 
+      name: 'SMS', 
+      icon: MessageSquare, 
+      enabled: mfaStatus?.sms_enabled,
+      description: 'Receive codes via text message'
     },
     { 
       key: 'webauthn', 

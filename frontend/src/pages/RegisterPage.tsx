@@ -5,7 +5,7 @@ import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
-import { PasswordStrength } from '../components/security';
+import { PasswordStrength, CaptchaWidget } from '../components/security';
 
 export function RegisterPage() {
   const { settings } = useAuth();
@@ -17,6 +17,7 @@ export function RegisterPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
   
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -65,6 +66,7 @@ export function RegisterPage() {
         email: formData.email,
         username: formData.username,
         password: formData.password,
+        captcha_token: captchaToken,
       });
 
       showToast({ 
@@ -166,6 +168,8 @@ export function RegisterPage() {
                 autoComplete="new-password"
                 required
               />
+
+              <CaptchaWidget onToken={setCaptchaToken} action="register" />
 
               <Button
                 type="submit"

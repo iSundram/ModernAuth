@@ -1,11 +1,13 @@
 ## ModernAuth Frontend
 
+**Homepage**: [modernauth.net](https://modernauth.net) | **Docs**: [docs.modernauth.net](https://docs.modernauth.net)
+
 ModernAuth includes a modern React + TypeScript + Vite frontend for managing authentication, users, tenants, and advanced security features.
 
 ### Tech Stack
 
-- **Framework**: React + TypeScript
-- **Bundler**: Vite
+- **Framework**: React 19 + TypeScript
+- **Bundler**: Vite 7
 - **Styling**: Tailwind CSS
 - **Routing**: `react-router-dom`
 - **Data fetching**: `@tanstack/react-query`
@@ -13,15 +15,21 @@ ModernAuth includes a modern React + TypeScript + Vite frontend for managing aut
 ### Key Features
 
 - **Auth & Onboarding**
-  - Login with email/password and MFA (TOTP, Email, WebAuthn/Passkeys)
+  - Login with email/password and MFA (TOTP, Email, SMS, WebAuthn/Passkeys)
+  - OAuth social login (Google, GitHub, Microsoft, Apple, Facebook, LinkedIn, Discord, Twitter/X, GitLab, Slack, Spotify)
+  - Google One Tap sign-in
   - Registration and email verification flows
   - Password reset and change password
   - Passwordless magic link authentication
+  - Breached password detection (Have I Been Pwned integration)
+  - CAPTCHA/bot protection (reCAPTCHA v2/v3, Cloudflare Turnstile)
   - Onboarding wizard for new users
+  - Waitlist mode for controlled launches
 - **User Area (`/user`)**
   - Dashboard with security overview and recent activity
-  - Security page: MFA setup (TOTP, Email, Passkeys), devices, sessions, login history
+  - Security page: MFA setup (TOTP, Email, SMS, Passkeys), devices, sessions, login history
   - Settings page: basic profile/account settings
+  - Account self-deletion (GDPR compliance)
   - Linked social accounts management
 - **Admin Area (`/admin`)**
   - Dashboard with system stats, health, and security charts
@@ -29,17 +37,19 @@ ModernAuth includes a modern React + TypeScript + Vite frontend for managing aut
   - Users: list, search, create, edit, deactivate/delete, impersonation
   - Bulk operations: import/export users (CSV/JSON)
   - Roles & permissions management
+  - User groups management
   - Audit logs browsing with filters
-  - Tenants management (create, edit, suspend, domain verification)
+  - Tenants management (create, edit, suspend, domain verification, tenant-scoped RBAC)
+  - OAuth provider configuration
 - **Advanced Management**
   - API keys (create, revoke, rotate)
   - Webhooks (configure endpoints, view deliveries)
   - Invitations (invite users, track status)
-  - Email templates and branding customization
+  - Email templates, branding customization, and A/B testing
 - **UI Features**
-  - Dark mode support
   - Responsive design
   - Toast notifications
+  - Global loading progress bar
   - Loading states and error handling
 
 ### Getting Started
@@ -72,6 +82,6 @@ npm run lint     # run ESLint
 - `src/api/` – HTTP client and API services
 - `src/components/layout/` – shared layouts (admin/user, sidebars, header)
 - `src/components/ui/` – reusable UI components (cards, tables, modals, toasts, loaders, etc.)
+- `src/components/security/` – MFA setup components (TOTP, Email, SMS, WebAuthn, CAPTCHA, password strength)
 - `src/pages/` – user and admin pages (dashboard, security, settings, API keys, webhooks, invitations, tenants, users, audit, etc.)
 - `src/types/` – shared TypeScript types for API responses and entities
-

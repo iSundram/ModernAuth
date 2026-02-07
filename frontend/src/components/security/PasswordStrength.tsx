@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Check, AlertTriangle, Shield, Loader2 } from 'lucide-react';
+import { Check, AlertTriangle, Shield, Loader2, ShieldAlert } from 'lucide-react';
 
 interface PasswordStrengthProps {
   password: string;
@@ -19,7 +19,7 @@ const rules: StrengthRule[] = [
   { label: 'Contains special character', test: (p) => /[!@#$%^&*(),.?":{}|<>]/.test(p) },
 ];
 
-// Check password against HaveIBeenPwned using k-anonymity
+// Check password against HaveIBeenPwned using k-anonymity (client-side)
 async function checkPasswordBreach(password: string): Promise<{ breached: boolean; count: number }> {
   try {
     // Create SHA-1 hash of password
@@ -122,12 +122,15 @@ export function PasswordStrength({ password, onBreachCheck }: PasswordStrengthPr
       {/* Breach Warning */}
       {breachStatus.breached && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+          <ShieldAlert size={18} className="text-red-500 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-red-500">Password found in data breach</p>
             <p className="text-xs text-[var(--color-text-secondary)] mt-1">
               This password was found {breachStatus.count.toLocaleString()} times in known data breaches. 
-              Please choose a different password.
+              Please choose a different password for your security.
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              Checked via HaveIBeenPwned using k-Anonymity &mdash; your password was never sent over the network.
             </p>
           </div>
         </div>

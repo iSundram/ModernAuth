@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -231,6 +232,182 @@ func (s *AuthService) LoginWithEmailMFA(ctx context.Context, req *LoginWithEmail
 
 	s.logAuditEvent(ctx, &user.ID, nil, "login.success", &req.IP, &req.UserAgent, map[string]interface{}{
 		"method": "email_mfa",
+	})
+
+	_ = session
+	return &LoginResult{
+		User:      user,
+		TokenPair: tokenPair,
+	}, nil
+}
+
+// SMS MFA code settings
+const (
+	SMSMFACodeLength = 6
+	SMSMFACodeTTL    = 10 * time.Minute
+)
+
+// EnableSMSMFA enables SMS-based MFA for a user.
+func (s *AuthService) EnableSMSMFA(ctx context.Context, userID uuid.UUID, phoneNumber string) error {
+	if phoneNumber == "" {
+		return errors.New("phone number is required for SMS MFA")
+	}
+
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	// Update user's phone number
+	user.Phone = &phoneNumber
+	if err := s.storage.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	settings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if settings == nil {
+		settings = &storage.MFASettings{
+			UserID:          userID,
+			PreferredMethod: "sms",
+		}
+	}
+
+	settings.IsSMSMFAEnabled = true
+	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &userID, nil, "mfa.sms_enabled", nil, nil, nil)
+	return nil
+}
+
+// DisableSMSMFA disables SMS-based MFA for a user.
+func (s *AuthService) DisableSMSMFA(ctx context.Context, userID uuid.UUID) error {
+	settings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if settings == nil {
+		return nil
+	}
+
+	settings.IsSMSMFAEnabled = false
+	if settings.PreferredMethod == "sms" {
+		if settings.IsTOTPEnabled {
+			settings.PreferredMethod = "totp"
+		} else if settings.IsEmailMFAEnabled {
+			settings.PreferredMethod = "email"
+		}
+	}
+
+	if err := s.storage.UpdateMFASettings(ctx, settings); err != nil {
+		return err
+	}
+
+	s.logAuditEvent(ctx, &userID, nil, "mfa.sms_disabled", nil, nil, nil)
+	return nil
+}
+
+// SendSMSMFACode sends an MFA verification code via SMS.
+func (s *AuthService) SendSMSMFACode(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.storage.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+	if user.Phone == nil || *user.Phone == "" {
+		return errors.New("no phone number on file")
+	}
+
+	settings, err := s.storage.GetMFASettings(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if settings == nil || !settings.IsSMSMFAEnabled {
+		return ErrMFANotSetup
+	}
+
+	code := utils.GenerateNumericCode(SMSMFACodeLength)
+	codeHash := utils.HashToken(code)
+
+	challenge := &storage.MFAChallenge{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Type:      "sms",
+		Code:      &codeHash,
+		ExpiresAt: time.Now().Add(SMSMFACodeTTL),
+		Verified:  false,
+		CreatedAt: time.Now(),
+	}
+
+	if err := s.storage.CreateMFAChallenge(ctx, challenge); err != nil {
+		return err
+	}
+
+	if s.smsService != nil {
+		message := fmt.Sprintf("Your ModernAuth verification code is: %s. It expires in 10 minutes.", code)
+		if err := s.smsService.SendSMS(ctx, *user.Phone, message); err != nil {
+			s.logger.Error("Failed to send SMS MFA code", "error", err, "user_id", userID)
+		}
+	}
+
+	s.logger.Info("SMS MFA code generated", "user_id", userID)
+	s.logAuditEvent(ctx, &userID, nil, "mfa.sms_code_sent", nil, nil, nil)
+	return nil
+}
+
+// LoginWithSMSMFARequest represents a request to login with SMS MFA.
+type LoginWithSMSMFARequest struct {
+	UserID      uuid.UUID `json:"user_id"`
+	Code        string    `json:"code"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	IP          string    `json:"-"`
+	UserAgent   string    `json:"-"`
+}
+
+// LoginWithSMSMFA verifies the SMS MFA code and completes login.
+func (s *AuthService) LoginWithSMSMFA(ctx context.Context, req *LoginWithSMSMFARequest) (*LoginResult, error) {
+	user, err := s.storage.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	challenge, err := s.storage.GetPendingMFAChallenge(ctx, req.UserID, "sms")
+	if err != nil {
+		return nil, err
+	}
+	if challenge == nil {
+		return nil, ErrChallengeExpired
+	}
+
+	codeHash := utils.HashToken(req.Code)
+	if challenge.Code == nil || *challenge.Code != codeHash {
+		s.logAuditEvent(ctx, &user.ID, nil, "login.sms_mfa_failed", &req.IP, &req.UserAgent, nil)
+		return nil, ErrInvalidMFACode
+	}
+
+	if err := s.storage.MarkMFAChallengeVerified(ctx, challenge.ID); err != nil {
+		s.logger.Error("Failed to mark challenge verified", "error", err)
+	}
+
+	session, tokenPair, err := s.createSessionAndTokens(ctx, user, req.Fingerprint)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logAuditEvent(ctx, &user.ID, nil, "login.success", &req.IP, &req.UserAgent, map[string]interface{}{
+		"method": "sms_mfa",
 	})
 
 	_ = session

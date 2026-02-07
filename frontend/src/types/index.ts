@@ -37,6 +37,7 @@ export interface LoginRequest {
   email: string;
   password: string;
   fingerprint?: string;
+  captcha_token?: string;
 }
 
 export interface LoginMFARequest {
@@ -49,6 +50,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   username?: string;
+  captcha_token?: string;
 }
 
 export interface SetupMFAResponse {
@@ -86,7 +88,7 @@ export interface LoginResponse {
 export interface LoginMfaRequiredResponse {
   mfa_required: true;
   user_id: string;
-  preferred_method?: 'totp' | 'email' | 'webauthn';
+  preferred_method?: 'totp' | 'email' | 'sms' | 'webauthn';
   methods?: string[];
 }
 
@@ -488,9 +490,10 @@ export interface UpdateUserRequest {
 export interface MFAStatus {
   totp_enabled: boolean;
   email_enabled: boolean;
+  sms_enabled: boolean;
   webauthn_enabled: boolean;
   backup_codes_remaining: number;
-  preferred_method: 'totp' | 'email' | 'webauthn' | null;
+  preferred_method: 'totp' | 'email' | 'sms' | 'webauthn' | null;
   methods: string[];
 }
 

@@ -1,7 +1,9 @@
 export { PasskeySetup } from './PasskeySetup';
 export { PasskeyList } from './PasskeyList';
 export { EmailMFASetup } from './EmailMFASetup';
+export { SMSMFASetup } from './SMSMFASetup';
 export { MFAStatusOverview } from './MFAStatusOverview';
 export { MFAPreferencesSelector } from './MFAPreferencesSelector';
 export { PasswordStrength } from './PasswordStrength';
 export { LinkedAccounts } from './LinkedAccounts';
+export { CaptchaWidget } from './CaptchaWidget';

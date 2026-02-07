@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -112,6 +113,21 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *ResetPasswordReque
 		return ErrPasswordReused
 	}
 
+	// Check password against known data breaches (HIBP)
+	if s.hibpService != nil {
+		result, err := s.hibpService.CheckPassword(ctx, req.NewPassword)
+		if err != nil {
+			s.logger.Warn("HIBP check failed during password reset", "error", err)
+			// Don't block password reset on HIBP API errors
+		} else if result.IsBreached {
+			s.logAuditEvent(ctx, &user.ID, nil, "password_reset.failed", nil, nil, map[string]interface{}{
+				"reason": "password_breached",
+				"count":  result.Count,
+			})
+			return fmt.Errorf("this password has appeared in %d data breaches and cannot be used", result.Count)
+		}
+	}
+
 	// Check password history (prevent reuse of last 5 passwords)
 	const passwordHistoryDepth = 5
 	if err := s.CheckPasswordHistory(ctx, user.ID, req.NewPassword, passwordHistoryDepth); err != nil {
@@ -195,6 +211,21 @@ func (s *AuthService) ChangePassword(ctx context.Context, req *ChangePasswordReq
 			"reason": "password_reused",
 		})
 		return ErrPasswordReused
+	}
+
+	// Check password against known data breaches (HIBP)
+	if s.hibpService != nil {
+		result, err := s.hibpService.CheckPassword(ctx, req.NewPassword)
+		if err != nil {
+			s.logger.Warn("HIBP check failed during password change", "error", err)
+			// Don't block password change on HIBP API errors
+		} else if result.IsBreached {
+			s.logAuditEvent(ctx, &req.UserID, nil, "password_change.failed", &req.IP, &req.UserAgent, map[string]interface{}{
+				"reason": "password_breached",
+				"count":  result.Count,
+			})
+			return fmt.Errorf("this password has appeared in %d data breaches and cannot be used", result.Count)
+		}
 	}
 
 	// Check password history (prevent reuse of last 5 passwords)

@@ -4,8 +4,9 @@ import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { Button, Input, LoadingBar } from '../components/ui';
-import { Lock, Mail, Eye, EyeOff, ShieldCheck, Github, Chrome } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, ShieldCheck, Github, Chrome, Globe } from 'lucide-react';
 import { authService } from '../api/services';
+import { CaptchaWidget } from '../components/security';
 import type { UserRole } from '../types';
 
 function getDashboardRoute(role?: UserRole): string {
@@ -30,6 +31,9 @@ export function LoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaUserId, setMfaUserId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+
+  // CAPTCHA State
+  const [captchaToken, setCaptchaToken] = useState('');
 
   // Fetch OAuth providers
   const { data: oauthData } = useQuery({
@@ -74,7 +78,7 @@ export function LoginPage() {
     }
 
     try {
-      const result = await login({ email, password });
+      const result = await login({ email, password, captcha_token: captchaToken });
       if (result && result.mfa_required) {
         setMfaRequired(true);
         setMfaUserId(result.user_id);
@@ -183,6 +187,8 @@ export function LoginPage() {
                 </Link>
               </div>
 
+              <CaptchaWidget onToken={setCaptchaToken} action="login" />
+
               <Button
                 type="submit"
                 variant="primary"
@@ -237,8 +243,96 @@ export function LoginPage() {
                         className="flex-1"
                         onClick={() => handleOAuthLogin('microsoft')}
                       >
-                        <Chrome size={18} className="mr-2" />
+                        <Globe size={18} className="mr-2" />
                         Microsoft
+                      </Button>
+                    )}
+                    {oauthProviders.includes('apple') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('apple')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Apple
+                      </Button>
+                    )}
+                    {oauthProviders.includes('facebook') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('facebook')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Facebook
+                      </Button>
+                    )}
+                    {oauthProviders.includes('linkedin') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('linkedin')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        LinkedIn
+                      </Button>
+                    )}
+                    {oauthProviders.includes('discord') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('discord')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Discord
+                      </Button>
+                    )}
+                    {oauthProviders.includes('twitter') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('twitter')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Twitter/X
+                      </Button>
+                    )}
+                    {oauthProviders.includes('gitlab') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('gitlab')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        GitLab
+                      </Button>
+                    )}
+                    {oauthProviders.includes('slack') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('slack')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Slack
+                      </Button>
+                    )}
+                    {oauthProviders.includes('spotify') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleOAuthLogin('spotify')}
+                      >
+                        <Globe size={18} className="mr-2" />
+                        Spotify
                       </Button>
                     )}
                   </div>

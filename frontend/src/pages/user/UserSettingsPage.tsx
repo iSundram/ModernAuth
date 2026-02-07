@@ -5,9 +5,11 @@ import {
   Mail,
   Phone,
   Save,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from '../../components/ui';
-import { userService } from '../../api/services';
+import { userService, authService } from '../../api/services';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/ui/Toast';
 import type { UpdateUserRequest } from '../../types';
@@ -28,6 +30,11 @@ export function UserSettingsPage() {
     locale: user?.locale || 'en',
   });
 
+  // Delete account state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
   // Update user mutation
   const updateUserMutation = useMutation({
     mutationFn: (data: UpdateUserRequest) => {
@@ -47,6 +54,26 @@ export function UserSettingsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     updateUserMutation.mutate(formData);
+  };
+
+  // Delete own account mutation
+  const deleteAccountMutation = useMutation({
+    mutationFn: (password: string) => authService.deleteAccount(password),
+    onSuccess: () => {
+      showToast({ title: 'Account Deleted', message: 'Your account has been permanently deleted.', type: 'success' });
+      // Clear auth state and redirect
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to delete account', type: 'error' });
+    },
+  });
+
+  const handleDeleteAccount = () => {
+    if (deleteConfirmText !== 'DELETE' || !deletePassword) return;
+    deleteAccountMutation.mutate(deletePassword);
   };
 
   return (
@@ -218,6 +245,76 @@ export function UserSettingsPage() {
               <span className="text-sm text-[var(--color-text-primary)]">
                 {new Date(user.last_login_at).toLocaleString()}
               </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Danger Zone - Account Deletion */}
+      <Card className="border-red-500/30">
+        <CardHeader>
+          <CardTitle className="text-red-500 flex items-center gap-2">
+            <AlertTriangle size={20} />
+            Danger Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-[var(--color-text-primary)]">Delete Account</h3>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+          </div>
+
+          {!showDeleteConfirm ? (
+            <Button
+              variant="outline"
+              className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+              leftIcon={<Trash2 size={16} />}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete My Account
+            </Button>
+          ) : (
+            <div className="space-y-4 p-4 rounded-lg bg-red-500/5 border border-red-500/20">
+              <p className="text-sm text-red-400 font-medium">
+                This will permanently delete your account, including all your data, sessions, and settings.
+              </p>
+              <Input
+                label="Enter your password to confirm"
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Your current password"
+              />
+              <Input
+                label='Type "DELETE" to confirm'
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+              />
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeletePassword('');
+                    setDeleteConfirmText('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  className="bg-red-600 hover:bg-red-700"
+                  leftIcon={<Trash2 size={16} />}
+                  onClick={handleDeleteAccount}
+                  isLoading={deleteAccountMutation.isPending}
+                  disabled={deleteConfirmText !== 'DELETE' || !deletePassword}
+                >
+                  Permanently Delete Account
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

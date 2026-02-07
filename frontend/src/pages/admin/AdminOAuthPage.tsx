@@ -28,6 +28,38 @@ export function AdminOAuthPage() {
     microsoft: {
       icon: "https://www.microsoft.com/favicon.ico",
       description: "Allow users to sign in with their Microsoft accounts."
+    },
+    apple: {
+      icon: "https://www.apple.com/favicon.ico",
+      description: "Allow users to sign in with their Apple accounts."
+    },
+    facebook: {
+      icon: "https://www.facebook.com/favicon.ico",
+      description: "Allow users to sign in with their Facebook accounts."
+    },
+    linkedin: {
+      icon: "https://www.linkedin.com/favicon.ico",
+      description: "Allow users to sign in with their LinkedIn accounts."
+    },
+    discord: {
+      icon: "https://discord.com/assets/favicon.ico",
+      description: "Allow users to sign in with their Discord accounts."
+    },
+    twitter: {
+      icon: "https://abs.twimg.com/favicons/twitter.3.ico",
+      description: "Allow users to sign in with their Twitter/X accounts."
+    },
+    gitlab: {
+      icon: "https://gitlab.com/favicon.ico",
+      description: "Allow users to sign in with their GitLab accounts."
+    },
+    slack: {
+      icon: "https://slack.com/favicon.ico",
+      description: "Allow users to sign in with their Slack accounts."
+    },
+    spotify: {
+      icon: "https://open.spotifycdn.com/cdn/images/favicon.0f31d2ea.ico",
+      description: "Allow users to sign in with their Spotify accounts."
     }
   };
 
@@ -43,7 +75,7 @@ export function AdminOAuthPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {['google', 'github', 'microsoft'].map((p) => {
+        {['google', 'github', 'microsoft', 'apple', 'facebook', 'linkedin', 'discord', 'twitter', 'gitlab', 'slack', 'spotify'].map((p) => {
           const isConfigured = providers.includes(p);
           const info = providerInfo[p] || { icon: '', description: 'Third-party OAuth provider.' };
           

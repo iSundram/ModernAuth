@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import QRCode from "react-qr-code";
 import { 
   Smartphone, Key, CheckCircle, AlertCircle, LogOut, 
-  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe, Fingerprint, Mail
+  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe, Fingerprint, Mail, MessageSquare
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, LoadingBar, Badge, ConfirmDialog, Modal } from '../../components/ui';
@@ -13,6 +13,7 @@ import {
   PasskeySetup, 
   PasskeyList, 
   EmailMFASetup, 
+  SMSMFASetup,
   MFAStatusOverview,
   MFAPreferencesSelector,
   PasswordStrength 
@@ -314,6 +315,7 @@ export function UserSecurityPage() {
       {mfaStatus && (
         (mfaStatus.totp_enabled ? 1 : 0) + 
         (mfaStatus.email_enabled ? 1 : 0) + 
+        (mfaStatus.sms_enabled ? 1 : 0) + 
         (mfaStatus.webauthn_enabled ? 1 : 0)
       ) >= 2 && (
         <Card>
@@ -330,6 +332,7 @@ export function UserSecurityPage() {
                 enabledMethods={{
                   totp: mfaStatus?.totp_enabled || false,
                   email: mfaStatus?.email_enabled || false,
+                  sms: mfaStatus?.sms_enabled || false,
                   webauthn: mfaStatus?.webauthn_enabled || false,
                 }}
                 onSuccess={() => refetchMfaStatus()}
@@ -511,6 +514,25 @@ export function UserSecurityPage() {
         <CardContent>
           <EmailMFASetup 
             isEnabled={mfaStatus?.email_enabled || false} 
+            onSuccess={() => refetchMfaStatus()}
+          />
+        </CardContent>
+      </Card>
+
+      {/* SMS MFA Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-[var(--color-primary-dark)]">
+              <MessageSquare size={20} className="text-[#D4D4D4]" />
+            </div>
+            <CardTitle>SMS Authentication</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <SMSMFASetup 
+            isEnabled={mfaStatus?.sms_enabled || false}
+            currentPhone={undefined}
             onSuccess={() => refetchMfaStatus()}
           />
         </CardContent>

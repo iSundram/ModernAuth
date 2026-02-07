@@ -179,3 +179,24 @@ type SessionResponse struct {
 	IsCurrent   bool                   `json:"is_current"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
+
+// DeleteOwnAccountRequest represents a request to self-delete a user account.
+type DeleteOwnAccountRequest struct {
+	Password string `json:"password" validate:"required"`
+}
+
+// GoogleOneTapRequest represents a Google One Tap login request.
+type GoogleOneTapRequest struct {
+	Credential string `json:"credential" validate:"required"`
+}
+
+// JoinWaitlistRequest represents a request to join the waitlist.
+type JoinWaitlistRequest struct {
+	Email string `json:"email" validate:"required,email"`
+	Name  string `json:"name,omitempty" validate:"omitempty,max=100"`
+}
+
+// WaitlistStatusRequest represents a request to check waitlist status.
+type WaitlistStatusRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}

@@ -17,10 +17,15 @@ import (
 	"github.com/iSundram/ModernAuth/internal/apikey"
 	"github.com/iSundram/ModernAuth/internal/audit"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/captcha"
 	"github.com/iSundram/ModernAuth/internal/config"
 	"github.com/iSundram/ModernAuth/internal/device"
 	"github.com/iSundram/ModernAuth/internal/email"
+	"github.com/iSundram/ModernAuth/internal/groups"
+	"github.com/iSundram/ModernAuth/internal/hibp"
 	"github.com/iSundram/ModernAuth/internal/invitation"
+	"github.com/iSundram/ModernAuth/internal/oauth"
+	"github.com/iSundram/ModernAuth/internal/sms"
 	"github.com/iSundram/ModernAuth/internal/storage/pg"
 	"github.com/iSundram/ModernAuth/internal/tenant"
 	"github.com/iSundram/ModernAuth/internal/webhook"
@@ -203,6 +208,33 @@ func main() {
 	// Initialize auth service (now after email service is created)
 	authService := auth.NewAuthService(storage, tokenService, emailService, cfg.Auth.SessionTTL)
 
+	// Initialize HIBP breached password detection
+	if cfg.HIBP.Enabled {
+		hibpCache := hibp.NewRedisBreachCache(rdb)
+		hibpService := hibp.NewService(&hibp.Config{
+			Enabled:   true,
+			APIKey:    cfg.HIBP.APIKey,
+			CacheTTL:  cfg.HIBP.CacheTTL,
+			UserAgent: "ModernAuth",
+		}, hibpCache)
+		authService.SetHIBPService(hibpService)
+		slog.Info("HIBP breached password detection enabled", "cache_ttl", cfg.HIBP.CacheTTL)
+	}
+
+	// Initialize SMS service
+	smsService := sms.NewService(&sms.Config{
+		Provider:          cfg.SMS.Provider,
+		TwilioAccountSID:  cfg.SMS.TwilioAccountSID,
+		TwilioAuthToken:   cfg.SMS.TwilioAuthToken,
+		TwilioPhoneNumber: cfg.SMS.TwilioPhoneNumber,
+	})
+	authService.SetSMSService(smsService)
+	if cfg.SMS.IsTwilioConfigured() {
+		slog.Info("SMS service initialized with Twilio")
+	} else {
+		slog.Info("SMS service initialized in console mode (development)")
+	}
+
 	// Initialize tenant service
 	tenantService := tenant.NewService(storage)
 
@@ -219,6 +251,9 @@ func main() {
 	invitationService := invitation.NewService(storage, storage, emailService, &invitation.Config{
 		BaseURL: cfg.App.BaseURL, // Use config value, defaults handled in service
 	})
+
+	// Initialize groups service
+	groupsService := groups.NewService(storage)
 
 	// Initialize audit cleanup service
 	auditCleanupService := audit.NewCleanupService(storage, cfg.Audit.RetentionPeriod, cfg.Audit.CleanupInterval)
@@ -242,6 +277,15 @@ func main() {
 	// Set MFA lockout
 	handler.SetMFALockout(mfaLockout)
 
+	// Initialize CAPTCHA service
+	captchaService := captcha.NewService(&captcha.Config{
+		Provider:  captcha.Provider(cfg.Captcha.Provider),
+		SiteKey:   cfg.Captcha.SiteKey,
+		SecretKey: cfg.Captcha.SecretKey,
+		MinScore:  cfg.Captcha.MinScore,
+	})
+	handler.SetCaptchaService(captchaService)
+
 	// Initialize specialized handlers
 	tenantHandler := httpapi.NewTenantHandler(tenantService, authService)
 	deviceHandler := httpapi.NewDeviceHandler(deviceService)
@@ -249,6 +293,7 @@ func main() {
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)
 	invitationHandler := httpapi.NewInvitationHandler(invitationService)
 	emailTemplateHandler := httpapi.NewEmailTemplateHandler(storage, templateService)
+	groupHandler := httpapi.NewGroupHandler(groupsService)
 
 	// Set handlers on main handler
 	handler.SetTenantHandler(tenantHandler)
@@ -257,6 +302,108 @@ func main() {
 	handler.SetWebhookHandler(webhookHandler)
 	handler.SetInvitationHandler(invitationHandler)
 	handler.SetEmailTemplateHandler(emailTemplateHandler)
+	handler.SetGroupHandler(groupHandler)
+
+	// Initialize OAuth service
+	oauthBaseURL := cfg.OAuth.RedirectBaseURL
+	if oauthBaseURL == "" {
+		oauthBaseURL = cfg.App.BaseURL
+	}
+	oauthConfig := &oauth.Config{
+		AllowedRedirectURLs: cfg.OAuth.AllowedRedirectURLs,
+	}
+	if cfg.OAuth.IsGoogleConfigured() {
+		oauthConfig.Google = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.GoogleClientID,
+			ClientSecret: cfg.OAuth.GoogleClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/google/callback",
+			Scopes:       []string{"openid", "email", "profile"},
+		}
+	}
+	if cfg.OAuth.IsGitHubConfigured() {
+		oauthConfig.GitHub = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.GitHubClientID,
+			ClientSecret: cfg.OAuth.GitHubClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/github/callback",
+			Scopes:       []string{"user:email", "read:user"},
+		}
+	}
+	if cfg.OAuth.IsMicrosoftConfigured() {
+		oauthConfig.Microsoft = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.MicrosoftClientID,
+			ClientSecret: cfg.OAuth.MicrosoftClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/microsoft/callback",
+			Scopes:       []string{"openid", "email", "profile", "User.Read"},
+		}
+	}
+	if cfg.OAuth.IsAppleConfigured() {
+		oauthConfig.Apple = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.AppleClientID,
+			ClientSecret: cfg.OAuth.AppleClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/apple/callback",
+			Scopes:       []string{"name", "email"},
+		}
+	}
+	if cfg.OAuth.IsFacebookConfigured() {
+		oauthConfig.Facebook = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.FacebookClientID,
+			ClientSecret: cfg.OAuth.FacebookClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/facebook/callback",
+			Scopes:       []string{"email", "public_profile"},
+		}
+	}
+	if cfg.OAuth.IsLinkedInConfigured() {
+		oauthConfig.LinkedIn = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.LinkedInClientID,
+			ClientSecret: cfg.OAuth.LinkedInClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/linkedin/callback",
+			Scopes:       []string{"openid", "profile", "email"},
+		}
+	}
+	if cfg.OAuth.IsDiscordConfigured() {
+		oauthConfig.Discord = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.DiscordClientID,
+			ClientSecret: cfg.OAuth.DiscordClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/discord/callback",
+			Scopes:       []string{"identify", "email"},
+		}
+	}
+	if cfg.OAuth.IsTwitterConfigured() {
+		oauthConfig.Twitter = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.TwitterClientID,
+			ClientSecret: cfg.OAuth.TwitterClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/twitter/callback",
+			Scopes:       []string{"users.read", "tweet.read", "offline.access"},
+		}
+	}
+	if cfg.OAuth.IsGitLabConfigured() {
+		oauthConfig.GitLab = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.GitLabClientID,
+			ClientSecret: cfg.OAuth.GitLabClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/gitlab/callback",
+			Scopes:       []string{"read_user"},
+		}
+	}
+	if cfg.OAuth.IsSlackConfigured() {
+		oauthConfig.Slack = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.SlackClientID,
+			ClientSecret: cfg.OAuth.SlackClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/slack/callback",
+			Scopes:       []string{"openid", "profile", "email"},
+		}
+	}
+	if cfg.OAuth.IsSpotifyConfigured() {
+		oauthConfig.Spotify = &oauth.ProviderConfig{
+			ClientID:     cfg.OAuth.SpotifyClientID,
+			ClientSecret: cfg.OAuth.SpotifyClientSecret,
+			RedirectURL:  oauthBaseURL + "/v1/oauth/spotify/callback",
+			Scopes:       []string{"user-read-email", "user-read-private"},
+		}
+	}
+	oauthService := oauth.NewServiceWithStateStorage(oauthConfig, storage, storage)
+	oauthHandler := httpapi.NewOAuthHandler(oauthService, oauthBaseURL)
+	handler.SetOAuthHandler(oauthHandler)
+	slog.Info("OAuth service initialized", "providers", oauthService.GetConfiguredProviders())
 
 	// Initialize analytics service and handler
 	analyticsService := httpapi.NewAnalyticsService(storage, rdb)

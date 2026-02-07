@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Smartphone, Mail, Fingerprint, CheckCircle } from 'lucide-react';
+import { Smartphone, Mail, MessageSquare, Fingerprint, CheckCircle } from 'lucide-react';
 import { Button, Modal } from '../ui';
 import { useToast } from '../ui/Toast';
 import { authService } from '../../api/services';
 
 interface MFAPreferencesSelectorProps {
-  currentPreferred: 'totp' | 'email' | 'webauthn' | null;
+  currentPreferred: 'totp' | 'email' | 'sms' | 'webauthn' | null;
   enabledMethods: {
     totp: boolean;
     email: boolean;
+    sms: boolean;
     webauthn: boolean;
   };
   onSuccess?: () => void;
@@ -21,12 +22,13 @@ export function MFAPreferencesSelector({
 }: MFAPreferencesSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selected, setSelected] = useState<'totp' | 'email' | 'webauthn' | null>(currentPreferred);
+  const [selected, setSelected] = useState<'totp' | 'email' | 'sms' | 'webauthn' | null>(currentPreferred);
   const { showToast } = useToast();
 
   const methods = [
     { key: 'totp' as const, name: 'Authenticator App', icon: Smartphone, enabled: enabledMethods.totp },
     { key: 'email' as const, name: 'Email', icon: Mail, enabled: enabledMethods.email },
+    { key: 'sms' as const, name: 'SMS', icon: MessageSquare, enabled: enabledMethods.sms },
     { key: 'webauthn' as const, name: 'Passkey', icon: Fingerprint, enabled: enabledMethods.webauthn },
   ];
 

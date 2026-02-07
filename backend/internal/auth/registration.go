@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,17 @@ func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (*Regi
 	}
 	if existingUser != nil {
 		return nil, ErrUserExists
+	}
+
+	// Check password against known data breaches (HIBP)
+	if s.hibpService != nil {
+		result, err := s.hibpService.CheckPassword(ctx, req.Password)
+		if err != nil {
+			s.logger.Warn("HIBP check failed during registration", "error", err)
+			// Don't block registration on HIBP API errors
+		} else if result.IsBreached {
+			return nil, fmt.Errorf("this password has appeared in %d data breaches and cannot be used", result.Count)
+		}
 	}
 
 	// Hash the password

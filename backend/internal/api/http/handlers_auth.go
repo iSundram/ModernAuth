@@ -32,7 +32,7 @@ func (h *Handler) getUserRole(ctx context.Context, userID uuid.UUID) string {
 // buildUserResponse creates a UserResponse with role included
 func (h *Handler) buildUserResponse(ctx context.Context, user *storage.User) UserResponse {
 	role := h.getUserRole(ctx, user.ID)
-	
+
 	resp := UserResponse{
 		ID:              user.ID.String(),
 		Email:           user.Email,
@@ -45,7 +45,7 @@ func (h *Handler) buildUserResponse(ctx context.Context, user *storage.User) Use
 		Role:            role,
 		CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
-	
+
 	if user.Timezone != "" {
 		resp.Timezone = &user.Timezone
 	}
@@ -63,7 +63,7 @@ func (h *Handler) buildUserResponse(ctx context.Context, user *storage.User) Use
 		t := user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.UpdatedAt = &t
 	}
-	
+
 	return resp
 }
 
@@ -101,7 +101,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := RegisterResponse{
-		User:   h.buildUserResponse(r.Context(), result.User),
+		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
 			AccessToken:  result.TokenPair.AccessToken,
 			RefreshToken: result.TokenPair.RefreshToken,
@@ -138,8 +138,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		} else if locked {
 			authFailureTotal.WithLabelValues("login", "account_locked").Inc()
 			writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
-				"error":              "Account temporarily locked",
-				"message":            "Too many failed login attempts. Please try again later.",
+				"error":               "Account temporarily locked",
+				"message":             "Too many failed login attempts. Please try again later.",
 				"retry_after_seconds": int(remaining.Seconds()),
 			})
 			return
@@ -508,4 +508,47 @@ func (h *Handler) EnableMFA(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled successfully"})
+}
+
+// DeleteOwnAccount handles user self-deletion (GDPR compliance).
+func (h *Handler) DeleteOwnAccount(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	var req DeleteOwnAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	// Validate request using validator
+	if validationErrors := ValidateStruct(req); validationErrors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": validationErrors,
+		})
+		return
+	}
+
+	err = h.authService.DeleteOwnAccount(r.Context(), &auth.DeleteOwnAccountRequest{
+		UserID:   userID,
+		Password: req.Password,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrInvalidCredentials:
+			h.writeError(w, http.StatusUnauthorized, "Invalid password", err)
+		case auth.ErrUserNotFound:
+			h.writeError(w, http.StatusNotFound, "User not found", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "Failed to delete account", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Account deleted successfully"})
 }

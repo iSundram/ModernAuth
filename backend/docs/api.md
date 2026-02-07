@@ -1,5 +1,7 @@
 ## API Endpoints
 
+Full documentation is also available at [docs.modernauth.net](https://docs.modernauth.net).
+
 ### Authentication
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -10,6 +12,27 @@
 | POST | `/v1/auth/logout` | Revoke session & tokens (requires auth) |
 | GET | `/v1/auth/me` | Get current user profile (requires auth) |
 | GET | `/v1/auth/settings` | Get public authentication settings (registration, MFA flags, etc.) |
+
+### Google One Tap
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/google/one-tap` | Authenticate via Google One Tap credential (rate limited) |
+
+### Account Self-Deletion (GDPR)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/delete-account` | Delete own account with password verification (requires auth) |
+
+### Waitlist
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/waitlist` | Join waitlist (rate limited 5/hr) |
+| GET | `/v1/auth/waitlist/status` | Check waitlist position by email |
+
+### CAPTCHA Configuration
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/auth/captcha/config` | Get CAPTCHA provider and site key for frontend integration |
 
 ### Email Verification
 | Method | Endpoint | Description |
@@ -61,6 +84,14 @@
 | POST | `/v1/auth/mfa/email/disable` | Disable email-based MFA (requires auth) |
 | POST | `/v1/auth/login/mfa/email/send` | Send MFA code to user's email |
 | POST | `/v1/auth/login/mfa/email` | Complete login with email MFA code |
+
+### SMS MFA
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/auth/mfa/sms/enable` | Enable SMS-based MFA (requires auth, needs phone number) |
+| POST | `/v1/auth/mfa/sms/disable` | Disable SMS-based MFA (requires auth) |
+| POST | `/v1/auth/login/mfa/sms/send` | Send MFA code via SMS to user's phone |
+| POST | `/v1/auth/login/mfa/sms` | Complete login with SMS MFA code |
 
 ### WebAuthn/Passkeys (FIDO2)
 | Method | Endpoint | Description |
@@ -125,6 +156,20 @@
 | GET | `/v1/oauth/providers` | List available social providers |
 | GET | `/v1/oauth/{provider}/authorize` | Get authorization URL for provider |
 | GET | `/v1/oauth/{provider}/callback` | OAuth callback endpoint (supports GET and POST) |
+
+Supported providers: `google`, `github`, `microsoft`, `apple`, `facebook`, `linkedin`, `discord`, `twitter`, `gitlab`, `slack`, `spotify`
+
+### User Group Management (requires auth)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/groups` | List all groups |
+| POST | `/v1/groups` | Create a new group |
+| GET | `/v1/groups/{id}` | Get group details |
+| PUT | `/v1/groups/{id}` | Update group |
+| DELETE | `/v1/groups/{id}` | Delete group |
+| GET | `/v1/groups/{id}/members` | List group members |
+| POST | `/v1/groups/{id}/members` | Add user to group |
+| DELETE | `/v1/groups/{id}/members/{userId}` | Remove user from group |
 
 ### User Management (requires permissions)
 | Method | Endpoint | Permission | Description |
@@ -262,6 +307,55 @@ curl -X POST http://localhost:8080/v1/auth/login/mfa \
   -d '{
     "user_id": "uuid",
     "code": "123456"
+  }'
+```
+
+### Example: Login with SMS MFA
+```bash
+# Send SMS code
+curl -X POST http://localhost:8080/v1/auth/login/mfa/sms/send \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "uuid"}'
+
+# Verify SMS code
+curl -X POST http://localhost:8080/v1/auth/login/mfa/sms \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "uuid",
+    "code": "123456"
+  }'
+```
+
+### Example: Google One Tap Login
+```bash
+curl -X POST http://localhost:8080/v1/auth/google/one-tap \
+  -H "Content-Type: application/json" \
+  -d '{"credential": "<google-jwt-credential>"}'
+```
+
+### Example: Delete Own Account (GDPR)
+```bash
+curl -X POST http://localhost:8080/v1/auth/delete-account \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"password": "YourPassword123!"}'
+```
+
+### Example: Join Waitlist
+```bash
+curl -X POST http://localhost:8080/v1/auth/waitlist \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+```
+
+### Example: Create a Group
+```bash
+curl -X POST http://localhost:8080/v1/groups \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Engineering",
+    "description": "Engineering team"
   }'
 ```
 
@@ -431,6 +525,23 @@ The API implements rate limiting on authentication endpoints. Rate limit informa
 | `/v1/auth/magic-link/send` | 3 | 1 hour |
 | `/v1/auth/forgot-password` | 5 | 1 hour |
 | `/v1/auth/refresh` | 100 | 15 minutes |
+| `/v1/auth/google/one-tap` | 10 | 15 minutes |
+| `/v1/auth/waitlist` | 5 | 1 hour |
+| `/v1/auth/login/mfa/sms/send` | 5 | 15 minutes |
+| `/v1/auth/login/mfa/sms` | 10 | 15 minutes |
+
+---
+
+## CAPTCHA/Bot Protection
+
+Registration and login endpoints support CAPTCHA verification. When enabled, include the `X-Captcha-Token` header with the CAPTCHA response token.
+
+Supported providers:
+- **reCAPTCHA v2** — checkbox widget
+- **reCAPTCHA v3** — invisible, score-based
+- **Cloudflare Turnstile** — privacy-focused alternative
+
+Get the active CAPTCHA configuration via `GET /v1/auth/captcha/config`.
 
 ---
 

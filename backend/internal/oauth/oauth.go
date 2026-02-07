@@ -46,6 +46,14 @@ const (
 	ProviderGoogle    Provider = "google"
 	ProviderGitHub    Provider = "github"
 	ProviderMicrosoft Provider = "microsoft"
+	ProviderApple     Provider = "apple"
+	ProviderFacebook  Provider = "facebook"
+	ProviderLinkedIn  Provider = "linkedin"
+	ProviderDiscord   Provider = "discord"
+	ProviderTwitter   Provider = "twitter"
+	ProviderGitLab    Provider = "gitlab"
+	ProviderSlack     Provider = "slack"
+	ProviderSpotify   Provider = "spotify"
 )
 
 // ProviderConfig contains OAuth2 provider configuration.
@@ -61,6 +69,14 @@ type Config struct {
 	Google              *ProviderConfig
 	GitHub              *ProviderConfig
 	Microsoft           *ProviderConfig
+	Apple               *ProviderConfig
+	Facebook            *ProviderConfig
+	LinkedIn            *ProviderConfig
+	Discord             *ProviderConfig
+	Twitter             *ProviderConfig
+	GitLab              *ProviderConfig
+	Slack               *ProviderConfig
+	Spotify             *ProviderConfig
 	StateSecret         string   // Secret for signing state tokens
 	AllowedRedirectURLs []string // Allowed redirect URLs for OAuth callbacks
 }
@@ -90,16 +106,16 @@ type Service struct {
 // OAuthStorage defines OAuth-specific storage operations.
 type OAuthStorage interface {
 	storage.UserStorage
-	
+
 	// GetUserByProviderID retrieves a user by their provider ID.
 	GetUserByProviderID(ctx context.Context, provider, providerUserID string) (*storage.User, error)
-	
+
 	// LinkProvider links an OAuth provider to a user.
 	LinkProvider(ctx context.Context, userProvider *storage.UserProvider) error
-	
+
 	// UnlinkProvider removes an OAuth provider link from a user.
 	UnlinkProvider(ctx context.Context, userID uuid.UUID, provider string) error
-	
+
 	// GetUserProviders gets all linked providers for a user.
 	GetUserProviders(ctx context.Context, userID uuid.UUID) ([]*storage.UserProvider, error)
 }
@@ -158,6 +174,22 @@ func (s *Service) GetAuthorizationURL(provider Provider, redirectURL string) (st
 		authURL = s.buildGitHubAuthURL(cfg, state, redirectURL)
 	case ProviderMicrosoft:
 		authURL = s.buildMicrosoftAuthURL(cfg, state, redirectURL)
+	case ProviderApple:
+		authURL = s.buildAppleAuthURL(cfg, state, redirectURL)
+	case ProviderFacebook:
+		authURL = s.buildFacebookAuthURL(cfg, state, redirectURL)
+	case ProviderLinkedIn:
+		authURL = s.buildLinkedInAuthURL(cfg, state, redirectURL)
+	case ProviderDiscord:
+		authURL = s.buildDiscordAuthURL(cfg, state, redirectURL)
+	case ProviderTwitter:
+		authURL = s.buildTwitterAuthURL(cfg, state, redirectURL)
+	case ProviderGitLab:
+		authURL = s.buildGitLabAuthURL(cfg, state, redirectURL)
+	case ProviderSlack:
+		authURL = s.buildSlackAuthURL(cfg, state, redirectURL)
+	case ProviderSpotify:
+		authURL = s.buildSpotifyAuthURL(cfg, state, redirectURL)
 	default:
 		return "", "", ErrProviderNotFound
 	}
@@ -187,6 +219,22 @@ func (s *Service) GetAuthorizationURLWithStoredState(ctx context.Context, provid
 		authURL = s.buildGitHubAuthURL(cfg, state, redirectURL)
 	case ProviderMicrosoft:
 		authURL = s.buildMicrosoftAuthURL(cfg, state, redirectURL)
+	case ProviderApple:
+		authURL = s.buildAppleAuthURL(cfg, state, redirectURL)
+	case ProviderFacebook:
+		authURL = s.buildFacebookAuthURL(cfg, state, redirectURL)
+	case ProviderLinkedIn:
+		authURL = s.buildLinkedInAuthURL(cfg, state, redirectURL)
+	case ProviderDiscord:
+		authURL = s.buildDiscordAuthURL(cfg, state, redirectURL)
+	case ProviderTwitter:
+		authURL = s.buildTwitterAuthURL(cfg, state, redirectURL)
+	case ProviderGitLab:
+		authURL = s.buildGitLabAuthURL(cfg, state, redirectURL)
+	case ProviderSlack:
+		authURL = s.buildSlackAuthURL(cfg, state, redirectURL)
+	case ProviderSpotify:
+		authURL = s.buildSpotifyAuthURL(cfg, state, redirectURL)
 	default:
 		return "", "", ErrProviderNotFound
 	}
@@ -229,6 +277,27 @@ func (s *Service) GetAuthorizationURLWithPKCE(provider Provider, redirectURL str
 		authURL = s.buildGitHubAuthURL(cfg, state, redirectURL)
 	case ProviderMicrosoft:
 		authURL = s.buildMicrosoftAuthURLWithPKCE(cfg, state, redirectURL, pkce)
+	case ProviderApple:
+		// Apple doesn't support PKCE, use regular URL
+		authURL = s.buildAppleAuthURL(cfg, state, redirectURL)
+	case ProviderFacebook:
+		// Facebook doesn't support PKCE, use regular URL
+		authURL = s.buildFacebookAuthURL(cfg, state, redirectURL)
+	case ProviderLinkedIn:
+		// LinkedIn doesn't support PKCE, use regular URL
+		authURL = s.buildLinkedInAuthURL(cfg, state, redirectURL)
+	case ProviderDiscord:
+		// Discord doesn't support PKCE, use regular URL
+		authURL = s.buildDiscordAuthURL(cfg, state, redirectURL)
+	case ProviderTwitter:
+		authURL = s.buildTwitterAuthURLWithPKCE(cfg, state, redirectURL, pkce)
+	case ProviderGitLab:
+		authURL = s.buildGitLabAuthURLWithPKCE(cfg, state, redirectURL, pkce)
+	case ProviderSlack:
+		// Slack doesn't support PKCE, use regular URL
+		authURL = s.buildSlackAuthURL(cfg, state, redirectURL)
+	case ProviderSpotify:
+		authURL = s.buildSpotifyAuthURLWithPKCE(cfg, state, redirectURL, pkce)
 	default:
 		return "", "", nil, ErrProviderNotFound
 	}
@@ -250,6 +319,22 @@ func (s *Service) ExchangeCode(ctx context.Context, provider Provider, code, red
 		return s.exchangeGitHubCode(ctx, cfg, code, redirectURL)
 	case ProviderMicrosoft:
 		return s.exchangeMicrosoftCode(ctx, cfg, code, redirectURL)
+	case ProviderApple:
+		return s.exchangeAppleCode(ctx, cfg, code, redirectURL)
+	case ProviderFacebook:
+		return s.exchangeFacebookCode(ctx, cfg, code, redirectURL)
+	case ProviderLinkedIn:
+		return s.exchangeLinkedInCode(ctx, cfg, code, redirectURL)
+	case ProviderDiscord:
+		return s.exchangeDiscordCode(ctx, cfg, code, redirectURL)
+	case ProviderTwitter:
+		return s.exchangeTwitterCode(ctx, cfg, code, redirectURL)
+	case ProviderGitLab:
+		return s.exchangeGitLabCode(ctx, cfg, code, redirectURL)
+	case ProviderSlack:
+		return s.exchangeSlackCode(ctx, cfg, code, redirectURL)
+	case ProviderSpotify:
+		return s.exchangeSpotifyCode(ctx, cfg, code, redirectURL)
 	default:
 		return nil, ErrProviderNotFound
 	}
@@ -348,6 +433,30 @@ func (s *Service) GetConfiguredProviders() []Provider {
 	if s.config.Microsoft != nil && s.config.Microsoft.ClientID != "" {
 		providers = append(providers, ProviderMicrosoft)
 	}
+	if s.config.Apple != nil && s.config.Apple.ClientID != "" {
+		providers = append(providers, ProviderApple)
+	}
+	if s.config.Facebook != nil && s.config.Facebook.ClientID != "" {
+		providers = append(providers, ProviderFacebook)
+	}
+	if s.config.LinkedIn != nil && s.config.LinkedIn.ClientID != "" {
+		providers = append(providers, ProviderLinkedIn)
+	}
+	if s.config.Discord != nil && s.config.Discord.ClientID != "" {
+		providers = append(providers, ProviderDiscord)
+	}
+	if s.config.Twitter != nil && s.config.Twitter.ClientID != "" {
+		providers = append(providers, ProviderTwitter)
+	}
+	if s.config.GitLab != nil && s.config.GitLab.ClientID != "" {
+		providers = append(providers, ProviderGitLab)
+	}
+	if s.config.Slack != nil && s.config.Slack.ClientID != "" {
+		providers = append(providers, ProviderSlack)
+	}
+	if s.config.Spotify != nil && s.config.Spotify.ClientID != "" {
+		providers = append(providers, ProviderSpotify)
+	}
 	return providers
 }
 
@@ -366,6 +475,38 @@ func (s *Service) getProviderConfig(provider Provider) *ProviderConfig {
 	case ProviderMicrosoft:
 		if s.config.Microsoft != nil && s.config.Microsoft.ClientID != "" {
 			return s.config.Microsoft
+		}
+	case ProviderApple:
+		if s.config.Apple != nil && s.config.Apple.ClientID != "" {
+			return s.config.Apple
+		}
+	case ProviderFacebook:
+		if s.config.Facebook != nil && s.config.Facebook.ClientID != "" {
+			return s.config.Facebook
+		}
+	case ProviderLinkedIn:
+		if s.config.LinkedIn != nil && s.config.LinkedIn.ClientID != "" {
+			return s.config.LinkedIn
+		}
+	case ProviderDiscord:
+		if s.config.Discord != nil && s.config.Discord.ClientID != "" {
+			return s.config.Discord
+		}
+	case ProviderTwitter:
+		if s.config.Twitter != nil && s.config.Twitter.ClientID != "" {
+			return s.config.Twitter
+		}
+	case ProviderGitLab:
+		if s.config.GitLab != nil && s.config.GitLab.ClientID != "" {
+			return s.config.GitLab
+		}
+	case ProviderSlack:
+		if s.config.Slack != nil && s.config.Slack.ClientID != "" {
+			return s.config.Slack
+		}
+	case ProviderSpotify:
+		if s.config.Spotify != nil && s.config.Spotify.ClientID != "" {
+			return s.config.Spotify
 		}
 	}
 	return nil
@@ -801,6 +942,767 @@ func (s *Service) exchangeMicrosoftCode(ctx context.Context, cfg *ProviderConfig
 			"id":          msUser.ID,
 			"displayName": msUser.DisplayName,
 			"email":       email,
+		},
+	}, nil
+}
+
+// Apple OAuth implementation
+
+func (s *Service) buildAppleAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "name email")
+	params.Set("state", state)
+	params.Set("response_mode", "form_post")
+
+	return "https://appleid.apple.com/auth/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeAppleCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://appleid.apple.com/auth/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		IDToken     string `json:"id_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Apple returns user info in the ID token (JWT)
+	// Decode the JWT payload without verification (server already verified via token exchange)
+	parts := strings.Split(tokenResp.IDToken, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid ID token format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode ID token payload: %w", err)
+	}
+
+	var claims struct {
+		Sub           string      `json:"sub"`
+		Email         string      `json:"email"`
+		EmailVerified interface{} `json:"email_verified"` // Can be bool or string
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("failed to parse ID token claims: %w", err)
+	}
+
+	// email_verified can be a bool or string "true"/"false"
+	emailVerified := false
+	switch v := claims.EmailVerified.(type) {
+	case bool:
+		emailVerified = v
+	case string:
+		emailVerified = v == "true"
+	}
+
+	return &UserInfo{
+		Provider:       ProviderApple,
+		ProviderUserID: claims.Sub,
+		Email:          claims.Email,
+		EmailVerified:  emailVerified,
+		Name:           "", // Apple only sends name on first authorization
+		FirstName:      "",
+		LastName:       "",
+		AvatarURL:      "",
+		ProfileData: map[string]interface{}{
+			"sub":   claims.Sub,
+			"email": claims.Email,
+		},
+	}, nil
+}
+
+// Facebook OAuth implementation
+
+func (s *Service) buildFacebookAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "email,public_profile")
+	params.Set("state", state)
+
+	return "https://www.facebook.com/v19.0/dialog/oauth?" + params.Encode()
+}
+
+func (s *Service) exchangeFacebookCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://graph.facebook.com/v19.0/oauth/access_token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://graph.facebook.com/v19.0/me?fields=id,name,first_name,last_name,email,picture.type(large)"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var fbUser struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		Email     string `json:"email"`
+		Picture   struct {
+			Data struct {
+				URL string `json:"url"`
+			} `json:"data"`
+		} `json:"picture"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&fbUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	return &UserInfo{
+		Provider:       ProviderFacebook,
+		ProviderUserID: fbUser.ID,
+		Email:          fbUser.Email,
+		EmailVerified:  true, // Facebook emails are verified
+		Name:           fbUser.Name,
+		FirstName:      fbUser.FirstName,
+		LastName:       fbUser.LastName,
+		AvatarURL:      fbUser.Picture.Data.URL,
+		ProfileData: map[string]interface{}{
+			"id":    fbUser.ID,
+			"name":  fbUser.Name,
+			"email": fbUser.Email,
+		},
+	}, nil
+}
+
+// LinkedIn OAuth implementation
+
+func (s *Service) buildLinkedInAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid profile email")
+	params.Set("state", state)
+
+	return "https://www.linkedin.com/oauth/v2/authorization?" + params.Encode()
+}
+
+func (s *Service) exchangeLinkedInCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://www.linkedin.com/oauth/v2/accessToken"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info from LinkedIn UserInfo endpoint (OpenID Connect)
+	userInfoURL := "https://api.linkedin.com/v2/userinfo"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var liUser struct {
+		Sub           string `json:"sub"`
+		Name          string `json:"name"`
+		GivenName     string `json:"given_name"`
+		FamilyName    string `json:"family_name"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Picture       string `json:"picture"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&liUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	return &UserInfo{
+		Provider:       ProviderLinkedIn,
+		ProviderUserID: liUser.Sub,
+		Email:          liUser.Email,
+		EmailVerified:  liUser.EmailVerified,
+		Name:           liUser.Name,
+		FirstName:      liUser.GivenName,
+		LastName:       liUser.FamilyName,
+		AvatarURL:      liUser.Picture,
+		ProfileData: map[string]interface{}{
+			"sub":   liUser.Sub,
+			"name":  liUser.Name,
+			"email": liUser.Email,
+		},
+	}, nil
+}
+
+// Discord OAuth implementation
+
+func (s *Service) buildDiscordAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "identify email")
+	params.Set("state", state)
+
+	return "https://discord.com/api/oauth2/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeDiscordCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://discord.com/api/oauth2/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://discord.com/api/users/@me"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var discordUser struct {
+		ID            string `json:"id"`
+		Username      string `json:"username"`
+		GlobalName    string `json:"global_name"`
+		Email         string `json:"email"`
+		Verified      bool   `json:"verified"`
+		Avatar        string `json:"avatar"`
+		Discriminator string `json:"discriminator"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&discordUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	// Build avatar URL
+	avatarURL := ""
+	if discordUser.Avatar != "" {
+		avatarURL = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png", discordUser.ID, discordUser.Avatar)
+	}
+
+	// Use global_name if available, otherwise username
+	displayName := discordUser.GlobalName
+	if displayName == "" {
+		displayName = discordUser.Username
+	}
+	firstName, lastName := parseName(displayName)
+
+	return &UserInfo{
+		Provider:       ProviderDiscord,
+		ProviderUserID: discordUser.ID,
+		Email:          discordUser.Email,
+		EmailVerified:  discordUser.Verified,
+		Name:           displayName,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      avatarURL,
+		ProfileData: map[string]interface{}{
+			"id":       discordUser.ID,
+			"username": discordUser.Username,
+			"email":    discordUser.Email,
+		},
+	}, nil
+}
+
+// Twitter/X OAuth implementation
+
+func (s *Service) buildTwitterAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	// Twitter OAuth 2.0 requires PKCE, generate inline for non-PKCE flow
+	pkce, err := GeneratePKCE()
+	if err != nil {
+		s.logger.Error("Failed to generate PKCE for Twitter", "error", err)
+		return ""
+	}
+
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "users.read tweet.read offline.access")
+	params.Set("state", state)
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", "S256")
+
+	return "https://twitter.com/i/oauth2/authorize?" + params.Encode()
+}
+
+func (s *Service) buildTwitterAuthURLWithPKCE(cfg *ProviderConfig, state, redirectURL string, pkce *PKCE) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "users.read tweet.read offline.access")
+	params.Set("state", state)
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", pkce.Method)
+
+	return "https://twitter.com/i/oauth2/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeTwitterCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://api.twitter.com/2/oauth2/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+	// Note: code_verifier should be provided via stored state in production
+	// For basic auth flow, use client credentials
+	data.Set("code_verifier", "challenge") // Placeholder for non-PKCE flow
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Twitter uses Basic auth with client_id:client_secret
+	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://api.twitter.com/2/users/me?user.fields=id,name,username,profile_image_url"
+	req, _ = http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var twitterResp struct {
+		Data struct {
+			ID              string `json:"id"`
+			Name            string `json:"name"`
+			Username        string `json:"username"`
+			ProfileImageURL string `json:"profile_image_url"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&twitterResp); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	firstName, lastName := parseName(twitterResp.Data.Name)
+
+	// Note: Twitter OAuth 2.0 does not provide email by default
+	// Email would need to be collected separately or use Twitter API v1.1 with elevated access
+	return &UserInfo{
+		Provider:       ProviderTwitter,
+		ProviderUserID: twitterResp.Data.ID,
+		Email:          "", // Twitter OAuth 2.0 doesn't provide email by default
+		EmailVerified:  false,
+		Name:           twitterResp.Data.Name,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      twitterResp.Data.ProfileImageURL,
+		ProfileData: map[string]interface{}{
+			"id":       twitterResp.Data.ID,
+			"username": twitterResp.Data.Username,
+			"name":     twitterResp.Data.Name,
+		},
+	}, nil
+}
+
+// GitLab OAuth implementation
+
+func (s *Service) buildGitLabAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "read_user")
+	params.Set("state", state)
+
+	return "https://gitlab.com/oauth/authorize?" + params.Encode()
+}
+
+func (s *Service) buildGitLabAuthURLWithPKCE(cfg *ProviderConfig, state, redirectURL string, pkce *PKCE) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "read_user")
+	params.Set("state", state)
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", pkce.Method)
+
+	return "https://gitlab.com/oauth/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeGitLabCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://gitlab.com/oauth/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://gitlab.com/api/v4/user"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var gitlabUser struct {
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		AvatarURL string `json:"avatar_url"`
+		State     string `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&gitlabUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	firstName, lastName := parseName(gitlabUser.Name)
+
+	return &UserInfo{
+		Provider:       ProviderGitLab,
+		ProviderUserID: fmt.Sprintf("%d", gitlabUser.ID),
+		Email:          gitlabUser.Email,
+		EmailVerified:  true, // GitLab requires email verification
+		Name:           gitlabUser.Name,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      gitlabUser.AvatarURL,
+		ProfileData: map[string]interface{}{
+			"id":       gitlabUser.ID,
+			"username": gitlabUser.Username,
+			"email":    gitlabUser.Email,
+		},
+	}, nil
+}
+
+// Slack OAuth implementation
+
+func (s *Service) buildSlackAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid profile email")
+	params.Set("state", state)
+
+	return "https://slack.com/openid/connect/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeSlackCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://slack.com/api/openid.connect.token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		OK          bool   `json:"ok"`
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	if !tokenResp.OK {
+		return nil, fmt.Errorf("slack token exchange failed: %s", tokenResp.Error)
+	}
+
+	// Get user info
+	userInfoURL := "https://slack.com/api/openid.connect.userInfo"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var slackUser struct {
+		OK            bool   `json:"ok"`
+		Sub           string `json:"sub"`
+		Name          string `json:"name"`
+		GivenName     string `json:"given_name"`
+		FamilyName    string `json:"family_name"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Picture       string `json:"picture"`
+		Error         string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&slackUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	if !slackUser.OK {
+		return nil, fmt.Errorf("slack user info failed: %s", slackUser.Error)
+	}
+
+	return &UserInfo{
+		Provider:       ProviderSlack,
+		ProviderUserID: slackUser.Sub,
+		Email:          slackUser.Email,
+		EmailVerified:  slackUser.EmailVerified,
+		Name:           slackUser.Name,
+		FirstName:      slackUser.GivenName,
+		LastName:       slackUser.FamilyName,
+		AvatarURL:      slackUser.Picture,
+		ProfileData: map[string]interface{}{
+			"sub":   slackUser.Sub,
+			"name":  slackUser.Name,
+			"email": slackUser.Email,
+		},
+	}, nil
+}
+
+// Spotify OAuth implementation
+
+func (s *Service) buildSpotifyAuthURL(cfg *ProviderConfig, state, redirectURL string) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "user-read-email user-read-private")
+	params.Set("state", state)
+
+	return "https://accounts.spotify.com/authorize?" + params.Encode()
+}
+
+func (s *Service) buildSpotifyAuthURLWithPKCE(cfg *ProviderConfig, state, redirectURL string, pkce *PKCE) string {
+	params := url.Values{}
+	params.Set("client_id", cfg.ClientID)
+	params.Set("redirect_uri", redirectURL)
+	params.Set("response_type", "code")
+	params.Set("scope", "user-read-email user-read-private")
+	params.Set("state", state)
+	params.Set("code_challenge", pkce.CodeChallenge)
+	params.Set("code_challenge_method", pkce.Method)
+
+	return "https://accounts.spotify.com/authorize?" + params.Encode()
+}
+
+func (s *Service) exchangeSpotifyCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+	// Exchange code for tokens
+	tokenURL := "https://accounts.spotify.com/api/token"
+	data := url.Values{}
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Spotify uses Basic auth with client_id:client_secret
+	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://api.spotify.com/v1/me"
+	req, _ = http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var spotifyUser struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+		Email       string `json:"email"`
+		Images      []struct {
+			URL string `json:"url"`
+		} `json:"images"`
+		Product string `json:"product"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&spotifyUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	avatarURL := ""
+	if len(spotifyUser.Images) > 0 {
+		avatarURL = spotifyUser.Images[0].URL
+	}
+
+	firstName, lastName := parseName(spotifyUser.DisplayName)
+
+	return &UserInfo{
+		Provider:       ProviderSpotify,
+		ProviderUserID: spotifyUser.ID,
+		Email:          spotifyUser.Email,
+		EmailVerified:  true, // Spotify requires email verification
+		Name:           spotifyUser.DisplayName,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      avatarURL,
+		ProfileData: map[string]interface{}{
+			"id":    spotifyUser.ID,
+			"name":  spotifyUser.DisplayName,
+			"email": spotifyUser.Email,
 		},
 	}, nil
 }

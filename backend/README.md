@@ -4,32 +4,45 @@
 
 # ModernAuth
 
-A modern, Go-native authentication & identity core.
+**Homepage**: [modernauth.net](https://modernauth.net) | **Docs**: [docs.modernauth.net](https://docs.modernauth.net)
+
+A modern, Go-native authentication & identity platform.
 
 ## Overview
 
-ModernAuth  is a Go-native authentication and identity core intended to be embedded into products (SaaS, control panels, developer platforms) or run as a standalone auth service.
+ModernAuth is a Go-native authentication and identity platform intended to be embedded into products (SaaS, control panels, developer platforms) or run as a standalone auth service.
 
 ## Features
 
 - **Go-Native**: Built with Go 1.24+ following Clean Architecture.
-- **Multi-tenancy**: Built-in support for isolated tenants (organizations) with custom settings and domains.
+- **Multi-tenancy**: Built-in support for isolated tenants (organizations) with custom settings, domains, tenant-scoped RBAC, and rate limiting.
 - **RBAC**: Role-Based Access Control with roles, permissions, and middleware.
 - **Config Management**: Centralized configuration via environment variables and `.env` files using `cleanenv`.
-- **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords with backup codes.
+- **MFA (TOTP)**: Built-in support for Time-based One-Time Passwords with backup codes and replay protection.
 - **Email MFA**: Alternative MFA via email verification codes.
+- **SMS MFA**: Twilio-powered SMS-based multi-factor authentication.
 - **WebAuthn/Passkeys**: FIDO2 hardware security key and passkey support.
 - **Device MFA Trust**: Skip MFA on trusted devices for configurable duration.
 - **MFA Policy Enforcement**: Require MFA at system or tenant level.
-- **OAuth2 Social Login**: Google, GitHub, and Microsoft authentication providers with CSRF protection and PKCE support.
+- **MFA Preferences**: User-selectable preferred MFA method (TOTP, Email, SMS, WebAuthn).
+- **OAuth2 Social Login**: 11 providers — Google, GitHub, Microsoft, Apple, Facebook, LinkedIn, Discord, Twitter/X, GitLab, Slack, Spotify — with CSRF protection and PKCE support.
+- **Google One Tap**: One-click sign-in via Google One Tap credential flow.
+- **CAPTCHA/Bot Protection**: reCAPTCHA v2, reCAPTCHA v3, and Cloudflare Turnstile support on registration and login.
+- **Breached Password Detection**: Have I Been Pwned k-Anonymity API integration with Redis caching (fail-open).
+- **User Groups**: Full CRUD group management with membership APIs.
 - **User Invitations**: Token-based invitation system with automatic role assignment.
+- **Account Self-Deletion**: GDPR-compliant user self-deletion with password verification.
+- **Waitlist Mode**: Redis-backed waitlist for controlled launch sign-ups.
 - **SMTP Email Service**: Production-ready email with TLS support and HTML templates.
 - **SendGrid Integration**: Alternative email provider using SendGrid API v3.
 - **Email Queue**: Persistent async email delivery with Redis Streams, consumer groups, retries, and dead letter handling.
 - **Email Rate Limiting**: Per-user rate limits to prevent abuse.
+- **Email A/B Testing**: A/B testing for email templates with analytics and tracking.
+- **Advanced Email Branding**: Per-tenant email template customization.
 - **Password Strength Validation**: Configurable policies with common password blocking.
 - **Email Verification**: Token-based email verification flow.
 - **Password Management**: Secure password reset and change flows.
+- **Password History**: Prevents reuse of recent passwords (default last 5).
 - **Account Lockout**: Protection against brute-force attacks with configurable lockout policies.
 - **MFA Lockout**: Separate brute-force protection for MFA verification attempts.
 - **Security Headers**: Comprehensive HTTP security headers (X-Frame-Options, HSTS, CSP, etc.).
@@ -46,6 +59,7 @@ ModernAuth  is a Go-native authentication and identity core intended to be embed
 - **Real-time Analytics**: DAU, MAU, authentication patterns, security metrics with time-series aggregation.
 - **Input Validation**: Request validation using go-playground/validator.
 - **Docker Ready**: Easy deployment with Docker and Docker Compose.
+- **CI/CD**: GitHub Actions workflows for CI, releases, dependency review, and Dependabot integration.
 
 ## Quick Start
 
@@ -142,7 +156,8 @@ For detailed backend documentation, see:
 - `../SECURITY.md` – security model and hardening notes
 - `docs/architecture.md` – high-level architecture and components
 
+Full documentation is also available at [docs.modernauth.net](https://docs.modernauth.net).
+
 ## License
 
 MIT License
-

@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/storage"
@@ -98,6 +99,17 @@ func (s *AuthService) ChangePasswordWithHistory(ctx context.Context, userID uuid
 	}
 	if !match {
 		return ErrInvalidCredentials
+	}
+
+	// Check password against known data breaches (HIBP)
+	if s.hibpService != nil {
+		result, err := s.hibpService.CheckPassword(ctx, newPassword)
+		if err != nil {
+			s.logger.Warn("HIBP check failed during password change with history", "error", err)
+			// Don't block password change on HIBP API errors
+		} else if result.IsBreached {
+			return fmt.Errorf("this password has appeared in %d data breaches and cannot be used", result.Count)
+		}
 	}
 
 	// Check password history

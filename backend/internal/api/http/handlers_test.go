@@ -572,6 +572,43 @@ func (m *mockStorage) CountUsersByTenant(ctx context.Context, tenantID uuid.UUID
 	return 0, nil
 }
 
+// UserGroupStorage methods
+func (m *mockStorage) CreateGroup(ctx context.Context, group *storage.UserGroup) error {
+	return nil
+}
+
+func (m *mockStorage) GetGroupByID(ctx context.Context, id uuid.UUID) (*storage.UserGroup, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) ListGroups(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.UserGroup, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) UpdateGroup(ctx context.Context, group *storage.UserGroup) error {
+	return nil
+}
+
+func (m *mockStorage) DeleteGroup(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) AddUserToGroup(ctx context.Context, userID, groupID uuid.UUID, role string) error {
+	return nil
+}
+
+func (m *mockStorage) RemoveUserFromGroup(ctx context.Context, userID, groupID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStorage) GetGroupMembers(ctx context.Context, groupID uuid.UUID, limit, offset int) ([]*storage.UserGroupMember, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) GetUserGroups(ctx context.Context, userID uuid.UUID) ([]*storage.UserGroup, error) {
+	return nil, nil
+}
+
 func setupTestHandler() *Handler {
 	ms := newMockStorage()
 	tokenConfig := &auth.TokenConfig{

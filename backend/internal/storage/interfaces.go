@@ -22,6 +22,7 @@ type Storage interface {
 	WebhookStorage
 	InvitationStorage
 	SystemSettingsStorage
+	UserGroupStorage
 }
 
 // SystemSettingsStorage defines settings-related storage operations.

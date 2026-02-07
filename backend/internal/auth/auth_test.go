@@ -568,6 +568,43 @@ func (m *MockStorage) CountUsersByTenant(ctx context.Context, tenantID uuid.UUID
 	return 0, nil
 }
 
+// UserGroupStorage methods
+func (m *MockStorage) CreateGroup(ctx context.Context, group *storage.UserGroup) error {
+	return nil
+}
+
+func (m *MockStorage) GetGroupByID(ctx context.Context, id uuid.UUID) (*storage.UserGroup, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) ListGroups(ctx context.Context, tenantID *uuid.UUID, limit, offset int) ([]*storage.UserGroup, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) UpdateGroup(ctx context.Context, group *storage.UserGroup) error {
+	return nil
+}
+
+func (m *MockStorage) DeleteGroup(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *MockStorage) AddUserToGroup(ctx context.Context, userID, groupID uuid.UUID, role string) error {
+	return nil
+}
+
+func (m *MockStorage) RemoveUserFromGroup(ctx context.Context, userID, groupID uuid.UUID) error {
+	return nil
+}
+
+func (m *MockStorage) GetGroupMembers(ctx context.Context, groupID uuid.UUID, limit, offset int) ([]*storage.UserGroupMember, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) GetUserGroups(ctx context.Context, userID uuid.UUID) ([]*storage.UserGroup, error) {
+	return nil, nil
+}
+
 func setupTestAuthService() (*AuthService, *MockStorage) {
 	mockStorage := NewMockStorage()
 	tokenConfig := &TokenConfig{
