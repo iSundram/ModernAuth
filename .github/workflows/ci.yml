@@ -60,7 +60,7 @@ jobs:
           JWT_SECRET: test-secret-key-minimum-32-chars-long-for-tests
         run: go test -v -race -coverprofile=coverage.out ./...
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: backend/coverage.out
           flags: backend
