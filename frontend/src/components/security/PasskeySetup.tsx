@@ -26,8 +26,9 @@ export function PasskeySetup({ onSuccess }: PasskeySetupProps) {
       // Get registration options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnRegisterBegin(passkeyName);
       
-      // SimpleWebAuthn browser expects { optionsJSON }; backend returns { options }
-      const credential = await startRegistration({ optionsJSON: options });
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns JSON-serialized options
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const credential = await startRegistration({ optionsJSON: options as any });
       
       // Backend expects credential with attestationObject, clientDataJSON at top level
       const credentialForBackend = {
@@ -44,8 +45,8 @@ export function PasskeySetup({ onSuccess }: PasskeySetupProps) {
       setIsOpen(false);
       setPasskeyName('');
       onSuccess?.();
-    } catch (error: any) {
-      if (error.name === 'NotAllowedError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'NotAllowedError') {
         showToast({ title: 'Cancelled', message: 'Passkey registration was cancelled', type: 'info' });
       } else {
         showToast({ 

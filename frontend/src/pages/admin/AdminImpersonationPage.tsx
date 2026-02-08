@@ -15,6 +15,25 @@ import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Loading
 import { adminService, userService } from '../../api/services';
 import type { ImpersonationSession, User } from '../../types';
 
+// Helper function for duration formatting - defined outside component for purity
+const formatDuration = (start: string, end?: string) => {
+  const startTime = new Date(start).getTime();
+  const endTime = end ? new Date(end).getTime() : Date.now();
+  const durationMs = endTime - startTime;
+  
+  const seconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  return `${seconds}s`;
+};
+
 export function AdminImpersonationPage() {
   const [filterAdminId, setFilterAdminId] = useState('');
   const [filterTargetId, setFilterTargetId] = useState('');
@@ -59,24 +78,6 @@ export function AdminImpersonationPage() {
       return <Badge variant="default" size="sm">Ended</Badge>;
     }
     return <Badge variant="success" size="sm">Active</Badge>;
-  };
-
-  const formatDuration = (start: string, end?: string) => {
-    const startTime = new Date(start).getTime();
-    const endTime = end ? new Date(end).getTime() : Date.now();
-    const durationMs = endTime - startTime;
-    
-    const seconds = Math.floor(durationMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    }
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
-    }
-    return `${seconds}s`;
   };
 
   // Calculate stats

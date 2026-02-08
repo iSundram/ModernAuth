@@ -42,8 +42,8 @@ export function Table<T>({
   const sortedData = [...data].sort((a, b) => {
     if (!sortColumn) return 0;
 
-    const aValue = (a as any)[sortColumn];
-    const bValue = (b as any)[sortColumn];
+    const aValue = (a as Record<string, unknown>)[sortColumn];
+    const bValue = (b as Record<string, unknown>)[sortColumn];
 
     if (aValue === bValue) return 0;
     if (aValue === null || aValue === undefined) return 1;
@@ -120,7 +120,7 @@ export function Table<T>({
                   key={column.key}
                   className="px-4 py-3 text-sm text-[var(--color-text-secondary)]"
                 >
-                  {column.render ? column.render(item) : String((item as any)[column.key])}
+                  {column.render ? column.render(item) : String((item as Record<string, unknown>)[column.key])}
                 </td>
               ))}
             </tr>

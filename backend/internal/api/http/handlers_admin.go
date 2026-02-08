@@ -3,6 +3,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -476,6 +477,15 @@ func (h *Handler) UpdateSetting(w http.ResponseWriter, r *http.Request) {
 
 	err := h.authService.UpdateSetting(r.Context(), key, req.Value)
 	if err != nil {
+		// Check for validation errors
+		if errors.Is(err, auth.ErrUnknownSettingKey) {
+			h.writeError(w, http.StatusBadRequest, "Unknown setting key", err)
+			return
+		}
+		if errors.Is(err, auth.ErrInvalidSettingValueType) {
+			h.writeError(w, http.StatusBadRequest, "Invalid value type for setting", err)
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "Failed to update setting", err)
 		return
 	}

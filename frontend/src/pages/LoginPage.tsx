@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -42,15 +42,10 @@ export function LoginPage() {
   });
   const oauthProviders = oauthData?.providers || [];
 
-  // Handle OAuth callback (if redirected back from provider)
-  useEffect(() => {
-    const oauthError = searchParams.get('error');
-
-    if (oauthError) {
-      setError(`OAuth error: ${oauthError}`);
-    }
-    // Note: OAuth callback is typically handled server-side
-    // The backend callback endpoint should redirect back to frontend with tokens
+  // Derive OAuth error from search params
+  const oauthError = useMemo(() => {
+    const errorParam = searchParams.get('error');
+    return errorParam ? `OAuth error: ${errorParam}` : '';
   }, [searchParams]);
 
   const handleOAuthLogin = async (provider: string) => {
@@ -134,9 +129,9 @@ export function LoginPage() {
             {mfaRequired ? 'Two-Factor Authentication' : 'Sign in to your account'}
           </h2>
 
-          {error && (
+          {(error || oauthError) && (
             <div className="mb-4 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-              {error}
+              {error || oauthError}
             </div>
           )}
 

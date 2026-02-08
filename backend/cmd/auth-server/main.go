@@ -183,6 +183,8 @@ func main() {
 		rateLimitConfig := &email.RateLimitConfig{
 			VerificationLimit:  cfg.Email.VerificationRateLimit,
 			PasswordResetLimit: cfg.Email.PasswordResetRateLimit,
+			MFACodeLimit:       cfg.Email.MFACodeRateLimit,
+			LoginAlertLimit:    cfg.Email.LoginAlertRateLimit,
 			Window:             time.Hour,
 		}
 		rateLimitedEmailService = email.NewRateLimitedService(emailService, rateLimitConfig)
@@ -190,6 +192,8 @@ func main() {
 		slog.Info("Email rate limiting enabled",
 			"verification_limit", cfg.Email.VerificationRateLimit,
 			"password_reset_limit", cfg.Email.PasswordResetRateLimit,
+			"mfa_code_limit", cfg.Email.MFACodeRateLimit,
+			"login_alert_limit", cfg.Email.LoginAlertRateLimit,
 		)
 	}
 

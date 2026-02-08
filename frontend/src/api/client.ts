@@ -85,7 +85,7 @@ class ApiClient {
         // Retry the original request with new token
         const retryResponse = await retryRequest();
         return this.handleResponse<T>(retryResponse);
-      } catch (refreshError) {
+      } catch (_refreshError) {
         // Refresh failed, redirect to login
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');

@@ -113,7 +113,7 @@ export function AdminEmailAnalyticsPage() {
         clicked: 0,
         bounced: 0,
       }));
-  }, [stats?.by_day]);
+  }, [stats]);
 
   const maxDailyValue = Math.max(...dailyData.map(d => d.sent), 1);
 

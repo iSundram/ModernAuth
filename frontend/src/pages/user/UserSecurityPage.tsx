@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import QRCode from "react-qr-code";
 import { 
   Smartphone, Key, CheckCircle, AlertCircle, LogOut, 
-  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe, Fingerprint, Mail, MessageSquare
+  Monitor, Trash2, Lock, Eye, EyeOff, MapPin, Clock, Globe, Fingerprint, Mail, MessageSquare,
+  Copy, Download
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, LoadingBar, Badge, ConfirmDialog, Modal } from '../../components/ui';
@@ -19,8 +20,10 @@ import {
   PasswordStrength 
 } from '../../components/security';
 import type { UserDevice, Session } from '../../types';
+import { useAuth } from '../../hooks/useAuth';
 
 export function UserSecurityPage() {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingUpMfa, setIsSettingUpMfa] = useState(false);
   const [mfaData, setMfaData] = useState<{ secret: string; url: string } | null>(null);
@@ -48,6 +51,7 @@ export function UserSecurityPage() {
   // Confirmation dialogs
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
   const [confirmRemoveDevice, setConfirmRemoveDevice] = useState<UserDevice | null>(null);
+  const [confirmRegenerateBackupCodes, setConfirmRegenerateBackupCodes] = useState(false);
 
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -377,7 +381,7 @@ export function UserSecurityPage() {
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => generateBackupCodesMutation.mutate()}
+                  onClick={() => setConfirmRegenerateBackupCodes(true)}
                   disabled={generateBackupCodesMutation.isPending}
                   className="flex-1"
                 >
@@ -532,7 +536,7 @@ export function UserSecurityPage() {
         <CardContent>
           <SMSMFASetup 
             isEnabled={mfaStatus?.sms_enabled || false}
-            currentPhone={undefined}
+            currentPhone={user?.phone}
             onSuccess={() => refetchMfaStatus()}
           />
         </CardContent>
@@ -583,7 +587,7 @@ export function UserSecurityPage() {
               <Button 
                 variant="outline" 
                 className="w-full"
-                onClick={() => generateBackupCodesMutation.mutate()}
+                onClick={() => setConfirmRegenerateBackupCodes(true)}
                 disabled={generateBackupCodesMutation.isPending}
               >
                 {generateBackupCodesMutation.isPending ? 'Generating...' : 'Generate New Backup Codes'}
@@ -1019,6 +1023,37 @@ export function UserSecurityPage() {
                 ))}
               </div>
             </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => {
+                  navigator.clipboard.writeText(backupCodes.join('\n'));
+                  showToast({ title: 'Copied', message: 'Backup codes copied to clipboard', type: 'success' });
+                }}
+              >
+                <Copy size={16} className="mr-2" />
+                Copy All
+              </Button>
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => {
+                  const content = `ModernAuth Backup Codes\n${'='.repeat(30)}\n\nSave these codes in a secure location.\nEach code can only be used once.\n\n${backupCodes.map((code, i) => `${i + 1}. ${code}`).join('\n')}\n\nGenerated: ${new Date().toLocaleString()}`;
+                  const blob = new Blob([content], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'modernauth-backup-codes.txt';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  showToast({ title: 'Downloaded', message: 'Backup codes downloaded', type: 'success' });
+                }}
+              >
+                <Download size={16} className="mr-2" />
+                Download
+              </Button>
+            </div>
             <div className="flex justify-end pt-4">
               <Button variant="primary" onClick={() => {
                 setShowBackupCodes(false);
@@ -1109,6 +1144,19 @@ export function UserSecurityPage() {
         message="Are you sure you want to remove this device? This action cannot be undone."
         confirmText="Remove"
         variant="danger"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmRegenerateBackupCodes}
+        onClose={() => setConfirmRegenerateBackupCodes(false)}
+        onConfirm={() => {
+          setConfirmRegenerateBackupCodes(false);
+          generateBackupCodesMutation.mutate();
+        }}
+        title="Generate New Backup Codes"
+        message="Generating new backup codes will immediately invalidate all existing codes. Any unused codes will no longer work. Are you sure you want to continue?"
+        confirmText="Generate New Codes"
+        variant="warning"
       />
     </div>
   );

@@ -114,6 +114,17 @@ type UpdateUserHTTPRequest struct {
 	Phone    *string `json:"phone,omitempty"`
 }
 
+// UpdateProfileRequest represents a request to update the user's own profile.
+type UpdateProfileRequest struct {
+	FirstName *string `json:"first_name,omitempty" validate:"omitempty,max=100"`
+	LastName  *string `json:"last_name,omitempty" validate:"omitempty,max=100"`
+	Username  *string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
+	Phone     *string `json:"phone,omitempty"`
+	AvatarURL *string `json:"avatar_url,omitempty" validate:"omitempty,url"`
+	Timezone  *string `json:"timezone,omitempty"`
+	Locale    *string `json:"locale,omitempty"`
+}
+
 // AuditLogResponse represents an audit log in API responses.
 type AuditLogResponse struct {
 	ID        string                 `json:"id"`
@@ -199,4 +210,49 @@ type JoinWaitlistRequest struct {
 // WaitlistStatusRequest represents a request to check waitlist status.
 type WaitlistStatusRequest struct {
 	Email string `json:"email" validate:"required,email"`
+}
+
+// DataExportResponse represents the GDPR data export response.
+// Rate limiting recommended: 1 request per 24 hours per user.
+type DataExportResponse struct {
+	ExportedAt   string                    `json:"exported_at"`
+	User         UserResponse              `json:"user"`
+	Preferences  *UserPreferencesResponse  `json:"preferences,omitempty"`
+	LoginHistory []LoginHistoryResponse    `json:"login_history,omitempty"`
+	Devices      []DeviceExportResponse    `json:"devices,omitempty"`
+	AuditLogs    []AuditLogResponse        `json:"audit_logs,omitempty"`
+}
+
+// UserPreferencesResponse represents user preferences in API responses.
+type UserPreferencesResponse struct {
+	EmailSecurityAlerts      bool   `json:"email_security_alerts"`
+	EmailMarketing           bool   `json:"email_marketing"`
+	EmailProductUpdates      bool   `json:"email_product_updates"`
+	EmailDigestFrequency     string `json:"email_digest_frequency"`
+	PushEnabled              bool   `json:"push_enabled"`
+	AccentColor              string `json:"accent_color"`
+	FontSize                 string `json:"font_size"`
+	HighContrast             bool   `json:"high_contrast"`
+	ReducedMotion            bool   `json:"reduced_motion"`
+	ProfileVisibility        string `json:"profile_visibility"`
+	ShowActivityStatus       bool   `json:"show_activity_status"`
+	ShowEmailPublicly        bool   `json:"show_email_publicly"`
+	KeyboardShortcutsEnabled bool   `json:"keyboard_shortcuts_enabled"`
+	CreatedAt                string `json:"created_at"`
+	UpdatedAt                string `json:"updated_at"`
+}
+
+// DeviceExportResponse represents a device in data export responses.
+type DeviceExportResponse struct {
+	ID              string  `json:"id"`
+	DeviceName      *string `json:"device_name,omitempty"`
+	DeviceType      *string `json:"device_type,omitempty"`
+	Browser         *string `json:"browser,omitempty"`
+	OS              *string `json:"os,omitempty"`
+	IPAddress       *string `json:"ip_address,omitempty"`
+	LocationCountry *string `json:"location_country,omitempty"`
+	LocationCity    *string `json:"location_city,omitempty"`
+	IsTrusted       bool    `json:"is_trusted"`
+	LastSeenAt      *string `json:"last_seen_at,omitempty"`
+	CreatedAt       string  `json:"created_at"`
 }

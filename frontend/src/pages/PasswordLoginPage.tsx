@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { Button, Input, LoadingBar } from '../components/ui';
-import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Clock } from 'lucide-react';
+import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Clock, Smartphone } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
@@ -18,9 +18,10 @@ export function PasswordLoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaUserId, setMfaUserId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
-  const [mfaMethod, setMfaMethod] = useState<'totp' | 'email' | 'backup' | 'passkey'>('totp');
+  const [mfaMethod, setMfaMethod] = useState<'totp' | 'email' | 'sms' | 'backup' | 'passkey'>('totp');
   const [mfaAvailableMethods, setMfaAvailableMethods] = useState<string[]>([]); // from backend when mfa_required
   const [emailMfaSent, setEmailMfaSent] = useState(false);
+  const [smsMfaSent, setSmsMfaSent] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
   const [totpCountdown, setTotpCountdown] = useState(30);
 
@@ -83,8 +84,8 @@ export function PasswordLoginPage() {
         setMfaAvailableMethods(methods);
         // Map backend preferred_method (webauthn) to UI (passkey); default to totp if preferred not available
         const preferred = result.preferred_method ?? 'totp';
-        const preferredUi = preferred === 'webauthn' ? 'passkey' : preferred;
-        setMfaMethod(methods.includes(preferred) ? preferredUi : (methods.includes('totp') ? 'totp' : methods.includes('email') ? 'email' : 'passkey'));
+        const preferredUi = preferred === 'webauthn' ? 'passkey' : preferred as 'totp' | 'email' | 'sms' | 'passkey';
+        setMfaMethod(methods.includes(preferred) ? preferredUi : (methods.includes('totp') ? 'totp' : methods.includes('email') ? 'email' : methods.includes('sms') ? 'sms' : 'passkey'));
         setIsLoading(false);
         return;
       }
@@ -128,6 +129,9 @@ export function PasswordLoginPage() {
       if (mfaMethod === 'email') {
         const res = await authService.verifyEmailMfa(mfaUserId, mfaCode);
         completeLogin(res);
+      } else if (mfaMethod === 'sms') {
+        const res = await authService.verifySmsMfa(mfaUserId, mfaCode);
+        completeLogin(res);
       } else if (mfaMethod === 'backup') {
         const backupCodeNormalized = mfaCode.trim().replace(/-/g, '').toLowerCase();
         const res = await authService.loginWithBackupCode(mfaUserId, backupCodeNormalized);
@@ -165,6 +169,21 @@ export function PasswordLoginPage() {
     }
   };
 
+  const handleSendSmsCode = async () => {
+    setIsLoading(true);
+    try {
+      await authService.sendSmsMfaCode(mfaUserId);
+      setSmsMfaSent(true);
+      showToast({ title: 'Code Sent', message: 'Check your phone for the verification code', type: 'success' });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send SMS code';
+      setError(errorMessage);
+      showToast({ title: 'Error', message: errorMessage, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePasskeyLogin = async () => {
     setIsLoading(true);
     setError('');
@@ -173,8 +192,9 @@ export function PasswordLoginPage() {
       // Get authentication options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnLoginBegin(mfaUserId);
       
-      // SimpleWebAuthn browser expects { optionsJSON }; backend returns { options }
-      const credential = await startAuthentication({ optionsJSON: options });
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns JSON-serialized options
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const credential = await startAuthentication({ optionsJSON: options as any });
       
       // Backend expects credential with authenticatorData, clientDataJSON, signature at top level
       const credentialForBackend = {
@@ -195,8 +215,8 @@ export function PasswordLoginPage() {
       
       showToast({ title: 'Success', message: 'Successfully logged in!', type: 'success' });
       navigate('/');
-    } catch (error: any) {
-      if (error.name === 'NotAllowedError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'NotAllowedError') {
         showToast({ title: 'Cancelled', message: 'Passkey authentication was cancelled', type: 'info' });
       } else {
         const errorMessage = error instanceof Error ? error.message : 'Passkey authentication failed';
@@ -313,7 +333,7 @@ export function PasswordLoginPage() {
               <div className="space-y-6">
                 {/* Preferred method form shown first; "Try another way" switches method */}
                 {/* TOTP / Email Code / Backup Form */}
-                {(mfaMethod === 'totp' || mfaMethod === 'email' || mfaMethod === 'backup') && (
+                {(mfaMethod === 'totp' || mfaMethod === 'email' || mfaMethod === 'sms' || mfaMethod === 'backup') && (
                   <form onSubmit={handleMfaSubmit} className="space-y-4">
                     {mfaMethod === 'email' && !emailMfaSent ? (
                       <div className="space-y-4">
@@ -329,6 +349,22 @@ export function PasswordLoginPage() {
                           isLoading={isLoading}
                         >
                           Send Code
+                        </Button>
+                      </div>
+                    ) : mfaMethod === 'sms' && !smsMfaSent ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-[var(--color-text-secondary)] text-center">
+                          We'll send a verification code to your phone number.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="lg"
+                          className="w-full"
+                          onClick={handleSendSmsCode}
+                          isLoading={isLoading}
+                        >
+                          Send SMS Code
                         </Button>
                       </div>
                     ) : (
@@ -414,7 +450,7 @@ export function PasswordLoginPage() {
                     const backendKey = key === 'passkey' ? 'webauthn' : key;
                     return mfaAvailableMethods.includes(backendKey);
                   };
-                  const hasOtherMethods = (showMethod('totp') && mfaMethod !== 'totp') || (showMethod('email') && mfaMethod !== 'email') || (showMethod('webauthn') && mfaMethod !== 'passkey');
+                  const hasOtherMethods = (showMethod('totp') && mfaMethod !== 'totp') || (showMethod('email') && mfaMethod !== 'email') || (showMethod('sms') && mfaMethod !== 'sms') || (showMethod('webauthn') && mfaMethod !== 'passkey');
                   if (!hasOtherMethods) return null;
                   return (
                     <>
@@ -444,6 +480,18 @@ export function PasswordLoginPage() {
                           >
                             <Mail size={16} />
                             Email
+                          </button>
+                        )}
+                        {showMethod('sms') && (
+                          <button
+                            type="button"
+                            onClick={() => { setMfaMethod('sms'); setMfaCode(''); setError(''); setSmsMfaSent(false); }}
+                            className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                              mfaMethod === 'sms' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                            }`}
+                          >
+                            <Smartphone size={16} />
+                            SMS
                           </button>
                         )}
                         {showMethod('webauthn') && (

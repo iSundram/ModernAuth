@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect } from 'react';
 import { AlertCircle, Clock } from 'lucide-react';
 
@@ -18,6 +19,7 @@ export function RateLimitNotice({ rateLimitInfo, className = '' }: RateLimitNoti
 
   useEffect(() => {
     if (!rateLimitInfo) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync countdown with rate limit info
       setCountdown(null);
       return;
     }

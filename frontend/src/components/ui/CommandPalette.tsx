@@ -28,11 +28,13 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset selection when search changes
     setSelectedIndex(0);
   }, [search]);
 
   useEffect(() => {
     if (!isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset state when modal closes
       setSearch('');
       setSelectedIndex(0);
     }

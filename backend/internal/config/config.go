@@ -77,6 +77,8 @@ type EmailConfig struct {
 	RateLimitEnabled       bool `yaml:"rate_limit_enabled" env:"EMAIL_RATE_LIMIT_ENABLED" env-default:"true"`
 	VerificationRateLimit  int  `yaml:"verification_rate_limit" env:"EMAIL_VERIFICATION_RATE_LIMIT" env-default:"3"`
 	PasswordResetRateLimit int  `yaml:"password_reset_rate_limit" env:"EMAIL_PASSWORD_RESET_RATE_LIMIT" env-default:"5"`
+	MFACodeRateLimit       int  `yaml:"mfa_code_rate_limit" env:"EMAIL_MFA_CODE_RATE_LIMIT" env-default:"10"`
+	LoginAlertRateLimit    int  `yaml:"login_alert_rate_limit" env:"EMAIL_LOGIN_ALERT_RATE_LIMIT" env-default:"10"`
 }
 
 // OAuthConfig holds OAuth2 provider configurations.

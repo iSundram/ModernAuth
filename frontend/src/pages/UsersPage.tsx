@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Button, Input, Card, CardContent, CardHeader, Modal } from '../components/ui';
-import type { User, UserRole } from '../types';
+import type { User, UserRole, UserStatus } from '../types';
 import { userService, adminService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
 
@@ -94,6 +94,7 @@ export function UsersPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount
     loadUsers();
   }, []);
 
@@ -135,9 +136,9 @@ export function UsersPage() {
 
       setIsCreateModalOpen(false);
       loadUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to create user:', error);
-      alert(`Failed to create user: ${error.message || 'Unknown error'}`);
+      alert(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -619,18 +620,22 @@ function EditUserModal({
   user: ExtendedUser;
   onSubmit: (id: string, data: Partial<User>) => void;
 }) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    email: string;
+    role: UserRole;
+    status: UserStatus;
+  }>({
     email: user.email,
-    role: user.role || 'user',
-    status: user.status || 'active',
+    role: (user.role || 'user') as UserRole,
+    status: (user.status || 'active') as UserStatus,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setFormData({
       email: user.email,
-      role: user.role || 'user',
-      status: user.status || 'active',
+      role: (user.role || 'user') as UserRole,
+      status: (user.status || 'active') as UserStatus,
     });
   }, [user]);
 
@@ -680,7 +685,7 @@ function EditUserModal({
           <select
             value={formData.status}
             onChange={(e) =>
-              setFormData({ ...formData, status: e.target.value as any })
+              setFormData({ ...formData, status: e.target.value as UserStatus })
             }
             className="w-full px-4 py-2 rounded-lg bg-[var(--color-primary-dark)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[#D4D4D4]"
           >

@@ -16,6 +16,7 @@ export function ProgressLoader({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Track mount state for SSR
     setMounted(true);
   }, []);
 

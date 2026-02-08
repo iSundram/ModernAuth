@@ -38,7 +38,7 @@ export function ImpersonationBanner() {
       });
       // Redirect to admin dashboard
       window.location.href = '/admin';
-    } catch (err) {
+    } catch (_err) {
       showToast({
         title: 'Error',
         message: 'Failed to end impersonation session',

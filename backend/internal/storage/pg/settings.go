@@ -2,6 +2,7 @@ package pg
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -71,11 +72,17 @@ func (s *PostgresStorage) ListSettings(ctx context.Context, category string) ([]
 }
 
 func (s *PostgresStorage) UpdateSetting(ctx context.Context, key string, value interface{}) error {
+	// Encode the value as JSON since the database column is JSONB
+	jsonValue, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE system_settings
-		SET value = $2, updated_at = now()
+		SET value = $2::jsonb, updated_at = now()
 		WHERE key = $1
 	`
-	_, err := s.pool.Exec(ctx, query, key, value)
+	_, err = s.pool.Exec(ctx, query, key, jsonValue)
 	return err
 }

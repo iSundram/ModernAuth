@@ -552,3 +552,49 @@ func (h *Handler) DeleteOwnAccount(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Account deleted successfully"})
 }
+
+// UpdateOwnProfile handles requests to update the current user's profile.
+func (h *Handler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
+	userID, err := getUserIDFromContext(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if validationErrors := ValidateStruct(req); validationErrors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": validationErrors,
+		})
+		return
+	}
+
+	user, err := h.authService.UpdateOwnProfile(r.Context(), &auth.UpdateOwnProfileRequest{
+		UserID:    userID,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Username:  req.Username,
+		Phone:     req.Phone,
+		AvatarURL: req.AvatarURL,
+		Timezone:  req.Timezone,
+		Locale:    req.Locale,
+	})
+
+	if err != nil {
+		switch err {
+		case auth.ErrUserNotFound:
+			h.writeError(w, http.StatusNotFound, "User not found", err)
+		default:
+			h.writeError(w, http.StatusInternalServerError, "Failed to update profile", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
+}

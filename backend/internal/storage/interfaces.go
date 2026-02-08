@@ -23,6 +23,7 @@ type Storage interface {
 	InvitationStorage
 	SystemSettingsStorage
 	UserGroupStorage
+	PreferencesStorage
 }
 
 // SystemSettingsStorage defines settings-related storage operations.
@@ -317,4 +318,12 @@ type RiskAssessmentStorage interface {
 	CreateRiskAssessment(ctx context.Context, assessment *RiskAssessment) error
 	GetRecentRiskAssessments(ctx context.Context, userID uuid.UUID, limit int) ([]*RiskAssessment, error)
 	GetRiskAssessmentStats(ctx context.Context, userID uuid.UUID, since time.Time) (map[string]int, error)
+}
+
+// PreferencesStorage defines user preferences storage operations.
+type PreferencesStorage interface {
+	GetPreferences(ctx context.Context, userID uuid.UUID) (*UserPreferences, error)
+	CreatePreferences(ctx context.Context, prefs *UserPreferences) error
+	UpdatePreferences(ctx context.Context, prefs *UserPreferences) error
+	GetOrCreatePreferences(ctx context.Context, userID uuid.UUID) (*UserPreferences, error)
 }

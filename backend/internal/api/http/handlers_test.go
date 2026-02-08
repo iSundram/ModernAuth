@@ -609,6 +609,42 @@ func (m *mockStorage) GetUserGroups(ctx context.Context, userID uuid.UUID) ([]*s
 	return nil, nil
 }
 
+// PreferencesStorage implementation
+func (m *mockStorage) GetPreferences(ctx context.Context, userID uuid.UUID) (*storage.UserPreferences, error) {
+	return nil, nil
+}
+
+func (m *mockStorage) CreatePreferences(ctx context.Context, prefs *storage.UserPreferences) error {
+	return nil
+}
+
+func (m *mockStorage) UpdatePreferences(ctx context.Context, prefs *storage.UserPreferences) error {
+	return nil
+}
+
+func (m *mockStorage) GetOrCreatePreferences(ctx context.Context, userID uuid.UUID) (*storage.UserPreferences, error) {
+	now := time.Now()
+	return &storage.UserPreferences{
+		ID:                       uuid.New(),
+		UserID:                   userID,
+		EmailSecurityAlerts:      true,
+		EmailMarketing:           false,
+		EmailProductUpdates:      true,
+		EmailDigestFrequency:     "weekly",
+		PushEnabled:              true,
+		AccentColor:              "#3b82f6",
+		FontSize:                 "medium",
+		HighContrast:             false,
+		ReducedMotion:            false,
+		ProfileVisibility:        "private",
+		ShowActivityStatus:       true,
+		ShowEmailPublicly:        false,
+		KeyboardShortcutsEnabled: true,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}, nil
+}
+
 func setupTestHandler() *Handler {
 	ms := newMockStorage()
 	tokenConfig := &auth.TokenConfig{

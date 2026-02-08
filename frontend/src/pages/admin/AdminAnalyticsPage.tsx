@@ -138,14 +138,13 @@ interface DonutChartProps {
 
 function DonutChart({ data, centerLabel, centerValue }: DonutChartProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
-  let cumulativePercent = 0;
 
-  const segments = data.map(item => {
+  const segments = data.reduce<Array<{ color: string; value: number; percent: number; startPercent: number }>>((acc, item) => {
     const percent = (item.value / total) * 100;
-    const startPercent = cumulativePercent;
-    cumulativePercent += percent;
-    return { ...item, percent, startPercent };
-  });
+    const startPercent = acc.length > 0 ? acc[acc.length - 1].startPercent + acc[acc.length - 1].percent : 0;
+    acc.push({ ...item, percent, startPercent });
+    return acc;
+  }, []);
 
   const gradient = segments
     .map(s => `${s.color} ${s.startPercent}% ${s.startPercent + s.percent}%`)

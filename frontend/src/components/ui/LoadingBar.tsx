@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react';
 import * as React from 'react';
 import './LoadingBar.css';
@@ -21,6 +22,7 @@ export function LoadingBar({
 
   useEffect(() => {
     if (isLoading) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync show state with loading prop
       setShow(true);
     } else {
       // Delay hiding to allow animation to complete

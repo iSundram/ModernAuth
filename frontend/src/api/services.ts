@@ -3,7 +3,7 @@ import type {
   User, LoginRequest, LoginResponse, LoginMfaRequiredResponse, AuditLog, AuditLogQuery,
   RegisterRequest, LoginMFARequest, SetupMFAResponse, EnableMFARequest, 
   ResetPasswordRequest, ChangePasswordRequest, UpdateUserRequest,
-  Role,
+  Role, Permission,
   UserDevice, LoginHistory, Session,
   APIKey, CreateAPIKeyRequest,
   Webhook, CreateWebhookRequest, WebhookDelivery,
@@ -18,7 +18,8 @@ import type {
   EmailTemplateVersion, EmailStats, EmailBounce, EmailSuppression,
   EmailABTest, EmailABTestResult, EmailBrandingAdvanced,
   MagicLinkVerifyResponse, ImpersonationStatus, ImpersonationSession, ImpersonationResult,
-  UserBulkImportResult, UserBulkImportRequest
+  UserBulkImportResult, UserBulkImportRequest,
+  UpdateProfileRequest, UserPreferences, UpdatePreferencesRequest, DataExportResponse
 } from '../types';
 
 // ============================================================================
@@ -45,7 +46,7 @@ export const authService = {
     apiClient.get<User>('/v1/auth/me'),
 
   getPublicSettings: () =>
-    apiClient.get<Record<string, any>>('/v1/auth/settings'),
+    apiClient.get<Record<string, unknown>>('/v1/auth/settings'),
 
   getCaptchaConfig: () =>
     apiClient.get<{ provider: string; site_key: string }>('/v1/auth/captcha/config'),
@@ -153,11 +154,12 @@ export const authService = {
 
   // WebAuthn/Passkeys
   // Begin registration – returns { options, challenge_id }
+  // Note: The backend returns JSON-serialized options, not native WebAuthn types
   webauthnRegisterBegin: (credentialName: string) =>
-    apiClient.post<{ options: any; challenge_id: string }>('/v1/auth/mfa/webauthn/register/begin', { credential_name: credentialName }),
+    apiClient.post<{ options: Record<string, unknown>; challenge_id: string }>('/v1/auth/mfa/webauthn/register/begin', { credential_name: credentialName }),
 
   // Finish registration – requires challenge_id and credential payload
-  webauthnRegisterFinish: (challengeId: string, credentialName: string, credential: any) =>
+  webauthnRegisterFinish: (challengeId: string, credentialName: string, credential: Record<string, unknown>) =>
     apiClient.post<{ message: string }>('/v1/auth/mfa/webauthn/register/finish', {
       challenge_id: challengeId,
       credential_name: credentialName,
@@ -175,10 +177,10 @@ export const authService = {
 
   // Begin WebAuthn login – returns { options, challenge_id }
   webauthnLoginBegin: (userId: string) =>
-    apiClient.post<{ options: any; challenge_id: string }>('/v1/auth/login/mfa/webauthn/begin', { user_id: userId }),
+    apiClient.post<{ options: Record<string, unknown>; challenge_id: string }>('/v1/auth/login/mfa/webauthn/begin', { user_id: userId }),
 
   // Finish WebAuthn login – requires challenge_id and credential
-  webauthnLoginFinish: (userId: string, challengeId: string, credential: any) =>
+  webauthnLoginFinish: (userId: string, challengeId: string, credential: Record<string, unknown>) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa/webauthn/finish', {
       user_id: userId,
       challenge_id: challengeId,
@@ -230,6 +232,21 @@ export const authService = {
 
   getWaitlistStatus: (email: string) =>
     apiClient.get<{ position: number; total: number; status: string }>(`/v1/auth/waitlist/status?email=${encodeURIComponent(email)}`),
+
+  // Profile
+  updateProfile: (data: UpdateProfileRequest) =>
+    apiClient.patch<User>('/v1/auth/profile', data),
+
+  // Preferences
+  getPreferences: () =>
+    apiClient.get<UserPreferences>('/v1/auth/preferences'),
+
+  updatePreferences: (data: UpdatePreferencesRequest) =>
+    apiClient.patch<UserPreferences>('/v1/auth/preferences', data),
+
+  // Data export
+  exportData: () =>
+    apiClient.post<DataExportResponse>('/v1/auth/export-data'),
 };
 
 // ============================================================================
@@ -562,8 +579,8 @@ export const adminService = {
     return await apiClient.delete<void>(`/v1/admin/roles/${id}`);
   },
 
-  getRolePermissions: async (roleId: string): Promise<any[]> => {
-    return await apiClient.get<any[]>(`/v1/admin/roles/${roleId}/permissions`);
+  getRolePermissions: async (roleId: string): Promise<Permission[]> => {
+    return await apiClient.get<Permission[]>(`/v1/admin/roles/${roleId}/permissions`);
   },
 
   assignPermissionToRole: async (roleId: string, permissionId: string): Promise<void> => {
@@ -574,8 +591,8 @@ export const adminService = {
     return await apiClient.delete<void>(`/v1/admin/roles/${roleId}/permissions/${permissionId}`);
   },
 
-  listPermissions: async (): Promise<any[]> => {
-    return await apiClient.get<any[]>('/v1/admin/permissions');
+  listPermissions: async (): Promise<Permission[]> => {
+    return await apiClient.get<Permission[]>('/v1/admin/permissions');
   },
 
   // User Role Assignment
@@ -591,7 +608,7 @@ export const adminService = {
   listSettings: (category?: string) =>
     apiClient.get<SystemSetting[]>(`/v1/admin/settings${category ? `?category=${category}` : ''}`),
 
-  updateSetting: (key: string, value: any) =>
+  updateSetting: (key: string, value: unknown) =>
     apiClient.patch<{ message: string }>(`/v1/admin/settings/${key}`, { value }),
 
   // Email Templates
@@ -610,7 +627,7 @@ export const adminService = {
   deleteEmailTemplate: (type: string) =>
     apiClient.delete<void>(`/v1/admin/email-templates/${type}`),
 
-  previewEmailTemplate: (type: string, data?: Record<string, any>) =>
+  previewEmailTemplate: (type: string, data?: Record<string, unknown>) =>
     apiClient.post<{ html: string; text: string }>(`/v1/admin/email-templates/${type}/preview`, data || {}),
 
   // Send Test Email

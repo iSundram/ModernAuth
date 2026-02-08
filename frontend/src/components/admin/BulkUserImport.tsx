@@ -44,15 +44,15 @@ export function BulkUserImport({ isOpen, onClose, onSuccess }: BulkUserImportPro
           return;
         }
 
-        const parsedUsers: BulkUserRecord[] = results.data.map((row: any) => {
+        const parsedUsers: BulkUserRecord[] = (results.data as Record<string, unknown>[]).map((row) => {
           return {
-            email: row.email || '',
-            first_name: row.first_name || '',
-            last_name: row.last_name || '',
-            username: row.username || '',
-            phone: row.phone || '',
-            roles: row.roles || '',
-            password: row.password || '',
+            email: String(row.email || ''),
+            first_name: String(row.first_name || ''),
+            last_name: String(row.last_name || ''),
+            username: String(row.username || ''),
+            phone: String(row.phone || ''),
+            roles: String(row.roles || ''),
+            password: String(row.password || ''),
             active: row.active === 'true' || row.active === '1' || row.active === true,
           };
         }).filter(u => u.email); // Ensure email exists

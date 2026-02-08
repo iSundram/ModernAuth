@@ -69,8 +69,13 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
 			r.With(h.Auth).Post("/logout", h.Logout)
 			r.With(h.Auth).Get("/me", h.Me)
+			r.With(h.Auth).Put("/me", h.UpdateOwnProfile)
 			r.Get("/settings", h.GetPublicSettings)
 			r.Get("/captcha/config", h.GetCaptchaConfig)
+
+			// User Preferences (Protected)
+			r.With(h.Auth).Get("/preferences", h.GetPreferencesHandler)
+			r.With(h.Auth).Put("/preferences", h.UpdatePreferencesHandler)
 
 			// Email Verification
 			r.With(h.RateLimit(5, time.Hour)).Post("/verify-email", h.VerifyEmail)
@@ -144,6 +149,10 @@ func (h *Handler) Router() *chi.Mux {
 
 			// Account Self-Deletion (Protected, GDPR)
 			r.With(h.Auth).Post("/delete-account", h.DeleteOwnAccount)
+
+			// Data Export (Protected, GDPR)
+			// Rate limiting recommended: 1 request per 24 hours per user
+			r.With(h.Auth, h.RateLimit(1, 24*time.Hour)).Post("/export-data", h.ExportUserData)
 
 			// Waitlist (Public)
 			r.With(h.RateLimit(5, time.Hour)).Post("/waitlist", h.JoinWaitlist)

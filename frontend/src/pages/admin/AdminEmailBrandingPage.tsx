@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Palette, Save, Eye, Settings, Type, Share2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -8,28 +8,8 @@ import { adminService } from '../../api/services';
 import type { EmailBranding, EmailBrandingAdvanced } from '../../types';
 
 export function AdminEmailBrandingPage() {
-  const [formData, setFormData] = useState<EmailBranding>({
-    app_name: '',
-    logo_url: '',
-    primary_color: '#2B2B2B',
-    secondary_color: '#B3B3B3',
-    company_name: '',
-    support_email: '',
-    footer_text: '',
-  });
-  
-  const [advancedData, setAdvancedData] = useState<EmailBrandingAdvanced>({
-    social_links: {
-      facebook: '',
-      twitter: '',
-      linkedin: '',
-      instagram: '',
-    },
-    custom_css: '',
-    font_family: '',
-    font_family_url: '',
-    header_image_url: '',
-  });
+  const [formData, setFormData] = useState<EmailBranding | null>(null);
+  const [advancedData, setAdvancedData] = useState<EmailBrandingAdvanced | null>(null);
   
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -51,32 +31,28 @@ export function AdminEmailBrandingPage() {
     enabled: activeTab === 'advanced',
   });
 
-  // Update form when data loads
-  useEffect(() => {
-    if (branding) {
-      setFormData({
-        app_name: branding.app_name || '',
-        logo_url: branding.logo_url || '',
-        primary_color: branding.primary_color || '#2B2B2B',
-        secondary_color: branding.secondary_color || '#B3B3B3',
-        company_name: branding.company_name || '',
-        support_email: branding.support_email || '',
-        footer_text: branding.footer_text || '',
-      });
-    }
-  }, [branding]);
+  // Derive default form data from query results
+  const defaultFormData = useMemo<EmailBranding>(() => ({
+    app_name: branding?.app_name || '',
+    logo_url: branding?.logo_url || '',
+    primary_color: branding?.primary_color || '#2B2B2B',
+    secondary_color: branding?.secondary_color || '#B3B3B3',
+    company_name: branding?.company_name || '',
+    support_email: branding?.support_email || '',
+    footer_text: branding?.footer_text || '',
+  }), [branding]);
 
-  useEffect(() => {
-    if (advancedBranding) {
-      setAdvancedData({
-        social_links: advancedBranding.social_links || { facebook: '', twitter: '', linkedin: '', instagram: '' },
-        custom_css: advancedBranding.custom_css || '',
-        font_family: advancedBranding.font_family || '',
-        font_family_url: advancedBranding.font_family_url || '',
-        header_image_url: advancedBranding.header_image_url || '',
-      });
-    }
-  }, [advancedBranding]);
+  const defaultAdvancedData = useMemo<EmailBrandingAdvanced>(() => ({
+    social_links: advancedBranding?.social_links || { facebook: '', twitter: '', linkedin: '', instagram: '' },
+    custom_css: advancedBranding?.custom_css || '',
+    font_family: advancedBranding?.font_family || '',
+    font_family_url: advancedBranding?.font_family_url || '',
+    header_image_url: advancedBranding?.header_image_url || '',
+  }), [advancedBranding]);
+
+  // Merge local edits over server defaults
+  const effectiveFormData = formData ?? defaultFormData;
+  const effectiveAdvancedData = advancedData ?? defaultAdvancedData;
 
   // Save mutation
   const saveMutation = useMutation({
@@ -84,6 +60,7 @@ export function AdminEmailBrandingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['email-branding'] });
       showToast({ title: 'Success', message: 'Email branding updated successfully', type: 'success' });
+      setFormData(null);
       setHasChanges(false);
     },
     onError: (error: Error) => {
@@ -97,6 +74,7 @@ export function AdminEmailBrandingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['email-branding-advanced'] });
       showToast({ title: 'Success', message: 'Advanced branding updated successfully', type: 'success' });
+      setAdvancedData(null);
       setHasChanges(false);
     },
     onError: (error: Error) => {
@@ -105,19 +83,19 @@ export function AdminEmailBrandingPage() {
   });
 
   const handleChange = (field: keyof EmailBranding, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => ({ ...(prev ?? defaultFormData), [field]: value }));
     setHasChanges(true);
   };
 
   const handleAdvancedChange = (field: string, value: string) => {
     if (field.startsWith('social_')) {
-      const social = field.replace('social_', '') as keyof typeof advancedData.social_links;
+      const social = field.replace('social_', '') as keyof typeof effectiveAdvancedData.social_links;
       setAdvancedData(prev => ({
-        ...prev,
-        social_links: { ...prev.social_links!, [social]: value }
+        ...(prev ?? defaultAdvancedData),
+        social_links: { ...(prev ?? defaultAdvancedData).social_links!, [social]: value }
       }));
     } else {
-      setAdvancedData(prev => ({ ...prev, [field]: value }) as any);
+      setAdvancedData(prev => ({ ...(prev ?? defaultAdvancedData), [field]: value }) as EmailBrandingAdvanced);
     }
     setHasChanges(true);
   };
@@ -137,9 +115,9 @@ export function AdminEmailBrandingPage() {
 
   const handleSave = () => {
     if (activeTab === 'basic') {
-      saveMutation.mutate(formData);
+      saveMutation.mutate(effectiveFormData);
     } else {
-      saveAdvancedMutation.mutate(advancedData);
+      saveAdvancedMutation.mutate(effectiveAdvancedData);
     }
   };
 
@@ -204,21 +182,21 @@ export function AdminEmailBrandingPage() {
             <CardContent className="space-y-4">
               <Input
                 label="App Name"
-                value={formData.app_name}
+                value={effectiveFormData.app_name}
                 onChange={(e) => handleChange('app_name', e.target.value)}
                 placeholder="ModernAuth"
               />
 
               <Input
                 label="Company Name"
-                value={formData.company_name}
+                value={effectiveFormData.company_name}
                 onChange={(e) => handleChange('company_name', e.target.value)}
                 placeholder="Your Company Name"
               />
 
               <Input
                 label="Logo URL"
-                value={formData.logo_url}
+                value={effectiveFormData.logo_url}
                 onChange={(e) => handleChange('logo_url', e.target.value)}
                 placeholder="https://example.com/logo.png"
               />
@@ -231,12 +209,12 @@ export function AdminEmailBrandingPage() {
                   <div className="flex gap-2">
                     <input
                       type="color"
-                      value={formData.primary_color}
+                      value={effectiveFormData.primary_color}
                       onChange={(e) => handleChange('primary_color', e.target.value)}
                       className="w-12 h-10 rounded border border-[var(--color-border)] cursor-pointer"
                     />
                     <Input
-                      value={formData.primary_color}
+                      value={effectiveFormData.primary_color}
                       onChange={(e) => handleChange('primary_color', e.target.value)}
                       placeholder="#4F46E5"
                       className="flex-1"
@@ -251,12 +229,12 @@ export function AdminEmailBrandingPage() {
                   <div className="flex gap-2">
                     <input
                       type="color"
-                      value={formData.secondary_color}
+                      value={effectiveFormData.secondary_color}
                       onChange={(e) => handleChange('secondary_color', e.target.value)}
                       className="w-12 h-10 rounded border border-[var(--color-border)] cursor-pointer"
                     />
                     <Input
-                      value={formData.secondary_color}
+                      value={effectiveFormData.secondary_color}
                       onChange={(e) => handleChange('secondary_color', e.target.value)}
                       placeholder="#6B7280"
                       className="flex-1"
@@ -268,7 +246,7 @@ export function AdminEmailBrandingPage() {
               <Input
                 label="Support Email"
                 type="email"
-                value={formData.support_email}
+                value={effectiveFormData.support_email}
                 onChange={(e) => handleChange('support_email', e.target.value)}
                 placeholder="support@example.com"
               />
@@ -278,7 +256,7 @@ export function AdminEmailBrandingPage() {
                   Footer Text
                 </label>
                 <textarea
-                  value={formData.footer_text}
+                  value={effectiveFormData.footer_text}
                   onChange={(e) => handleChange('footer_text', e.target.value)}
                   className="w-full h-24 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   placeholder="© 2024 Your Company. All rights reserved."
@@ -300,11 +278,11 @@ export function AdminEmailBrandingPage() {
                 {/* Email Header Preview */}
                 <div 
                   className="p-4 rounded-t-lg text-center"
-                  style={{ backgroundColor: formData.primary_color }}
+                  style={{ backgroundColor: effectiveFormData.primary_color }}
                 >
-                  {formData.logo_url ? (
+                  {effectiveFormData.logo_url ? (
                     <img 
-                      src={formData.logo_url} 
+                      src={effectiveFormData.logo_url} 
                       alt="Logo" 
                       className="h-10 mx-auto"
                       onError={(e) => {
@@ -313,7 +291,7 @@ export function AdminEmailBrandingPage() {
                     />
                   ) : (
                     <span className="text-white font-bold text-lg">
-                      {formData.company_name || 'Your Company'}
+                      {effectiveFormData.company_name || 'Your Company'}
                     </span>
                   )}
                 </div>
@@ -321,14 +299,14 @@ export function AdminEmailBrandingPage() {
                 {/* Email Body Preview */}
                 <div className="bg-white p-6 border-x border-[var(--color-border)]">
                   <h2 className="text-lg font-semibold text-gray-800 mb-2">
-                    Welcome to {formData.company_name || 'Our Platform'}!
+                    Welcome to {effectiveFormData.company_name || 'Our Platform'}!
                   </h2>
                   <p className="text-gray-600 text-sm mb-4">
                     This is a preview of how your emails will look with the current branding settings.
                   </p>
                   <button
                     className="px-4 py-2 rounded text-white text-sm font-medium"
-                    style={{ backgroundColor: formData.primary_color }}
+                    style={{ backgroundColor: effectiveFormData.primary_color }}
                   >
                     Call to Action
                   </button>
@@ -337,14 +315,14 @@ export function AdminEmailBrandingPage() {
                 {/* Email Footer Preview */}
                 <div 
                   className="p-4 rounded-b-lg text-center"
-                  style={{ backgroundColor: formData.secondary_color }}
+                  style={{ backgroundColor: effectiveFormData.secondary_color }}
                 >
                   <p className="text-white text-xs">
-                    {formData.footer_text || '© 2024 Your Company. All rights reserved.'}
+                    {effectiveFormData.footer_text || '© 2024 Your Company. All rights reserved.'}
                   </p>
-                  {formData.support_email && (
+                  {effectiveFormData.support_email && (
                     <p className="text-white/80 text-xs mt-1">
-                      Need help? Contact us at {formData.support_email}
+                      Need help? Contact us at {effectiveFormData.support_email}
                     </p>
                   )}
                 </div>
@@ -365,21 +343,21 @@ export function AdminEmailBrandingPage() {
             <CardContent className="space-y-4">
               <Input
                 label="Font Family Name"
-                value={advancedData.font_family}
+                value={effectiveAdvancedData.font_family}
                 onChange={(e) => handleAdvancedChange('font_family', e.target.value)}
                 placeholder="Inter, Arial, sans-serif"
               />
 
               <Input
                 label="Font Family URL (Google Fonts)"
-                value={advancedData.font_family_url}
+                value={effectiveAdvancedData.font_family_url}
                 onChange={(e) => handleAdvancedChange('font_family_url', e.target.value)}
                 placeholder="https://fonts.googleapis.com/css2?family=Inter..."
               />
 
               <Input
                 label="Header Image URL"
-                value={advancedData.header_image_url}
+                value={effectiveAdvancedData.header_image_url}
                 onChange={(e) => handleAdvancedChange('header_image_url', e.target.value)}
                 placeholder="https://example.com/header.jpg"
               />
@@ -389,7 +367,7 @@ export function AdminEmailBrandingPage() {
                   Custom CSS
                 </label>
                 <textarea
-                  value={advancedData.custom_css}
+                  value={effectiveAdvancedData.custom_css}
                   onChange={(e) => handleAdvancedChange('custom_css', e.target.value)}
                   className="w-full h-32 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   placeholder=".email-container { max-width: 600px; }"
@@ -409,7 +387,7 @@ export function AdminEmailBrandingPage() {
             <CardContent className="space-y-4">
               <Input
                 label="Facebook"
-                value={advancedData.social_links?.facebook || ''}
+                value={effectiveAdvancedData.social_links?.facebook || ''}
                 onChange={(e) => handleAdvancedChange('social_facebook', e.target.value)}
                 placeholder="https://facebook.com/yourcompany"
                 leftIcon={<span className="text-blue-500">f</span>}
@@ -417,7 +395,7 @@ export function AdminEmailBrandingPage() {
 
               <Input
                 label="Twitter/X"
-                value={advancedData.social_links?.twitter || ''}
+                value={effectiveAdvancedData.social_links?.twitter || ''}
                 onChange={(e) => handleAdvancedChange('social_twitter', e.target.value)}
                 placeholder="https://twitter.com/yourcompany"
                 leftIcon={<span className="text-black">𝕏</span>}
@@ -425,7 +403,7 @@ export function AdminEmailBrandingPage() {
 
               <Input
                 label="LinkedIn"
-                value={advancedData.social_links?.linkedin || ''}
+                value={effectiveAdvancedData.social_links?.linkedin || ''}
                 onChange={(e) => handleAdvancedChange('social_linkedin', e.target.value)}
                 placeholder="https://linkedin.com/company/yourcompany"
                 leftIcon={<span className="text-blue-600">in</span>}
@@ -433,7 +411,7 @@ export function AdminEmailBrandingPage() {
 
               <Input
                 label="Instagram"
-                value={advancedData.social_links?.instagram || ''}
+                value={effectiveAdvancedData.social_links?.instagram || ''}
                 onChange={(e) => handleAdvancedChange('social_instagram', e.target.value)}
                 placeholder="https://instagram.com/yourcompany"
                 leftIcon={<span className="text-pink-500">📷</span>}

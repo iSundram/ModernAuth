@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '../../api/services';
 
@@ -16,6 +16,25 @@ interface CaptchaWidgetProps {
    * Ignored by v2 and Turnstile.
    */
   action?: string;
+}
+
+interface GrecaptchaInstance {
+  render: (container: HTMLElement, options: Record<string, unknown>) => number;
+  ready: (callback: () => void) => void;
+  execute: (siteKey: string, options: { action: string }) => Promise<string>;
+  reset: (widgetId: number) => void;
+}
+
+interface TurnstileInstance {
+  render: (container: HTMLElement, options: Record<string, unknown>) => string;
+  remove: (widgetId: string) => void;
+}
+
+declare global {
+  interface Window {
+    grecaptcha?: GrecaptchaInstance;
+    turnstile?: TurnstileInstance;
+  }
 }
 
 // Script load state shared across all mounts so we only inject once.
@@ -69,7 +88,7 @@ function RecaptchaV2Widget({
 
     const render = () => {
       if (cancelled || !containerRef.current) return;
-      const grecaptcha = (window as any).grecaptcha;
+      const grecaptcha = window.grecaptcha;
       if (!grecaptcha?.render) return;
 
       // Avoid duplicate renders.
@@ -86,13 +105,13 @@ function RecaptchaV2Widget({
     loadScript('https://www.google.com/recaptcha/api.js?render=explicit')
       .then(() => {
         // grecaptcha.ready fires once the library is fully initialised.
-        const grecaptcha = (window as any).grecaptcha;
+        const grecaptcha = window.grecaptcha;
         if (grecaptcha?.ready) {
           grecaptcha.ready(render);
         } else {
           // Fallback: poll briefly.
           const iv = setInterval(() => {
-            if ((window as any).grecaptcha?.render) {
+            if (window.grecaptcha?.render) {
               clearInterval(iv);
               render();
             }
@@ -108,7 +127,7 @@ function RecaptchaV2Widget({
       cancelled = true;
       if (widgetIdRef.current !== null) {
         try {
-          (window as any).grecaptcha?.reset?.(widgetIdRef.current);
+          window.grecaptcha?.reset?.(widgetIdRef.current);
         } catch {
           /* ignore */
         }
@@ -137,7 +156,7 @@ function RecaptchaV3Widget({
   const executedRef = useRef(false);
 
   const execute = useCallback(() => {
-    const grecaptcha = (window as any).grecaptcha;
+    const grecaptcha = window.grecaptcha;
     if (!grecaptcha?.execute) return;
 
     grecaptcha
@@ -152,7 +171,7 @@ function RecaptchaV3Widget({
     loadScript(`https://www.google.com/recaptcha/api.js?render=${siteKey}`)
       .then(() => {
         if (cancelled) return;
-        const grecaptcha = (window as any).grecaptcha;
+        const grecaptcha = window.grecaptcha;
         if (grecaptcha?.ready) {
           grecaptcha.ready(() => {
             if (!cancelled && !executedRef.current) {
@@ -195,7 +214,7 @@ function TurnstileWidget({
 
     const render = () => {
       if (cancelled || !containerRef.current) return;
-      const turnstile = (window as any).turnstile;
+      const turnstile = window.turnstile;
       if (!turnstile?.render) return;
       if (widgetIdRef.current !== null) return;
 
@@ -212,7 +231,7 @@ function TurnstileWidget({
         if (cancelled) return;
         // Turnstile auto-initialises quickly; poll briefly.
         const iv = setInterval(() => {
-          if ((window as any).turnstile?.render) {
+          if (window.turnstile?.render) {
             clearInterval(iv);
             render();
           }
@@ -227,7 +246,7 @@ function TurnstileWidget({
       cancelled = true;
       if (widgetIdRef.current !== null) {
         try {
-          (window as any).turnstile?.remove?.(widgetIdRef.current);
+          window.turnstile?.remove?.(widgetIdRef.current);
         } catch {
           /* ignore */
         }
@@ -245,20 +264,18 @@ function TurnstileWidget({
 // ---------------------------------------------------------------------------
 
 export function CaptchaWidget({ onToken, action = 'submit' }: CaptchaWidgetProps) {
-  const [provider, setProvider] = useState<CaptchaProvider>('none');
-  const [siteKey, setSiteKey] = useState('');
-
   const { data } = useQuery({
     queryKey: ['captcha-config'],
     queryFn: () => authService.getCaptchaConfig(),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  useEffect(() => {
-    if (data) {
-      setProvider((data.provider || 'none') as CaptchaProvider);
-      setSiteKey(data.site_key || '');
-    }
+  const provider = useMemo<CaptchaProvider>(() => {
+    return (data?.provider || 'none') as CaptchaProvider;
+  }, [data]);
+
+  const siteKey = useMemo(() => {
+    return data?.site_key || '';
   }, [data]);
 
   if (provider === 'none' || !siteKey) return null;

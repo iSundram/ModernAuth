@@ -23,6 +23,7 @@ export function GlobalProgressBar() {
   useEffect(() => {
     if (hasActiveRequests && !isVisible) {
       // Start loading
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync visibility with request state
       setIsVisible(true);
       setLoadingStartTime(Date.now());
     } else if (!hasActiveRequests && isVisible && loadingStartTime) {

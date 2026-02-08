@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- API responses have dynamic structure */
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User, LoginRequest, LoginResponse, LoginMfaRequiredResponse } from '../types';

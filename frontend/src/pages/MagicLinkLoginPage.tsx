@@ -46,7 +46,7 @@ export function MagicLinkLoginPage() {
         message: 'Check your email for a sign-in link', 
         type: 'success' 
       });
-    } catch (err) {
+    } catch (_err) {
       // Always show success to prevent email enumeration
       setSuccess(true);
     } finally {

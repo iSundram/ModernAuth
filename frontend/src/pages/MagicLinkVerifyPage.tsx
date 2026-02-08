@@ -20,6 +20,7 @@ export function MagicLinkVerifyPage() {
 
   useEffect(() => {
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Handle missing token on mount
       setStatus('error');
       setErrorMessage('No magic link token provided');
       return;

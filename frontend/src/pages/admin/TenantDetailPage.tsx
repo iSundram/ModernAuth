@@ -176,10 +176,10 @@ export function TenantDetailPage() {
             return;
           }
 
-          const users = results.data.map((row: any) => ({
-            email: row.email,
-            first_name: row.first_name || undefined,
-            last_name: row.last_name || undefined
+          const users = (results.data as Record<string, unknown>[]).map((row) => ({
+            email: String(row.email || ''),
+            first_name: row.first_name ? String(row.first_name) : undefined,
+            last_name: row.last_name ? String(row.last_name) : undefined
           })).filter(u => u.email);
 
           if (users.length === 0) {
@@ -188,7 +188,7 @@ export function TenantDetailPage() {
           }
           bulkImportMutation.mutate(users);
         },
-        error: (error: any) => {
+        error: (error: Error) => {
              showToast({ title: 'Error', type: 'error', message: `CSV Error: ${error.message}` });
         }
       });

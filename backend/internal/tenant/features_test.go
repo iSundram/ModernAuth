@@ -886,6 +886,30 @@ func (m *MockStorage) GetRiskAssessmentStats(ctx context.Context, userID uuid.UU
 	return args.Get(0).(map[string]int), args.Error(1)
 }
 
+// PreferencesStorage
+func (m *MockStorage) GetPreferences(ctx context.Context, userID uuid.UUID) (*storage.UserPreferences, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.UserPreferences), args.Error(1)
+}
+func (m *MockStorage) CreatePreferences(ctx context.Context, prefs *storage.UserPreferences) error {
+	args := m.Called(ctx, prefs)
+	return args.Error(0)
+}
+func (m *MockStorage) UpdatePreferences(ctx context.Context, prefs *storage.UserPreferences) error {
+	args := m.Called(ctx, prefs)
+	return args.Error(0)
+}
+func (m *MockStorage) GetOrCreatePreferences(ctx context.Context, userID uuid.UUID) (*storage.UserPreferences, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.UserPreferences), args.Error(1)
+}
+
 func TestUpdateFeatures_CustomFlags(t *testing.T) {
 	mockStorage := new(MockStorage)
 	service := NewService(mockStorage)

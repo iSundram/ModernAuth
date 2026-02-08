@@ -22,7 +22,7 @@ export interface User {
   is_active: boolean;
   timezone?: string;
   locale?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   last_login_at?: string;
   password_changed_at?: string;
   created_at: string;
@@ -148,7 +148,7 @@ export interface Session {
   expires_at: string;
   revoked: boolean;
   is_current?: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LoginHistory {
@@ -218,7 +218,7 @@ export interface Webhook {
   description?: string;
   url: string;
   events: string[];
-  headers?: Record<string, any>;
+  headers?: Record<string, unknown>;
   is_active: boolean;
   retry_count: number;
   timeout_seconds: number;
@@ -232,7 +232,7 @@ export interface CreateWebhookRequest {
   description?: string;
   url: string;
   events: string[];
-  headers?: Record<string, any>;
+  headers?: Record<string, unknown>;
   retry_count?: number;
   timeout_seconds?: number;
 }
@@ -242,7 +242,7 @@ export interface WebhookDelivery {
   webhook_id: string;
   event_id: string;
   event_type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   response_status_code?: number;
   response_time_ms?: number;
   attempt_number: number;
@@ -292,7 +292,7 @@ export interface Tenant {
   slug: string;
   domain?: string;
   logo_url?: string;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   plan: string;
   is_active: boolean;
   created_at: string;
@@ -304,7 +304,7 @@ export interface CreateTenantRequest {
   slug: string;
   domain?: string;
   logo_url?: string;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   plan?: string;
 }
 
@@ -312,7 +312,7 @@ export interface UpdateTenantRequest {
   name?: string;
   domain?: string;
   logo_url?: string;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   plan?: string;
   is_active?: boolean;
 }
@@ -401,7 +401,7 @@ export interface AuditLog {
   event_type: string;
   ip?: string;
   user_agent?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   created_at: string;
 }
 
@@ -438,7 +438,7 @@ export interface ServiceStatus {
 
 export interface SystemSetting {
   key: string;
-  value: any;
+  value: unknown;
   category: string;
   is_secret: boolean;
   description: string;
@@ -480,7 +480,7 @@ export interface UpdateUserRequest {
   locale?: string;
   status?: UserStatus;
   is_active?: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -778,4 +778,47 @@ export interface RateLimitInfo {
   remaining: number;
   reset: number;
   retryAfter?: number;
+}
+
+// ============================================================================
+// User Preferences Types
+// ============================================================================
+
+export interface UpdateProfileRequest {
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  phone?: string;
+  avatar_url?: string;
+  timezone?: string;
+  locale?: string;
+}
+
+export interface UserPreferences {
+  id: string;
+  user_id: string;
+  email_security_alerts: boolean;
+  email_marketing: boolean;
+  email_product_updates: boolean;
+  email_digest_frequency: 'none' | 'daily' | 'weekly' | 'monthly';
+  push_enabled: boolean;
+  accent_color: string;
+  font_size: 'small' | 'medium' | 'large';
+  high_contrast: boolean;
+  reduced_motion: boolean;
+  profile_visibility: 'public' | 'private' | 'contacts';
+  show_activity_status: boolean;
+  show_email_publicly: boolean;
+  keyboard_shortcuts_enabled: boolean;
+}
+
+export type UpdatePreferencesRequest = Partial<Omit<UserPreferences, 'id' | 'user_id'>>;
+
+export interface DataExportResponse {
+  export_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  download_url?: string;
+  expires_at?: string;
+  created_at: string;
 }

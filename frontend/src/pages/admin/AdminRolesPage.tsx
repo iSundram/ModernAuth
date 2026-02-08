@@ -463,12 +463,12 @@ function PermissionsModal({
   isOpen: boolean;
   onClose: () => void;
   role: Role;
-  permissions: any[];
-  rolePermissions: any[];
+  permissions: Permission[];
+  rolePermissions: Permission[];
   onAssign: (permissionId: string) => void;
   onRemove: (permissionId: string) => void;
 }) {
-  const assignedPermissionIds = new Set(rolePermissions.map((p: any) => p.id));
+  const assignedPermissionIds = new Set(rolePermissions.map((p: Permission) => p.id));
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Manage Permissions: ${role.name}`} size="lg">

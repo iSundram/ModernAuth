@@ -17,3 +17,6 @@ export { CommandPalette } from './CommandPalette';
 export * from './EmailVerificationBanner';
 export { RateLimitNotice, useRateLimitInfo } from './RateLimitNotice';
 export type { RateLimitInfo } from './RateLimitNotice';
+export { LocaleSelect } from './LocaleSelect';
+export { TimezoneSelect, detectUserTimezone } from './TimezoneSelect';
+export { AvatarUpload } from './AvatarUpload';

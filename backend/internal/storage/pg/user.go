@@ -282,7 +282,10 @@ func (s *PostgresStorage) CountUsers(ctx context.Context) (int, error) {
 func (s *PostgresStorage) UpdateUser(ctx context.Context, user *storage.User) error {
 	query := `
 		UPDATE users
-		SET tenant_id = $2, email = $3, phone = $4, username = $5, hashed_password = $6, is_email_verified = $7, is_active = $8, updated_at = $9
+		SET tenant_id = $2, email = $3, phone = $4, username = $5, hashed_password = $6, 
+		    is_email_verified = $7, is_active = $8, first_name = $9, last_name = $10, 
+		    avatar_url = $11, timezone = $12, locale = $13, metadata = $14, 
+		    last_login_at = $15, password_changed_at = $16, updated_at = $17
 		WHERE id = $1
 	`
 	user.UpdatedAt = time.Now()
@@ -295,6 +298,14 @@ func (s *PostgresStorage) UpdateUser(ctx context.Context, user *storage.User) er
 		user.HashedPassword,
 		user.IsEmailVerified,
 		user.IsActive,
+		user.FirstName,
+		user.LastName,
+		user.AvatarURL,
+		user.Timezone,
+		user.Locale,
+		user.Metadata,
+		user.LastLoginAt,
+		user.PasswordChangedAt,
 		user.UpdatedAt,
 	)
 	return err
