@@ -158,15 +158,54 @@ func (s *AuthService) recordTOTPCodeUsed(ctx context.Context, userID uuid.UUID, 
 
 // LoginWithMFARequest represents a request to complete login with MFA.
 type LoginWithMFARequest struct {
-	UserID      uuid.UUID `json:"user_id"`
-	Code        string    `json:"code"`
-	Fingerprint string    `json:"fingerprint,omitempty"`
-	IP          string    `json:"-"`
-	UserAgent   string    `json:"-"`
+	UserID         uuid.UUID  `json:"user_id"`
+	MFAChallengeID *uuid.UUID `json:"mfa_challenge_id"` // Required: proves password was verified
+	Code           string     `json:"code"`
+	Fingerprint    string     `json:"fingerprint,omitempty"`
+	IP             string     `json:"-"`
+	UserAgent      string     `json:"-"`
 }
 
 // LoginWithMFA verifies the MFA code and completes the login process.
+// SECURITY: Requires a valid MFA challenge token to prove password was verified.
 func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest) (*LoginResult, error) {
+	// SECURITY FIX: Verify the MFA challenge token exists and is valid
+	// This proves that the password was verified in the Login step
+	if req.MFAChallengeID == nil {
+		s.logger.Warn("MFA login attempt without challenge token", "user_id", req.UserID)
+		return nil, ErrMFAChallengeRequired
+	}
+
+	challenge, err := s.storage.GetMFAChallenge(ctx, *req.MFAChallengeID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify challenge exists, belongs to this user, hasn't been used, and hasn't expired
+	if challenge == nil {
+		s.logger.Warn("MFA challenge not found", "challenge_id", req.MFAChallengeID)
+		return nil, ErrMFAChallengeInvalid
+	}
+	if challenge.UserID != req.UserID {
+		s.logger.Warn("MFA challenge user mismatch",
+			"challenge_user", challenge.UserID,
+			"request_user", req.UserID,
+		)
+		return nil, ErrMFAChallengeInvalid
+	}
+	if challenge.Type != "password_verified" {
+		s.logger.Warn("Invalid MFA challenge type", "type", challenge.Type)
+		return nil, ErrMFAChallengeInvalid
+	}
+	if challenge.Verified {
+		s.logger.Warn("MFA challenge already used", "challenge_id", req.MFAChallengeID)
+		return nil, ErrMFAChallengeInvalid
+	}
+	if time.Now().After(challenge.ExpiresAt) {
+		s.logger.Warn("MFA challenge expired", "challenge_id", req.MFAChallengeID)
+		return nil, ErrChallengeExpired
+	}
+
 	user, err := s.storage.GetUserByID(ctx, req.UserID)
 	if err != nil {
 		return nil, err
@@ -193,6 +232,11 @@ func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest
 	if !valid {
 		s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_failed", &req.IP, &req.UserAgent, nil)
 		return nil, ErrInvalidMFACode
+	}
+
+	// Mark the MFA challenge as used (single use)
+	if err := s.storage.MarkMFAChallengeVerified(ctx, *req.MFAChallengeID); err != nil {
+		s.logger.Error("Failed to mark MFA challenge as verified", "error", err)
 	}
 
 	// Record code as used before proceeding

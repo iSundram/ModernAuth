@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +55,11 @@ type Service struct {
 	storage    storage.WebhookStorage
 	httpClient *http.Client
 	logger     *slog.Logger
+
+	// Shutdown handling
+	wg       sync.WaitGroup
+	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 // NewService creates a new webhook service.
@@ -63,7 +70,16 @@ func NewService(store storage.WebhookStorage) *Service {
 			Timeout: 30 * time.Second,
 		},
 		logger: slog.Default().With("component", "webhook_service"),
+		stopCh: make(chan struct{}),
 	}
+}
+
+// Stop gracefully shuts down the webhook service, waiting for in-flight deliveries to complete.
+func (s *Service) Stop() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
+	s.wg.Wait()
 }
 
 // CreateWebhookRequest represents a request to create a webhook.
@@ -272,8 +288,22 @@ func (s *Service) TriggerEvent(ctx context.Context, eventType string, tenantID *
 			continue
 		}
 
-		// Deliver asynchronously
-		go s.deliverWebhook(context.Background(), webhook, delivery)
+		// Deliver asynchronously with shutdown awareness
+		s.wg.Add(1)
+		go func(wh *storage.Webhook, del *storage.WebhookDelivery) {
+			defer s.wg.Done()
+			// Create a context that cancels on service shutdown
+			deliveryCtx, cancel := context.WithCancel(context.Background())
+			go func() {
+				select {
+				case <-s.stopCh:
+					cancel()
+				case <-deliveryCtx.Done():
+				}
+			}()
+			s.deliverWebhook(deliveryCtx, wh, del)
+			cancel()
+		}(webhook, delivery)
 	}
 
 	return nil
@@ -401,10 +431,10 @@ func (s *Service) signPayload(payload []byte, secret string) string {
 // generateSecret generates a random webhook secret.
 func generateSecret() (string, error) {
 	bytes := make([]byte, 32)
-	if _, err := uuid.New().MarshalBinary(); err != nil {
-		return "", err
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random secret: %w", err)
 	}
-	return hex.EncodeToString(bytes[:16]) + uuid.New().String(), nil
+	return hex.EncodeToString(bytes), nil
 }
 
 // ProcessRetries processes pending webhook retries.
@@ -425,7 +455,22 @@ func (s *Service) ProcessRetries(ctx context.Context) error {
 			continue
 		}
 
-		go s.deliverWebhook(ctx, webhook, delivery)
+		// Deliver asynchronously with shutdown awareness
+		s.wg.Add(1)
+		go func(wh *storage.Webhook, del *storage.WebhookDelivery) {
+			defer s.wg.Done()
+			// Create a context that cancels on service shutdown
+			deliveryCtx, cancel := context.WithCancel(context.Background())
+			go func() {
+				select {
+				case <-s.stopCh:
+					cancel()
+				case <-deliveryCtx.Done():
+				}
+			}()
+			s.deliverWebhook(deliveryCtx, wh, del)
+			cancel()
+		}(webhook, delivery)
 	}
 
 	return nil

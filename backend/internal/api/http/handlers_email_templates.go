@@ -8,7 +8,9 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1561,6 +1563,12 @@ func (h *EmailTemplateHandler) TrackEmailClick(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Validate URL to prevent open redirect attacks
+	if !isAllowedRedirectURL(originalURL) {
+		http.Error(w, "Invalid redirect URL", http.StatusBadRequest)
+		return
+	}
+
 	event := &storage.EmailEvent{
 		TenantID:     nil,
 		TemplateType: trackingID,
@@ -1571,4 +1579,48 @@ func (h *EmailTemplateHandler) TrackEmailClick(w http.ResponseWriter, r *http.Re
 	h.storage.CreateEmailEvent(r.Context(), event)
 
 	http.Redirect(w, r, originalURL, http.StatusFound)
+}
+
+// isAllowedRedirectURL validates that a URL is safe for redirection.
+// It rejects javascript:, data:, and other dangerous schemes,
+// and only allows http/https URLs.
+func isAllowedRedirectURL(rawURL string) bool {
+	// Reject empty URLs
+	if rawURL == "" {
+		return false
+	}
+
+	// Reject URLs starting with dangerous patterns (case-insensitive)
+	lower := strings.ToLower(rawURL)
+	dangerousPrefixes := []string{
+		"javascript:",
+		"data:",
+		"vbscript:",
+		"file:",
+		"//", // protocol-relative URLs can be abused
+	}
+	for _, prefix := range dangerousPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return false
+		}
+	}
+
+	// Parse the URL
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	// Only allow http and https schemes
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+
+	// Reject URLs with empty host (relative URLs that could be abused)
+	if parsed.Host == "" {
+		return false
+	}
+
+	return true
 }

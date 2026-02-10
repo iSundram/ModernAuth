@@ -328,7 +328,10 @@ func (s *Service) ExchangeCode(ctx context.Context, provider Provider, code, red
 	case ProviderDiscord:
 		return s.exchangeDiscordCode(ctx, cfg, code, redirectURL)
 	case ProviderTwitter:
-		return s.exchangeTwitterCode(ctx, cfg, code, redirectURL)
+		// Twitter requires PKCE - this path should not be used
+		// Use ExchangeCodeWithPKCE instead
+		s.logger.Error("Twitter OAuth called without PKCE code_verifier - this will fail")
+		return nil, ErrInvalidPKCE
 	case ProviderGitLab:
 		return s.exchangeGitLabCode(ctx, cfg, code, redirectURL)
 	case ProviderSlack:
@@ -337,6 +340,35 @@ func (s *Service) ExchangeCode(ctx context.Context, provider Provider, code, red
 		return s.exchangeSpotifyCode(ctx, cfg, code, redirectURL)
 	default:
 		return nil, ErrProviderNotFound
+	}
+}
+
+// ExchangeCodeWithPKCE exchanges an authorization code for user info using PKCE.
+// The codeVerifier must be the same one generated during GetAuthorizationURLWithPKCE.
+func (s *Service) ExchangeCodeWithPKCE(ctx context.Context, provider Provider, code, redirectURL, codeVerifier string) (*UserInfo, error) {
+	if codeVerifier == "" {
+		return nil, ErrInvalidPKCE
+	}
+
+	cfg := s.getProviderConfig(provider)
+	if cfg == nil {
+		return nil, ErrProviderNotConfigured
+	}
+
+	switch provider {
+	case ProviderTwitter:
+		return s.exchangeTwitterCodeWithPKCE(ctx, cfg, code, redirectURL, codeVerifier)
+	case ProviderGoogle:
+		return s.exchangeGoogleCodeWithPKCE(ctx, cfg, code, redirectURL, codeVerifier)
+	case ProviderMicrosoft:
+		return s.exchangeMicrosoftCodeWithPKCE(ctx, cfg, code, redirectURL, codeVerifier)
+	case ProviderGitLab:
+		return s.exchangeGitLabCodeWithPKCE(ctx, cfg, code, redirectURL, codeVerifier)
+	case ProviderSpotify:
+		return s.exchangeSpotifyCodeWithPKCE(ctx, cfg, code, redirectURL, codeVerifier)
+	default:
+		// Fall back to non-PKCE exchange for providers that don't support it
+		return s.ExchangeCode(ctx, provider, code, redirectURL)
 	}
 }
 
@@ -990,7 +1022,27 @@ func (s *Service) exchangeAppleCode(ctx context.Context, cfg *ProviderConfig, co
 	}
 
 	// Apple returns user info in the ID token (JWT)
-	// Decode the JWT payload without verification (server already verified via token exchange)
+	//
+	// SECURITY TODO: The ID token should be verified against Apple's public keys
+	// from https://appleid.apple.com/auth/keys
+	//
+	// While the token was received directly from Apple's token endpoint over HTTPS
+	// (which provides transport-level security), best practice is to also verify
+	// the JWT signature to ensure:
+	// 1. The token hasn't been tampered with
+	// 2. The token was actually issued by Apple
+	// 3. The "aud" claim matches our client_id
+	// 4. The "iss" claim is https://appleid.apple.com
+	//
+	// To implement proper verification:
+	// 1. Fetch Apple's public keys from https://appleid.apple.com/auth/keys (cache them)
+	// 2. Parse the JWT header to get the "kid" (key ID)
+	// 3. Find the matching public key and verify the signature
+	//
+	// Recommended: Use a library like github.com/golang-jwt/jwt/v5 with Apple's JWKS
+	//
+	// Current status: We decode without verification, relying on the fact that
+	// we received this token directly from Apple's token endpoint over TLS.
 	parts := strings.Split(tokenResp.IDToken, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid ID token format")
@@ -1003,11 +1055,28 @@ func (s *Service) exchangeAppleCode(ctx context.Context, cfg *ProviderConfig, co
 
 	var claims struct {
 		Sub           string      `json:"sub"`
+		Iss           string      `json:"iss"`
+		Aud           string      `json:"aud"`
 		Email         string      `json:"email"`
 		EmailVerified interface{} `json:"email_verified"` // Can be bool or string
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, fmt.Errorf("failed to parse ID token claims: %w", err)
+	}
+
+	// Basic issuer verification (does NOT replace signature verification)
+	if claims.Iss != "https://appleid.apple.com" {
+		s.logger.Warn("Apple ID token has invalid issuer", "iss", claims.Iss)
+		return nil, fmt.Errorf("invalid Apple ID token issuer")
+	}
+
+	// Verify audience matches our client ID
+	if claims.Aud != cfg.ClientID {
+		s.logger.Warn("Apple ID token audience mismatch",
+			"expected", cfg.ClientID,
+			"got", claims.Aud,
+		)
+		return nil, fmt.Errorf("invalid Apple ID token audience")
 	}
 
 	// email_verified can be a bool or string "true"/"false"
@@ -1332,7 +1401,7 @@ func (s *Service) buildTwitterAuthURLWithPKCE(cfg *ProviderConfig, state, redire
 	return "https://twitter.com/i/oauth2/authorize?" + params.Encode()
 }
 
-func (s *Service) exchangeTwitterCode(ctx context.Context, cfg *ProviderConfig, code, redirectURL string) (*UserInfo, error) {
+func (s *Service) exchangeTwitterCodeWithPKCE(ctx context.Context, cfg *ProviderConfig, code, redirectURL, codeVerifier string) (*UserInfo, error) {
 	// Exchange code for tokens
 	tokenURL := "https://api.twitter.com/2/oauth2/token"
 	data := url.Values{}
@@ -1340,9 +1409,7 @@ func (s *Service) exchangeTwitterCode(ctx context.Context, cfg *ProviderConfig, 
 	data.Set("code", code)
 	data.Set("grant_type", "authorization_code")
 	data.Set("redirect_uri", redirectURL)
-	// Note: code_verifier should be provided via stored state in production
-	// For basic auth flow, use client credentials
-	data.Set("code_verifier", "challenge") // Placeholder for non-PKCE flow
+	data.Set("code_verifier", codeVerifier) // PKCE code verifier from stored state
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1408,6 +1475,299 @@ func (s *Service) exchangeTwitterCode(ctx context.Context, cfg *ProviderConfig, 
 			"id":       twitterResp.Data.ID,
 			"username": twitterResp.Data.Username,
 			"name":     twitterResp.Data.Name,
+		},
+	}, nil
+}
+
+// exchangeGoogleCodeWithPKCE exchanges Google auth code with PKCE.
+func (s *Service) exchangeGoogleCodeWithPKCE(ctx context.Context, cfg *ProviderConfig, code, redirectURL, codeVerifier string) (*UserInfo, error) {
+	tokenURL := "https://oauth2.googleapis.com/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+	data.Set("code_verifier", codeVerifier)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		IDToken     string `json:"id_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://www.googleapis.com/oauth2/v2/userinfo"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var googleUser struct {
+		ID            string `json:"id"`
+		Email         string `json:"email"`
+		VerifiedEmail bool   `json:"verified_email"`
+		Name          string `json:"name"`
+		GivenName     string `json:"given_name"`
+		FamilyName    string `json:"family_name"`
+		Picture       string `json:"picture"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&googleUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	return &UserInfo{
+		Provider:       ProviderGoogle,
+		ProviderUserID: googleUser.ID,
+		Email:          googleUser.Email,
+		EmailVerified:  googleUser.VerifiedEmail,
+		Name:           googleUser.Name,
+		FirstName:      googleUser.GivenName,
+		LastName:       googleUser.FamilyName,
+		AvatarURL:      googleUser.Picture,
+		ProfileData: map[string]interface{}{
+			"id":    googleUser.ID,
+			"email": googleUser.Email,
+			"name":  googleUser.Name,
+		},
+	}, nil
+}
+
+// exchangeMicrosoftCodeWithPKCE exchanges Microsoft auth code with PKCE.
+func (s *Service) exchangeMicrosoftCodeWithPKCE(ctx context.Context, cfg *ProviderConfig, code, redirectURL, codeVerifier string) (*UserInfo, error) {
+	tokenURL := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+	data.Set("code_verifier", codeVerifier)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info from Microsoft Graph
+	userInfoURL := "https://graph.microsoft.com/v1.0/me"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var msUser struct {
+		ID                string `json:"id"`
+		DisplayName       string `json:"displayName"`
+		GivenName         string `json:"givenName"`
+		Surname           string `json:"surname"`
+		Mail              string `json:"mail"`
+		UserPrincipalName string `json:"userPrincipalName"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&msUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	email := msUser.Mail
+	if email == "" {
+		email = msUser.UserPrincipalName
+	}
+
+	return &UserInfo{
+		Provider:       ProviderMicrosoft,
+		ProviderUserID: msUser.ID,
+		Email:          email,
+		EmailVerified:  true,
+		Name:           msUser.DisplayName,
+		FirstName:      msUser.GivenName,
+		LastName:       msUser.Surname,
+		AvatarURL:      "",
+		ProfileData: map[string]interface{}{
+			"id":          msUser.ID,
+			"displayName": msUser.DisplayName,
+			"email":       email,
+		},
+	}, nil
+}
+
+// exchangeGitLabCodeWithPKCE exchanges GitLab auth code with PKCE.
+func (s *Service) exchangeGitLabCodeWithPKCE(ctx context.Context, cfg *ProviderConfig, code, redirectURL, codeVerifier string) (*UserInfo, error) {
+	tokenURL := "https://gitlab.com/oauth/token"
+	data := url.Values{}
+	data.Set("client_id", cfg.ClientID)
+	data.Set("client_secret", cfg.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+	data.Set("code_verifier", codeVerifier)
+
+	resp, err := s.httpClient.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://gitlab.com/api/v4/user"
+	req, _ := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var gitlabUser struct {
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&gitlabUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	firstName, lastName := parseName(gitlabUser.Name)
+
+	return &UserInfo{
+		Provider:       ProviderGitLab,
+		ProviderUserID: fmt.Sprintf("%d", gitlabUser.ID),
+		Email:          gitlabUser.Email,
+		EmailVerified:  true,
+		Name:           gitlabUser.Name,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      gitlabUser.AvatarURL,
+		ProfileData: map[string]interface{}{
+			"id":       gitlabUser.ID,
+			"username": gitlabUser.Username,
+			"email":    gitlabUser.Email,
+		},
+	}, nil
+}
+
+// exchangeSpotifyCodeWithPKCE exchanges Spotify auth code with PKCE.
+func (s *Service) exchangeSpotifyCodeWithPKCE(ctx context.Context, cfg *ProviderConfig, code, redirectURL, codeVerifier string) (*UserInfo, error) {
+	tokenURL := "https://accounts.spotify.com/api/token"
+	data := url.Values{}
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", redirectURL)
+	data.Set("code_verifier", codeVerifier)
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token exchange failed: %s", string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	// Get user info
+	userInfoURL := "https://api.spotify.com/v1/me"
+	req, _ = http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var spotifyUser struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+		Email       string `json:"email"`
+		Images      []struct {
+			URL string `json:"url"`
+		} `json:"images"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&spotifyUser); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	avatarURL := ""
+	if len(spotifyUser.Images) > 0 {
+		avatarURL = spotifyUser.Images[0].URL
+	}
+
+	firstName, lastName := parseName(spotifyUser.DisplayName)
+
+	return &UserInfo{
+		Provider:       ProviderSpotify,
+		ProviderUserID: spotifyUser.ID,
+		Email:          spotifyUser.Email,
+		EmailVerified:  true,
+		Name:           spotifyUser.DisplayName,
+		FirstName:      firstName,
+		LastName:       lastName,
+		AvatarURL:      avatarURL,
+		ProfileData: map[string]interface{}{
+			"id":    spotifyUser.ID,
+			"name":  spotifyUser.DisplayName,
+			"email": spotifyUser.Email,
 		},
 	}, nil
 }

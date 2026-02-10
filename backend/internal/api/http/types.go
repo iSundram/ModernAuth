@@ -56,9 +56,10 @@ type LoginResponse struct {
 
 // LoginMFARequest represents the login MFA request body.
 type LoginMFARequest struct {
-	UserID      string `json:"user_id" validate:"required,uuid"`
-	Code        string `json:"code" validate:"required,len=6"`
-	Fingerprint string `json:"fingerprint,omitempty"`
+	UserID         string `json:"user_id" validate:"required,uuid"`
+	MFAChallengeID string `json:"mfa_challenge_id" validate:"required,uuid"` // Required to prove password was verified
+	Code           string `json:"code" validate:"required,len=6"`
+	Fingerprint    string `json:"fingerprint,omitempty"`
 }
 
 // RefreshRequest represents the refresh request body.
@@ -215,12 +216,12 @@ type WaitlistStatusRequest struct {
 // DataExportResponse represents the GDPR data export response.
 // Rate limiting recommended: 1 request per 24 hours per user.
 type DataExportResponse struct {
-	ExportedAt   string                    `json:"exported_at"`
-	User         UserResponse              `json:"user"`
-	Preferences  *UserPreferencesResponse  `json:"preferences,omitempty"`
-	LoginHistory []LoginHistoryResponse    `json:"login_history,omitempty"`
-	Devices      []DeviceExportResponse    `json:"devices,omitempty"`
-	AuditLogs    []AuditLogResponse        `json:"audit_logs,omitempty"`
+	ExportedAt   string                   `json:"exported_at"`
+	User         UserResponse             `json:"user"`
+	Preferences  *UserPreferencesResponse `json:"preferences,omitempty"`
+	LoginHistory []LoginHistoryResponse   `json:"login_history,omitempty"`
+	Devices      []DeviceExportResponse   `json:"devices,omitempty"`
+	AuditLogs    []AuditLogResponse       `json:"audit_logs,omitempty"`
 }
 
 // UserPreferencesResponse represents user preferences in API responses.

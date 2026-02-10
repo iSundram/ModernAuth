@@ -26,9 +26,8 @@ export function PasskeySetup({ onSuccess }: PasskeySetupProps) {
       // Get registration options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnRegisterBegin(passkeyName);
       
-      // SimpleWebAuthn browser expects { optionsJSON }; backend returns JSON-serialized options
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const credential = await startRegistration({ optionsJSON: options as any });
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns properly typed options
+      const credential = await startRegistration({ optionsJSON: options });
       
       // Backend expects credential with attestationObject, clientDataJSON at top level
       const credentialForBackend = {

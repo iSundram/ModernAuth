@@ -48,6 +48,16 @@ var (
 	ErrRateLimited = errors.New("rate limit exceeded")
 	// ErrChallengeExpired indicates that the MFA challenge has expired.
 	ErrChallengeExpired = errors.New("challenge expired")
+	// ErrInvalidWebAuthnData indicates that the WebAuthn data is invalid.
+	ErrInvalidWebAuthnData = errors.New("invalid webauthn data")
+	// ErrChallengeMismatch indicates that the challenge does not match.
+	ErrChallengeMismatch = errors.New("challenge mismatch")
+	// ErrSignatureInvalid indicates that the cryptographic signature is invalid.
+	ErrSignatureInvalid = errors.New("signature verification failed")
+	// ErrMFAChallengeRequired indicates that an MFA challenge token is required.
+	ErrMFAChallengeRequired = errors.New("mfa challenge token required")
+	// ErrMFAChallengeInvalid indicates that the MFA challenge token is invalid.
+	ErrMFAChallengeInvalid = errors.New("invalid mfa challenge token")
 )
 
 // AuthService provides authentication operations.
@@ -187,14 +197,21 @@ func (s *AuthService) DeleteOwnAccount(ctx context.Context, req *DeleteOwnAccoun
 		return ErrInvalidCredentials
 	}
 
-	// Revoke all sessions first
-	if err := s.storage.RevokeUserSessions(ctx, req.UserID); err != nil {
-		s.logger.Error("Failed to revoke sessions during self-deletion", "error", err, "user_id", req.UserID)
-	}
+	// Try to use transactional deletion if the storage supports it
+	if txStorage, ok := s.storage.(storage.TransactionalStorage); ok {
+		if err := txStorage.DeleteUserWithSessions(ctx, req.UserID); err != nil {
+			return err
+		}
+	} else {
+		// Fallback to non-transactional deletion for storage implementations
+		// that don't support transactions (e.g., in-memory storage for testing)
+		if err := s.storage.RevokeUserSessions(ctx, req.UserID); err != nil {
+			s.logger.Error("Failed to revoke sessions during self-deletion", "error", err, "user_id", req.UserID)
+		}
 
-	// Delete the user
-	if err := s.storage.DeleteUser(ctx, req.UserID); err != nil {
-		return err
+		if err := s.storage.DeleteUser(ctx, req.UserID); err != nil {
+			return err
+		}
 	}
 
 	// Log the audit event

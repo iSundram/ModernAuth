@@ -162,9 +162,24 @@ type googleJWTClaims struct {
 }
 
 // decodeGoogleJWT decodes a Google ID token JWT and extracts claims.
-// Note: In production, you should verify the JWT signature against Google's public keys.
-// For One Tap, Google sends the credential from their servers, which provides a reasonable
-// level of trust. For additional security, verify against https://www.googleapis.com/oauth2/v3/certs.
+//
+// SECURITY TODO: This function only decodes the JWT payload without verifying
+// the cryptographic signature. In production, you MUST verify the JWT signature
+// against Google's public keys from https://www.googleapis.com/oauth2/v3/certs
+//
+// To implement proper verification:
+// 1. Fetch Google's public keys from https://www.googleapis.com/oauth2/v3/certs (cache them)
+// 2. Parse the JWT header to get the "kid" (key ID)
+// 3. Find the matching public key
+// 4. Verify the signature using the public key
+// 5. Verify the "aud" claim matches your Google Client ID
+// 6. Verify the "iss" claim is accounts.google.com or https://accounts.google.com
+//
+// Recommended: Use a library like github.com/golang-jwt/jwt/v5 with google.golang.org/api/idtoken
+// for proper verification: idtoken.Validate(ctx, credential, clientID)
+//
+// Current mitigation: We verify the issuer claim as a basic check, but this does NOT
+// prevent token forgery. An attacker could craft a fake JWT with a valid-looking payload.
 func decodeGoogleJWT(credential string) (*googleJWTClaims, error) {
 	parts := strings.Split(credential, ".")
 	if len(parts) != 3 {
@@ -182,10 +197,13 @@ func decodeGoogleJWT(credential string) (*googleJWTClaims, error) {
 		return nil, ErrInvalidGoogleCredential
 	}
 
-	// Verify issuer
+	// Verify issuer - basic check but NOT sufficient without signature verification
 	if claims.Iss != "accounts.google.com" && claims.Iss != "https://accounts.google.com" {
 		return nil, ErrInvalidGoogleCredential
 	}
+
+	// SECURITY WARNING: Without signature verification, an attacker could forge this token.
+	// The checks above only validate the token structure and issuer claim, not authenticity.
 
 	return &claims, nil
 }

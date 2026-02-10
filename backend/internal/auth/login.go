@@ -66,12 +66,30 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 		s.logger.Error("Failed to evaluate MFA policy", "error", err, "user_id", user.ID)
 	}
 	if needMFA {
+		// Create an MFA challenge token to prove password was verified
+		// This prevents attackers from skipping password verification
+		mfaChallengeID := uuid.New()
+		mfaChallenge := &storage.MFAChallenge{
+			ID:        mfaChallengeID,
+			UserID:    user.ID,
+			Type:      "password_verified",
+			ExpiresAt: time.Now().Add(5 * time.Minute), // MFA must be completed within 5 minutes
+			Verified:  false,
+			CreatedAt: time.Now(),
+		}
+
+		if err := s.storage.CreateMFAChallenge(ctx, mfaChallenge); err != nil {
+			s.logger.Error("Failed to create MFA challenge", "error", err)
+			return nil, err
+		}
+
 		// Log MFA requirement
 		_ = s.logAuditEvent(ctx, &user.ID, nil, "login.mfa_required", &req.IP, &req.UserAgent, nil)
 
 		return &LoginResult{
-			User:        user,
-			MFARequired: true,
+			User:           user,
+			MFARequired:    true,
+			MFAChallengeID: &mfaChallengeID,
 		}, nil
 	}
 

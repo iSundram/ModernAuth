@@ -7,7 +7,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Poppins', 'system-ui', 'sans-serif'],
+        sans: ['JetBrains Mono', 'monospace'],
+        mono: ['JetBrains Mono', 'monospace'],
+        heading: ['Space Grotesk', 'system-ui', 'sans-serif'],
       },
       colors: {
         // Semantic Application Colors

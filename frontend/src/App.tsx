@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
@@ -112,6 +112,32 @@ function getDashboardRoute(role?: UserRole): string {
   }
 }
 
+// 404 Not Found Page
+function NotFoundPage() {
+  const { user } = useAuth();
+  const dashboardRoute = getDashboardRoute(user?.role);
+
+  return (
+    <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="text-center max-w-md px-6">
+        <h1 className="text-6xl font-bold text-[var(--color-gray-dark)] mb-4">404</h1>
+        <h2 className="text-2xl font-semibold text-[var(--color-text-primary)] mb-4">
+          Page Not Found
+        </h2>
+        <p className="text-[var(--color-text-secondary)] mb-8">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <Link
+          to={dashboardRoute}
+          className="inline-flex items-center justify-center px-6 py-3 bg-[var(--color-gray-dark)] text-white rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
+        >
+          Go to Dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { user, settings } = useAuth();
 
@@ -191,7 +217,7 @@ function AppRoutes() {
         }
       />
       
-      <Route path="*" element={<Navigate to={getDashboardRoute(user?.role)} replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

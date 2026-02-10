@@ -53,8 +53,11 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 			blacklisted, err := h.tokenBlacklist.IsBlacklisted(r.Context(), tokenString)
 			if err != nil {
 				h.logger.Error("Failed to check token blacklist", "error", err)
-				// Continue if blacklist check fails (fail open for availability)
-			} else if blacklisted {
+				// Fail closed - if we can't verify the token isn't blacklisted, reject it
+				h.writeError(w, http.StatusServiceUnavailable, "Authentication service temporarily unavailable", err)
+				return
+			}
+			if blacklisted {
 				h.writeError(w, http.StatusUnauthorized, "Token has been revoked", nil)
 				return
 			}
@@ -95,7 +98,8 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 			count, err := h.rdb.Incr(ctx, key).Result()
 			if err != nil {
 				h.logger.Error("Rate limit error", "error", err)
-				next.ServeHTTP(w, r)
+				// Fail closed - if we can't verify rate limit, reject the request
+				h.writeError(w, http.StatusServiceUnavailable, "Rate limiting service temporarily unavailable", err)
 				return
 			}
 

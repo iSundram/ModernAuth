@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- API responses have dynamic structure */
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User, LoginRequest, LoginResponse, LoginMfaRequiredResponse } from '../types';
@@ -6,10 +5,62 @@ import { AuthContext } from './AuthContextDef';
 import { authService } from '../api/services';
 export type { AuthContextType } from './AuthContextDef';
 
+// Type guard to check if a response is an MFA required response
+function isMfaRequiredResponse(response: unknown): response is LoginMfaRequiredResponse {
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'mfa_required' in response &&
+    (response as LoginMfaRequiredResponse).mfa_required === true
+  );
+}
+
+// Type guard to check if a response is a login response with tokens
+interface LoginResponseWithTokens {
+  user?: User;
+  tokens?: {
+    access_token: string;
+    refresh_token: string;
+  };
+  access_token?: string;
+  refresh_token?: string;
+}
+
+function isLoginResponseWithTokens(response: unknown): response is LoginResponseWithTokens {
+  if (typeof response !== 'object' || response === null) {
+    return false;
+  }
+  const r = response as LoginResponseWithTokens;
+  // Check for tokens either at top level or nested
+  return (
+    (r.tokens?.access_token !== undefined && r.tokens?.refresh_token !== undefined) ||
+    (r.access_token !== undefined && r.refresh_token !== undefined)
+  );
+}
+
+// Helper to extract user from response
+function extractUser(response: LoginResponseWithTokens): User | null {
+  if (response.user) {
+    return response.user;
+  }
+  return null;
+}
+
+// Helper to extract tokens from response
+function extractTokens(response: LoginResponseWithTokens): { access_token: string; refresh_token: string } | null {
+  if (response.tokens?.access_token && response.tokens?.refresh_token) {
+    return response.tokens;
+  }
+  if (response.access_token && response.refresh_token) {
+    return { access_token: response.access_token, refresh_token: response.refresh_token };
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
-  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -34,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const userData = await authService.me();
-        setUser((userData as any)?.user || userData);
+        setUser(userData);
         return;
       } catch {
         // Attempt a token refresh if the access token is no longer valid
@@ -45,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('refresh_token', refreshed.refresh_token);
           setToken(refreshed.access_token);
           const userData = await authService.me();
-          setUser((userData as any)?.user || userData);
+          setUser(userData);
           return;
         } catch (refreshError) {
           console.error('Token refresh failed:', refreshError);
@@ -65,22 +116,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrapAuth();
   }, []);
 
-  const login = async (credentials: LoginRequest): Promise<LoginMfaRequiredResponse | void | any> => {
+  const login = async (credentials: LoginRequest): Promise<LoginMfaRequiredResponse | void> => {
     setIsLoading(true);
     try {
       const response = await authService.login(credentials);
       
-      if ('mfa_required' in response && response.mfa_required) {
+      if (isMfaRequiredResponse(response)) {
         return response;
       }
 
-      // Type guard or check for access_token
-      const loginResponse = response as any;
-      // Backend returns { tokens: { access_token: ... }, user: ... }
-      // Check if tokens object exists
-      const tokens = loginResponse.tokens || loginResponse;
-      
-      if (!tokens.access_token) {
+      if (!isLoginResponseWithTokens(response)) {
+        throw new Error('Invalid response: missing tokens');
+      }
+
+      const tokens = extractTokens(response);
+      if (!tokens) {
         throw new Error('Invalid response: missing access token');
       }
       
@@ -90,12 +140,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(tokens.access_token);
       
       // If the login response includes the user object, use it instead of fetching /me
-      const userData = loginResponse.user || (loginResponse.tokens ? null : loginResponse);
+      const userData = extractUser(response);
       if (userData) {
         setUser(userData);
       } else {
         const meData = await authService.me();
-        setUser((meData as any)?.user || meData);
+        setUser(meData);
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -110,10 +160,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await authService.loginMfa({ user_id: userId, code });
       
-      const loginResponse = response as any;
-      const tokens = loginResponse.tokens || loginResponse;
+      if (!isLoginResponseWithTokens(response)) {
+        throw new Error('Invalid response: missing tokens');
+      }
 
-      if (!tokens.access_token) {
+      const tokens = extractTokens(response);
+      if (!tokens) {
         throw new Error('Invalid response: missing access token');
       }
       
@@ -123,12 +175,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(tokens.access_token);
       
       // If the login response includes the user object, use it instead of fetching /me
-      const userData = loginResponse.user || (loginResponse.tokens ? null : loginResponse);
+      const userData = extractUser(response);
       if (userData) {
         setUser(userData);
       } else {
         const meData = await authService.me();
-        setUser((meData as any)?.user || meData);
+        setUser(meData);
       }
     } catch (error) {
       console.error('MFA Login error:', error);

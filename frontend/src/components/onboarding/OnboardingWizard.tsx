@@ -52,6 +52,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
   // Check if onboarding should be shown
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const checkOnboarding = async () => {
       if (!user) return;
 
@@ -63,7 +66,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       let fetchedMfaStatus = mfaStatus;
       try {
         fetchedMfaStatus = await authService.getMfaStatus();
-        setMfaStatus(fetchedMfaStatus);
+        if (isMounted) {
+          setMfaStatus(fetchedMfaStatus);
+        }
       } catch {
         // Ignore errors
       }
@@ -73,7 +78,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       if (isTenantAdmin && tenant) {
         try {
           fetchedTenantStatus = await tenantService.getOnboardingStatus(tenant.id);
-          setTenantStatus(fetchedTenantStatus);
+          if (isMounted) {
+            setTenantStatus(fetchedTenantStatus);
+          }
         } catch {
           // Ignore
         }
@@ -89,13 +96,24 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         }
       }
       
-      if (needsOnboarding) {
+      if (needsOnboarding && isMounted) {
         // Delay showing to not interrupt initial page load
-        setTimeout(() => setIsOpen(true), 1500);
+        timeoutId = setTimeout(() => {
+          if (isMounted) {
+            setIsOpen(true);
+          }
+        }, 1500);
       }
     };
 
     checkOnboarding();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, tenant?.id, isTenantAdmin]);
 
@@ -187,7 +205,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           icon: <Palette size={24} />,
           completed: tenantStatus?.has_feature_flags || false, // Using this as proxy for now
           action: () => {
-              window.location.href = '/admin/email/branding';
+              window.location.href = '/admin/email-branding';
           },
           actionLabel: 'Setup Branding',
       }

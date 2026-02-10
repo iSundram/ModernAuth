@@ -45,9 +45,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create database connection pool
+	// Create database connection pool with proper configuration
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, cfg.Database.URL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.Database.URL)
+	if err != nil {
+		slog.Error("Failed to parse database URL", "error", err)
+		os.Exit(1)
+	}
+
+	// Configure connection pool settings for production use
+	poolConfig.MaxConns = 25                       // Maximum number of connections in the pool
+	poolConfig.MinConns = 5                        // Minimum number of connections to keep open
+	poolConfig.MaxConnLifetime = 30 * time.Minute  // Maximum lifetime of a connection
+	poolConfig.MaxConnIdleTime = 5 * time.Minute   // Maximum idle time before a connection is closed
+	poolConfig.HealthCheckPeriod = 1 * time.Minute // How often to check connection health
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		slog.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
@@ -405,7 +418,7 @@ func main() {
 		}
 	}
 	oauthService := oauth.NewServiceWithStateStorage(oauthConfig, storage, storage)
-	oauthHandler := httpapi.NewOAuthHandler(oauthService, oauthBaseURL)
+	oauthHandler := httpapi.NewOAuthHandler(oauthService, tokenService, storage, oauthBaseURL)
 	handler.SetOAuthHandler(oauthHandler)
 	slog.Info("OAuth service initialized", "providers", oauthService.GetConfiguredProviders())
 

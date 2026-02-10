@@ -77,7 +77,7 @@ export function Header() {
                 </div>
                 <div className="py-1">
                   <Link
-                    to="/profile"
+                    to="/user/settings"
                     className="flex items-center gap-3 px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-gray-light)]/20"
                   >
                     <User size={16} />

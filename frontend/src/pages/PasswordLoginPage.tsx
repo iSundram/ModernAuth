@@ -192,9 +192,8 @@ export function PasswordLoginPage() {
       // Get authentication options (and challenge id) from server
       const { options, challenge_id } = await authService.webauthnLoginBegin(mfaUserId);
       
-      // SimpleWebAuthn browser expects { optionsJSON }; backend returns JSON-serialized options
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const credential = await startAuthentication({ optionsJSON: options as any });
+      // SimpleWebAuthn browser expects { optionsJSON }; backend returns properly typed options
+      const credential = await startAuthentication({ optionsJSON: options });
       
       // Backend expects credential with authenticatorData, clientDataJSON, signature at top level
       const credentialForBackend = {

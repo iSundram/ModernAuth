@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/storage"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 var (
@@ -31,8 +32,8 @@ type ImpersonationRequest struct {
 
 // ImpersonationResult represents the result of starting an impersonation session.
 type ImpersonationResult struct {
-	Session   *storage.Session           `json:"session"`
-	TokenPair *TokenPair                 `json:"tokens"`
+	Session       *storage.Session              `json:"session"`
+	TokenPair     *TokenPair                    `json:"tokens"`
 	Impersonation *storage.ImpersonationSession `json:"impersonation"`
 }
 
@@ -92,8 +93,8 @@ func (s *AuthService) StartImpersonation(ctx context.Context, req *Impersonation
 		ExpiresAt: now.Add(ttl),
 		Revoked:   false,
 		Metadata: map[string]interface{}{
-			"impersonation":    true,
-			"admin_user_id":    req.AdminUserID.String(),
+			"impersonation":     true,
+			"admin_user_id":     req.AdminUserID.String(),
 			"impersonation_ttl": ttl.String(),
 		},
 	}
@@ -131,7 +132,7 @@ func (s *AuthService) StartImpersonation(ctx context.Context, req *Impersonation
 
 	// Generate tokens with impersonation claim
 	tokenPair, err := s.tokenService.GenerateTokenPairWithClaims(targetUser.ID, session.ID, nil, map[string]interface{}{
-		"impersonation":  true,
+		"impersonation": true,
 		"admin_user_id": req.AdminUserID.String(),
 	})
 	if err != nil {
@@ -253,9 +254,7 @@ func (s *AuthService) createAuditLog(ctx context.Context, eventType string, acto
 
 // hashToken is a helper function to hash tokens.
 func hashToken(token string) string {
-	// Use the same hash function as utils.HashToken
-	// This is a simple implementation; in production, use the utils package
-	return token // Placeholder - should use proper hash
+	return utils.HashToken(token)
 }
 
 // GenerateTokenPairWithClaims generates tokens with additional custom claims.

@@ -85,6 +85,8 @@ function RecaptchaV2Widget({
 
   useEffect(() => {
     let cancelled = false;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const render = () => {
       if (cancelled || !containerRef.current) return;
@@ -104,19 +106,24 @@ function RecaptchaV2Widget({
 
     loadScript('https://www.google.com/recaptcha/api.js?render=explicit')
       .then(() => {
+        if (cancelled) return;
         // grecaptcha.ready fires once the library is fully initialised.
         const grecaptcha = window.grecaptcha;
         if (grecaptcha?.ready) {
           grecaptcha.ready(render);
         } else {
           // Fallback: poll briefly.
-          const iv = setInterval(() => {
+          pollInterval = setInterval(() => {
             if (window.grecaptcha?.render) {
-              clearInterval(iv);
+              if (pollInterval) clearInterval(pollInterval);
+              pollInterval = null;
               render();
             }
           }, 200);
-          setTimeout(() => clearInterval(iv), 10000);
+          pollTimeout = setTimeout(() => {
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = null;
+          }, 10000);
         }
       })
       .catch(() => {
@@ -125,6 +132,12 @@ function RecaptchaV2Widget({
 
     return () => {
       cancelled = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
+      }
       if (widgetIdRef.current !== null) {
         try {
           window.grecaptcha?.reset?.(widgetIdRef.current);
@@ -226,17 +239,24 @@ function TurnstileWidget({
       });
     };
 
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+
     loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit')
       .then(() => {
         if (cancelled) return;
         // Turnstile auto-initialises quickly; poll briefly.
-        const iv = setInterval(() => {
+        pollInterval = setInterval(() => {
           if (window.turnstile?.render) {
-            clearInterval(iv);
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = null;
             render();
           }
         }, 200);
-        setTimeout(() => clearInterval(iv), 10000);
+        pollTimeout = setTimeout(() => {
+          if (pollInterval) clearInterval(pollInterval);
+          pollInterval = null;
+        }, 10000);
       })
       .catch(() => {
         /* silent */
@@ -244,6 +264,12 @@ function TurnstileWidget({
 
     return () => {
       cancelled = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
+      }
       if (widgetIdRef.current !== null) {
         try {
           window.turnstile?.remove?.(widgetIdRef.current);

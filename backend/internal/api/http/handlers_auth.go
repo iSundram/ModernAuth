@@ -200,6 +200,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			"mfa_required": true,
 			"user_id":      result.User.ID.String(),
 		}
+		// Include the MFA challenge ID - required for MFA verification
+		if result.MFAChallengeID != nil {
+			resp["mfa_challenge_id"] = result.MFAChallengeID.String()
+		}
 		if mfaStatus, err := h.authService.GetMFAStatus(r.Context(), result.User.ID); err == nil && mfaStatus != nil {
 			resp["preferred_method"] = mfaStatus.PreferredMethod
 			resp["methods"] = mfaStatus.Methods
@@ -245,6 +249,12 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mfaChallengeID, err := uuid.Parse(req.MFAChallengeID)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid MFA challenge ID", err)
+		return
+	}
+
 	// Check MFA lockout
 	if h.mfaLockout != nil {
 		locked, remaining, err := h.mfaLockout.IsLocked(r.Context(), "mfa:"+req.UserID)
@@ -262,11 +272,12 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.authService.LoginWithMFA(r.Context(), &auth.LoginWithMFARequest{
-		UserID:      userID,
-		Code:        req.Code,
-		Fingerprint: req.Fingerprint,
-		IP:          r.RemoteAddr,
-		UserAgent:   r.UserAgent(),
+		UserID:         userID,
+		MFAChallengeID: &mfaChallengeID,
+		Code:           req.Code,
+		Fingerprint:    req.Fingerprint,
+		IP:             r.RemoteAddr,
+		UserAgent:      r.UserAgent(),
 	})
 
 	if err != nil {
@@ -290,6 +301,15 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 		case auth.ErrInvalidMFACode:
 			authFailureTotal.WithLabelValues("login_mfa", "invalid_code").Inc()
 			h.writeError(w, http.StatusUnauthorized, "Invalid MFA code", err)
+		case auth.ErrMFAChallengeRequired:
+			authFailureTotal.WithLabelValues("login_mfa", "missing_challenge").Inc()
+			h.writeError(w, http.StatusBadRequest, "MFA challenge token required", err)
+		case auth.ErrMFAChallengeInvalid:
+			authFailureTotal.WithLabelValues("login_mfa", "invalid_challenge").Inc()
+			h.writeError(w, http.StatusUnauthorized, "Invalid or expired MFA challenge", err)
+		case auth.ErrChallengeExpired:
+			authFailureTotal.WithLabelValues("login_mfa", "expired_challenge").Inc()
+			h.writeError(w, http.StatusUnauthorized, "MFA challenge has expired, please login again", err)
 		default:
 			h.writeError(w, http.StatusInternalServerError, "MFA verification failed", err)
 		}

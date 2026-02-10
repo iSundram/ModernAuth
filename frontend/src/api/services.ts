@@ -21,6 +21,10 @@ import type {
   UserBulkImportResult, UserBulkImportRequest,
   UpdateProfileRequest, UserPreferences, UpdatePreferencesRequest, DataExportResponse
 } from '../types';
+import type { 
+  PublicKeyCredentialCreationOptionsJSON, 
+  PublicKeyCredentialRequestOptionsJSON 
+} from '@simplewebauthn/browser';
 
 // ============================================================================
 // Authentication Service
@@ -154,9 +158,9 @@ export const authService = {
 
   // WebAuthn/Passkeys
   // Begin registration – returns { options, challenge_id }
-  // Note: The backend returns JSON-serialized options, not native WebAuthn types
+  // Note: The backend returns JSON-serialized options compatible with WebAuthn types
   webauthnRegisterBegin: (credentialName: string) =>
-    apiClient.post<{ options: Record<string, unknown>; challenge_id: string }>('/v1/auth/mfa/webauthn/register/begin', { credential_name: credentialName }),
+    apiClient.post<{ options: PublicKeyCredentialCreationOptionsJSON; challenge_id: string }>('/v1/auth/mfa/webauthn/register/begin', { credential_name: credentialName }),
 
   // Finish registration – requires challenge_id and credential payload
   webauthnRegisterFinish: (challengeId: string, credentialName: string, credential: Record<string, unknown>) =>
@@ -177,7 +181,7 @@ export const authService = {
 
   // Begin WebAuthn login – returns { options, challenge_id }
   webauthnLoginBegin: (userId: string) =>
-    apiClient.post<{ options: Record<string, unknown>; challenge_id: string }>('/v1/auth/login/mfa/webauthn/begin', { user_id: userId }),
+    apiClient.post<{ options: PublicKeyCredentialRequestOptionsJSON; challenge_id: string }>('/v1/auth/login/mfa/webauthn/begin', { user_id: userId }),
 
   // Finish WebAuthn login – requires challenge_id and credential
   webauthnLoginFinish: (userId: string, challengeId: string, credential: Record<string, unknown>) =>
@@ -235,14 +239,14 @@ export const authService = {
 
   // Profile
   updateProfile: (data: UpdateProfileRequest) =>
-    apiClient.patch<User>('/v1/auth/profile', data),
+    apiClient.put<User>('/v1/auth/me', data),
 
   // Preferences
   getPreferences: () =>
     apiClient.get<UserPreferences>('/v1/auth/preferences'),
 
   updatePreferences: (data: UpdatePreferencesRequest) =>
-    apiClient.patch<UserPreferences>('/v1/auth/preferences', data),
+    apiClient.put<UserPreferences>('/v1/auth/preferences', data),
 
   // Data export
   exportData: () =>
@@ -485,17 +489,9 @@ export const tenantService = {
   activate: (id: string) =>
     apiClient.post<{ message: string }>(`/v1/tenants/${id}/activate`),
 
-  // Audit export - returns raw text, caller handles conversion
-  exportAuditLogs: async (id: string, format: 'json' | 'csv' = 'json'): Promise<Blob> => {
-    const token = localStorage.getItem('access_token');
-    const response = await fetch(`/v1/tenants/${id}/audit-logs/export?format=${format}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) throw new Error('Failed to export');
-    return response.blob();
-  },
+  // Audit export - returns raw blob, caller handles conversion
+  exportAuditLogs: (id: string, format: 'json' | 'csv' = 'json'): Promise<Blob> =>
+    apiClient.getBlob(`/v1/tenants/${id}/audit-logs/export?format=${format}`),
 
   // API Keys
   listAPIKeys: (id: string) =>
@@ -653,25 +649,14 @@ export const adminService = {
     apiClient.post<EmailTemplate>(`/v1/admin/email-templates/${type}/duplicate`, { new_type: newType }),
 
   // Export Templates
-  exportEmailTemplates: async (): Promise<Blob> => {
-    const token = localStorage.getItem('access_token');
-    const response = await fetch('/v1/admin/email-templates/export', {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error('Failed to export templates');
-    return response.blob();
-  },
+  exportEmailTemplates: (): Promise<Blob> =>
+    apiClient.getBlob('/v1/admin/email-templates/export'),
 
   // Import Templates
   importEmailTemplates: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('access_token');
-    return fetch('/v1/admin/email-templates/import', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData,
-    }).then(res => res.json());
+    return apiClient.postFormData<{ message: string }>('/v1/admin/email-templates/import', formData);
   },
 
   // Preview All Templates
@@ -683,14 +668,8 @@ export const adminService = {
     apiClient.get<EmailStats>(`/v1/admin/email-templates/stats${days ? `?days=${days}` : ''}`),
 
   // Export Email Analytics
-  exportEmailAnalytics: async (format: 'csv' | 'json' = 'csv'): Promise<Blob> => {
-    const token = localStorage.getItem('access_token');
-    const response = await fetch(`/v1/admin/email-templates/stats/export?format=${format}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error('Failed to export email analytics');
-    return response.blob();
-  },
+  exportEmailAnalytics: (format: 'csv' | 'json' = 'csv'): Promise<Blob> =>
+    apiClient.getBlob(`/v1/admin/email-templates/stats/export?format=${format}`),
 
   // Email Bounces
   listEmailBounces: (bounceType?: string) =>
@@ -698,25 +677,25 @@ export const adminService = {
 
   // Email A/B Tests
   listEmailABTests: () =>
-    apiClient.get<{ tests: EmailABTest[] }>('/v1/admin/email-abtests').then(res => res.tests),
+    apiClient.get<{ tests: EmailABTest[] }>('/v1/admin/email-ab-tests').then(res => res.tests),
 
   getEmailABTest: (id: string) =>
-    apiClient.get<EmailABTest>(`/v1/admin/email-abtests/${id}`),
+    apiClient.get<EmailABTest>(`/v1/admin/email-ab-tests/${id}`),
 
   createEmailABTest: (data: { template_type: string; name: string; variant_a: string; variant_b: string; weight_a?: number; weight_b?: number }) =>
-    apiClient.post<EmailABTest>('/v1/admin/email-abtests', data),
+    apiClient.post<EmailABTest>('/v1/admin/email-ab-tests', data),
 
   updateEmailABTest: (id: string, data: Partial<EmailABTest>) =>
-    apiClient.put<EmailABTest>(`/v1/admin/email-abtests/${id}`, data),
+    apiClient.put<EmailABTest>(`/v1/admin/email-ab-tests/${id}`, data),
 
   deleteEmailABTest: (id: string) =>
-    apiClient.delete<void>(`/v1/admin/email-abtests/${id}`),
+    apiClient.delete<void>(`/v1/admin/email-ab-tests/${id}`),
 
   getEmailABTestResults: (id: string) =>
-    apiClient.get<{ results: EmailABTestResult[] }>(`/v1/admin/email-abtests/${id}/results`).then(res => res.results),
+    apiClient.get<{ results: EmailABTestResult[] }>(`/v1/admin/email-ab-tests/${id}/results`).then(res => res.results),
 
   declareEmailABTestWinner: (id: string, variant: 'a' | 'b') =>
-    apiClient.post<EmailABTest>(`/v1/admin/email-abtests/${id}/declare-winner`, { variant }),
+    apiClient.post<EmailABTest>(`/v1/admin/email-ab-tests/${id}/declare-winner`, { variant }),
 
   // Email Suppressions
   listEmailSuppressions: () =>
@@ -759,41 +738,22 @@ export const adminService = {
   importUsersJSON: (data: UserBulkImportRequest) =>
     apiClient.post<UserBulkImportResult>('/v1/admin/users/import', data),
 
-  importUsersCSV: async (file: File, options?: { skip_existing?: boolean; validate_only?: boolean; send_welcome?: boolean }): Promise<UserBulkImportResult> => {
+  importUsersCSV: (file: File, options?: { skip_existing?: boolean; validate_only?: boolean; send_welcome?: boolean }): Promise<UserBulkImportResult> => {
     const formData = new FormData();
     formData.append('file', file);
     if (options?.skip_existing) formData.append('skip_existing', 'true');
     if (options?.validate_only) formData.append('validate_only', 'true');
     if (options?.send_welcome) formData.append('send_welcome', 'true');
     
-    const token = localStorage.getItem('access_token');
-    const response = await fetch('/v1/admin/users/import/csv', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to import users');
-    }
-    return response.json();
+    return apiClient.postFormData<UserBulkImportResult>('/v1/admin/users/import/csv', formData);
   },
 
-  exportUsers: async (format: 'csv' | 'json' = 'json', activeOnly: boolean = false): Promise<Blob> => {
-    const token = localStorage.getItem('access_token');
+  exportUsers: (format: 'csv' | 'json' = 'json', activeOnly: boolean = false): Promise<Blob> => {
     const params = new URLSearchParams();
     params.append('format', format);
     if (activeOnly) params.append('active_only', 'true');
     
-    const response = await fetch(`/v1/admin/users/export?${params.toString()}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) throw new Error('Failed to export users');
-    return response.blob();
+    return apiClient.getBlob(`/v1/admin/users/export?${params.toString()}`);
   },
 };
 

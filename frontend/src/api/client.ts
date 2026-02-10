@@ -223,6 +223,90 @@ class ApiClient {
     const response = await makeRequest();
     return this.handleResponse<T>(response, makeRequest);
   }
+
+  // For downloading files (exports, etc.)
+  async getBlob(path: string): Promise<Blob> {
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (response.status === 401) {
+      try {
+        await this.refreshAccessToken();
+        // Retry with new token
+        const newToken = localStorage.getItem('access_token');
+        const retryHeaders: HeadersInit = {};
+        if (newToken) {
+          retryHeaders['Authorization'] = `Bearer ${newToken}`;
+        }
+        const retryResponse = await fetch(`${this.baseUrl}${path}`, {
+          method: 'GET',
+          headers: retryHeaders,
+        });
+        if (!retryResponse.ok) throw new Error('Request failed');
+        return retryResponse.blob();
+      } catch {
+        throw new Error('Session expired. Please login again.');
+      }
+    }
+
+    if (!response.ok) throw new Error('Request failed');
+    return response.blob();
+  }
+
+  // For uploading files with FormData
+  async postFormData<T>(path: string, formData: FormData): Promise<T> {
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // Don't set Content-Type - browser will set it with boundary for multipart
+
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      try {
+        await this.refreshAccessToken();
+        // Retry with new token
+        const newToken = localStorage.getItem('access_token');
+        const retryHeaders: HeadersInit = {};
+        if (newToken) {
+          retryHeaders['Authorization'] = `Bearer ${newToken}`;
+        }
+        const retryResponse = await fetch(`${this.baseUrl}${path}`, {
+          method: 'POST',
+          headers: retryHeaders,
+          body: formData,
+        });
+        if (!retryResponse.ok) {
+          const error = await retryResponse.json().catch(() => ({}));
+          throw new Error(error.message || 'Request failed');
+        }
+        return retryResponse.json();
+      } catch (e) {
+        if (e instanceof Error) throw e;
+        throw new Error('Session expired. Please login again.');
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Request failed');
+    }
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

@@ -26,6 +26,14 @@ type Storage interface {
 	PreferencesStorage
 }
 
+// TransactionalStorage defines the interface for transactional operations.
+// Storage implementations that support transactions should also implement this interface.
+type TransactionalStorage interface {
+	// DeleteUserWithSessions atomically revokes all user sessions and deletes the user.
+	// This operation is performed in a single transaction to ensure data consistency.
+	DeleteUserWithSessions(ctx context.Context, userID uuid.UUID) error
+}
+
 // SystemSettingsStorage defines settings-related storage operations.
 type SystemSettingsStorage interface {
 	GetSetting(ctx context.Context, key string) (*SystemSetting, error)

@@ -4,7 +4,7 @@ import type { User, LoginRequest, LoginMfaRequiredResponse, LoginResponse } from
 export interface AuthContextType {
   user: User | null;
   token: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Settings have dynamic structure
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Settings have dynamic structure from backend
   settings: Record<string, any>;
   isAuthenticated: boolean;
   isLoading: boolean;

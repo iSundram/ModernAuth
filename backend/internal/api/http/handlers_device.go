@@ -97,6 +97,13 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 
 // GetDevice retrieves a device by ID.
 func (h *DeviceHandler) GetDevice(w http.ResponseWriter, r *http.Request) {
+	userIDStr, ok := r.Context().Value(userIDKey).(string)
+	if !ok || userIDStr == "" {
+		writeError(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+	userID, _ := uuid.Parse(userIDStr)
+
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -111,6 +118,12 @@ func (h *DeviceHandler) GetDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "Failed to get device", err)
+		return
+	}
+
+	// Verify the device belongs to the authenticated user
+	if d.UserID != userID {
+		writeError(w, http.StatusForbidden, "Access denied", nil)
 		return
 	}
 

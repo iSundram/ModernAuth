@@ -1,9 +1,9 @@
+/* Font Imports - JetBrains Mono for body, Space Grotesk for headings */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Poppins Font Import */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
 /* Full height layout - ensure content fits viewport */
 html, body, #root {
@@ -55,8 +55,13 @@ html, body, #root {
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
-  font-family: 'Poppins', sans-serif;
+  font-family: 'JetBrains Mono', monospace;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Headings use Space Grotesk */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 /* Custom Component Overrides */
