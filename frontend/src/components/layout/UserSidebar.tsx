@@ -43,7 +43,7 @@ export function UserSidebar() {
   return (
     <aside
       className={`
-        h-full flex-shrink-0 flex flex-col
+        h-full flex-shrink-0 flex flex-col overflow-hidden min-h-0
         bg-[var(--color-surface)]
         border-r border-[var(--color-border-light)]
         transition-all duration-300

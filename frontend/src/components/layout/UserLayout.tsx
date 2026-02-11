@@ -16,7 +16,7 @@ function UserLayoutContent() {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       <ImpersonationBanner />
       <div className="flex-1 flex min-h-0">
         <UserSidebar />
