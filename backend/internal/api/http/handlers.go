@@ -15,17 +15,18 @@ import (
 
 // Handler provides HTTP handlers for the authentication API.
 type Handler struct {
-	authService    *auth.AuthService
-	tokenService   *auth.TokenService
-	storage        storage.Storage
-	rdb            *redis.Client
-	accountLockout *auth.AccountLockout
-	mfaLockout     *auth.AccountLockout
-	tokenBlacklist *auth.TokenBlacklist
-	emailService   email.Service
-	logger         *slog.Logger
-	corsOrigins    []string
-	dbPool         interface { // Database pool interface for health checks
+	authService     *auth.AuthService
+	tokenService    *auth.TokenService
+	settingsService *auth.SettingsService
+	storage         storage.Storage
+	rdb             *redis.Client
+	accountLockout  *auth.AccountLockout
+	mfaLockout      *auth.AccountLockout
+	tokenBlacklist  *auth.TokenBlacklist
+	emailService    email.Service
+	logger          *slog.Logger
+	corsOrigins     []string
+	dbPool          interface { // Database pool interface for health checks
 		Ping(ctx context.Context) error
 	}
 
@@ -126,6 +127,11 @@ func (h *Handler) SetSendGridWebhookHandler(handler *SendGridWebhookHandler) {
 // SetGroupHandler sets the group handler.
 func (h *Handler) SetGroupHandler(handler *GroupHandler) {
 	h.groupHandler = handler
+}
+
+// SetSettingsService sets the settings service for dynamic configuration.
+func (h *Handler) SetSettingsService(svc *auth.SettingsService) {
+	h.settingsService = svc
 }
 
 // SetCaptchaService sets the CAPTCHA verification service.

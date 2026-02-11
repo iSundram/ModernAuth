@@ -2,13 +2,16 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/device"
 	"github.com/iSundram/ModernAuth/internal/oauth"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/iSundram/ModernAuth/internal/utils"
@@ -16,10 +19,11 @@ import (
 
 // OAuthHandler handles OAuth authentication requests.
 type OAuthHandler struct {
-	oauthService *oauth.Service
-	tokenService *auth.TokenService
-	storage      storage.Storage
-	baseURL      string
+	oauthService  *oauth.Service
+	tokenService  *auth.TokenService
+	storage       storage.Storage
+	baseURL       string
+	deviceHandler *DeviceHandler
 }
 
 // NewOAuthHandler creates a new OAuth handler.
@@ -30,6 +34,11 @@ func NewOAuthHandler(oauthService *oauth.Service, tokenService *auth.TokenServic
 		storage:      stor,
 		baseURL:      baseURL,
 	}
+}
+
+// SetDeviceHandler sets the device handler for login history recording.
+func (h *OAuthHandler) SetDeviceHandler(dh *DeviceHandler) {
+	h.deviceHandler = dh
 }
 
 // OAuthRoutes returns OAuth routes.
@@ -267,6 +276,35 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 			"error": "Failed to store refresh token",
 		})
 		return
+	}
+
+	// Record login history and device for OAuth
+	if h.deviceHandler != nil {
+		method := "oauth_" + providerName
+		ip := getClientIP(r)
+		ua := r.UserAgent()
+		status := "success"
+		history := &storage.LoginHistory{
+			UserID:      user.ID,
+			IPAddress:   &ip,
+			UserAgent:   &ua,
+			LoginMethod: &method,
+			Status:      status,
+		}
+		go func() {
+			if err := h.deviceHandler.RecordLogin(context.Background(), history); err != nil {
+				slog.Error("Failed to record OAuth login history", "error", err, "user_id", user.ID)
+			}
+			// Record device
+			_, _, err := h.deviceHandler.RecordDevice(context.Background(), &device.RecordDeviceRequest{
+				UserID:    user.ID,
+				UserAgent: ua,
+				IPAddress: ip,
+			})
+			if err != nil {
+				slog.Error("Failed to record OAuth device", "error", err, "user_id", user.ID)
+			}
+		}()
 	}
 
 	response := CallbackResponse{

@@ -11,7 +11,7 @@ import type {
   Tenant, CreateTenantRequest, UpdateTenantRequest, TenantStats, TenantSecurityStats,
   TenantAPIKey, CreateAPIKeyRequest as CreateTenantAPIKeyRequest, CreateAPIKeyResponse,
   DomainVerificationResult, BulkUserEntry, BulkImportResult, TenantFeatures, TenantOnboardingStatusResponse,
-  SystemStats, ServiceStatus, SystemSetting,
+  SystemStats, ServiceStatus, SystemSetting, SettingDefinition,
   TokensResponse,
   MFAStatus, WebAuthnCredential, LinkedOAuthProvider,
   EmailTemplateSummary, EmailTemplate, EmailTemplateVariables, EmailBranding,
@@ -280,7 +280,9 @@ export const userService = {
 
 export const deviceService = {
   list: () =>
-    apiClient.get<UserDevice[]>('/v1/devices').then(res => (Array.isArray(res) ? res : [])),
+    apiClient.get<UserDevice[] | { data: UserDevice[] }>('/v1/devices').then(res => 
+      Array.isArray(res) ? res : (res && 'data' in res ? res.data : [])
+    ),
 
   get: (id: string) =>
     apiClient.get<UserDevice>(`/v1/devices/${id}`),
@@ -606,6 +608,18 @@ export const adminService = {
 
   updateSetting: (key: string, value: unknown) =>
     apiClient.patch<{ message: string }>(`/v1/admin/settings/${key}`, { value }),
+
+  bulkUpdateSettings: (settings: Record<string, unknown>) =>
+    apiClient.patch<{ message: string; updated: number }>('/v1/admin/settings', { settings }),
+
+  exportSettings: () =>
+    apiClient.get<{ settings: Record<string, unknown>; exported_at: string }>('/v1/admin/settings/export'),
+
+  importSettings: (settings: Record<string, unknown>) =>
+    apiClient.post<{ message: string; imported: number; skipped: number }>('/v1/admin/settings/import', { settings }),
+
+  getSettingDefinitions: () =>
+    apiClient.get<SettingDefinition[]>('/v1/admin/settings/definitions'),
 
   // Email Templates
   listEmailTemplates: () =>

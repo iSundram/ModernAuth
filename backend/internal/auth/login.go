@@ -52,8 +52,8 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 		return nil, err
 	}
 	if !match {
-		// Log failed login attempt
-		s.logger.Warn("Failed login attempt", "email", req.Email, "ip", req.IP)
+		// Log failed login attempt without exposing email (use user ID instead)
+		s.logger.Warn("Failed login attempt", "user_id", user.ID, "ip", req.IP)
 		s.logAuditEvent(ctx, &user.ID, nil, "login.failed", &req.IP, &req.UserAgent, map[string]interface{}{
 			"reason": "invalid_password",
 		})
@@ -245,6 +245,7 @@ func (s *AuthService) Refresh(ctx context.Context, req *RefreshRequest) (*TokenP
 // LogoutRequest represents a logout request.
 type LogoutRequest struct {
 	SessionID uuid.UUID `json:"session_id"`
+	TokenJTI  string    `json:"-"` // JTI of the current access token for blacklisting
 	IP        string    `json:"-"`
 	UserAgent string    `json:"-"`
 }

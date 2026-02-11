@@ -492,3 +492,139 @@ func (h *Handler) UpdateSetting(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Setting updated successfully"})
 }
+
+// BulkUpdateSettingsRequest represents a bulk settings update request.
+type BulkUpdateSettingsRequest struct {
+	Settings map[string]interface{} `json:"settings"`
+}
+
+// BulkUpdateSettings handles bulk settings updates.
+func (h *Handler) BulkUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var req BulkUpdateSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if len(req.Settings) == 0 {
+		h.writeError(w, http.StatusBadRequest, "No settings provided", nil)
+		return
+	}
+
+	// Validate all settings first before updating any
+	for key, value := range req.Settings {
+		expectedType, err := validateSettingKeyPublic(key)
+		if err != nil {
+			h.writeError(w, http.StatusBadRequest, "Unknown setting key: "+key, err)
+			return
+		}
+		if err := validateSettingValuePublic(key, value, expectedType); err != nil {
+			h.writeError(w, http.StatusBadRequest, "Invalid value for setting: "+key, err)
+			return
+		}
+	}
+
+	// Update all settings
+	var updated []string
+	var failed []string
+	for key, value := range req.Settings {
+		if err := h.authService.UpdateSetting(r.Context(), key, value); err != nil {
+			failed = append(failed, key)
+		} else {
+			updated = append(updated, key)
+		}
+	}
+
+	if len(failed) > 0 {
+		writeJSON(w, http.StatusPartialContent, map[string]interface{}{
+			"message": "Some settings failed to update",
+			"updated": updated,
+			"failed":  failed,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "All settings updated successfully",
+		"updated": updated,
+	})
+}
+
+// ExportSettings exports all non-secret settings.
+func (h *Handler) ExportSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.authService.ListSettings(r.Context(), "")
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to list settings", err)
+		return
+	}
+
+	// Filter out secrets
+	export := make(map[string]interface{})
+	definitions := auth.GetSettingDefinitions()
+	for _, s := range settings {
+		if def, ok := definitions[s.Key]; ok && def.IsSecret {
+			continue // Skip secrets
+		}
+		export[s.Key] = s.Value
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=settings.json")
+	writeJSON(w, http.StatusOK, export)
+}
+
+// ImportSettings imports settings from JSON.
+func (h *Handler) ImportSettings(w http.ResponseWriter, r *http.Request) {
+	var settings map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON", err)
+		return
+	}
+
+	// Use bulk update logic
+	req := BulkUpdateSettingsRequest{Settings: settings}
+	r.Body = nil // Clear body since we've already decoded
+
+	// Validate and update
+	var updated []string
+	var failed []string
+	var skipped []string
+
+	definitions := auth.GetSettingDefinitions()
+	for key, value := range req.Settings {
+		// Skip secrets in import
+		if def, ok := definitions[key]; ok && def.IsSecret {
+			skipped = append(skipped, key)
+			continue
+		}
+
+		if err := h.authService.UpdateSetting(r.Context(), key, value); err != nil {
+			failed = append(failed, key)
+		} else {
+			updated = append(updated, key)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Settings imported",
+		"updated": updated,
+		"failed":  failed,
+		"skipped": skipped,
+	})
+}
+
+// GetSettingDefinitions returns all available setting definitions.
+func (h *Handler) GetSettingDefinitions(w http.ResponseWriter, r *http.Request) {
+	definitions := auth.GetSettingDefinitions()
+	writeJSON(w, http.StatusOK, definitions)
+}
+
+// validateSettingKeyPublic is a public wrapper for key validation.
+func validateSettingKeyPublic(key string) (string, error) {
+	// Access the allowedSettingKeys map via a public function
+	return auth.ValidateSettingKeyPublic(key)
+}
+
+// validateSettingValuePublic is a public wrapper for value validation.
+func validateSettingValuePublic(key string, value interface{}, expectedType string) error {
+	return auth.ValidateSettingValuePublic(key, value, expectedType)
+}

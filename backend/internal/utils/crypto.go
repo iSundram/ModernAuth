@@ -180,20 +180,34 @@ func HashToken(token string) string {
 }
 
 // GenerateNumericCode generates a cryptographically secure numeric code of the specified length.
-func GenerateNumericCode(length int) string {
+// Uses rejection sampling to avoid modulo bias.
+func GenerateNumericCode(length int) (string, error) {
 	const digits = "0123456789"
 	code := make([]byte, length)
+	// To avoid modulo bias, we need to reject values >= maxValid
+	// 256 / 10 = 25, so maxValid = 25 * 10 = 250
+	const maxValid = 250
 	for i := 0; i < length; i++ {
-		b := make([]byte, 1)
-		rand.Read(b)
-		code[i] = digits[int(b[0])%len(digits)]
+		for {
+			b := make([]byte, 1)
+			if _, err := rand.Read(b); err != nil {
+				return "", fmt.Errorf("failed to generate random byte: %w", err)
+			}
+			if b[0] < maxValid {
+				code[i] = digits[int(b[0])%len(digits)]
+				break
+			}
+			// Reject and retry if b[0] >= maxValid to avoid modulo bias
+		}
 	}
-	return string(code)
+	return string(code), nil
 }
 
 // GenerateRandomToken generates a cryptographically secure random hex token.
-func GenerateRandomToken(length int) string {
+func GenerateRandomToken(length int) (string, error) {
 	bytes := make([]byte, length)
-	rand.Read(bytes)
-	return fmt.Sprintf("%x", bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random token: %w", err)
+	}
+	return fmt.Sprintf("%x", bytes), nil
 }

@@ -13,6 +13,12 @@ import {
   RotateCcw,
   AlertCircle,
   Clock,
+  Gauge,
+  Key,
+  Lock,
+  ToggleLeft,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, LoadingBar, ConfirmDialog } from '../../components/ui';
 import { adminService } from '../../api/services';
@@ -21,11 +27,14 @@ import type { SystemSetting } from '../../types';
 
 // Default values for settings (used for "Reset to Default" and "Modified" badge)
 const DEFAULT_SETTING_VALUES: Record<string, unknown> = {
+  // General
   'site.name': 'ModernAuth',
   'site.logo_url': '',
+  // Auth
   'auth.allow_registration': true,
   'auth.require_email_verification': true,
   'auth.mfa_enabled': false,
+  // Email
   'email.provider': 'smtp',
   'email.from_name': 'ModernAuth',
   'email.from_email': 'noreply@example.com',
@@ -33,6 +42,45 @@ const DEFAULT_SETTING_VALUES: Record<string, unknown> = {
   'email.smtp_port': 587,
   'email.smtp_user': '',
   'email.smtp_password': '',
+  // Rate Limits
+  'rate_limit.login': 10,
+  'rate_limit.register': 5,
+  'rate_limit.password_reset': 5,
+  'rate_limit.mfa': 10,
+  'rate_limit.magic_link': 3,
+  'rate_limit.export_data': 1,
+  'rate_limit.refresh': 30,
+  'rate_limit.verify_email': 5,
+  // Lockout
+  'lockout.max_attempts': 5,
+  'lockout.window_minutes': 15,
+  'lockout.duration_minutes': 30,
+  'session.max_concurrent': 5,
+  // Token TTLs
+  'token.access_ttl_minutes': 15,
+  'token.refresh_ttl_hours': 168,
+  'session.ttl_hours': 168,
+  // Password Policy
+  'password.min_length': 8,
+  'password.max_length': 128,
+  'password.require_uppercase': true,
+  'password.require_lowercase': true,
+  'password.require_digit': true,
+  'password.require_special': false,
+  // Feature Toggles
+  'feature.hibp_enabled': false,
+  'feature.captcha_enabled': false,
+  'feature.captcha_provider': 'none',
+  'feature.captcha_min_score': 0.5,
+  'feature.magic_link_enabled': true,
+  'feature.oauth_enabled': true,
+  'feature.email_queue_enabled': true,
+  'feature.email_rate_limit_enabled': true,
+  // Email Rate Limits
+  'email.verification_rate_limit': 3,
+  'email.password_reset_rate_limit': 5,
+  'email.mfa_code_rate_limit': 10,
+  'email.login_alert_rate_limit': 10,
 };
 
 // Security-sensitive settings that require confirmation
@@ -40,10 +88,15 @@ const SECURITY_SENSITIVE_SETTINGS = [
   'auth.allow_registration',
   'auth.require_email_verification',
   'auth.mfa_enabled',
+  'lockout.max_attempts',
+  'lockout.duration_minutes',
+  'password.min_length',
+  'feature.hibp_enabled',
+  'feature.captcha_enabled',
 ];
 
 // Category metadata with icons and descriptions
-const CATEGORY_META = {
+const CATEGORY_META: Record<string, { icon: React.ElementType; label: string; description: string }> = {
   general: {
     icon: Building2,
     label: 'General',
@@ -52,12 +105,32 @@ const CATEGORY_META = {
   auth: {
     icon: Shield,
     label: 'Authentication',
-    description: 'Security, MFA, and registration settings',
+    description: 'Registration, email verification, and MFA',
   },
   email: {
     icon: Mail,
     label: 'Email (SMTP)',
     description: 'Email provider and SMTP configuration',
+  },
+  rate_limits: {
+    icon: Gauge,
+    label: 'Rate Limits',
+    description: 'Request throttling and lockout settings',
+  },
+  tokens: {
+    icon: Key,
+    label: 'Tokens & Sessions',
+    description: 'Token TTLs and session configuration',
+  },
+  password: {
+    icon: Lock,
+    label: 'Password Policy',
+    description: 'Password requirements and validation rules',
+  },
+  features: {
+    icon: ToggleLeft,
+    label: 'Features',
+    description: 'Enable or disable platform features',
   },
 };
 
@@ -85,17 +158,131 @@ const validatePort = (port: number): string | null => {
   return null;
 };
 
+const validateRange = (min: number, max: number) => (v: unknown): string | null => {
+  const num = Number(v);
+  if (isNaN(num) || num < min || num > max) {
+    return `Value must be between ${min} and ${max}`;
+  }
+  return null;
+};
+
 // Validation rules by setting key
 const VALIDATION_RULES: Record<string, (value: unknown) => string | null> = {
   'email.from_email': (v) => validateEmail(String(v)),
   'site.logo_url': (v) => validateUrl(String(v)),
   'email.smtp_port': (v) => validatePort(Number(v)),
+  // Rate limits
+  'rate_limit.login': validateRange(1, 1000),
+  'rate_limit.register': validateRange(1, 100),
+  'rate_limit.password_reset': validateRange(1, 100),
+  'rate_limit.mfa': validateRange(1, 100),
+  'rate_limit.magic_link': validateRange(1, 100),
+  'rate_limit.export_data': validateRange(1, 10),
+  'rate_limit.refresh': validateRange(1, 1000),
+  'rate_limit.verify_email': validateRange(1, 100),
+  // Lockout
+  'lockout.max_attempts': validateRange(1, 100),
+  'lockout.window_minutes': validateRange(1, 1440),
+  'lockout.duration_minutes': validateRange(1, 1440),
+  'session.max_concurrent': validateRange(1, 100),
+  // Token TTLs
+  'token.access_ttl_minutes': validateRange(1, 1440),
+  'token.refresh_ttl_hours': validateRange(1, 720),
+  'session.ttl_hours': validateRange(1, 720),
+  // Password policy
+  'password.min_length': validateRange(6, 128),
+  'password.max_length': validateRange(8, 512),
+  // Feature settings
+  'feature.captcha_min_score': validateRange(0, 1),
+  // Email rate limits
+  'email.verification_rate_limit': validateRange(1, 100),
+  'email.password_reset_rate_limit': validateRange(1, 100),
+  'email.mfa_code_rate_limit': validateRange(1, 100),
+  'email.login_alert_rate_limit': validateRange(1, 100),
+};
+
+// All tab keys
+type TabKey = 'general' | 'auth' | 'email' | 'rate_limits' | 'tokens' | 'password' | 'features';
+
+// Settings per category
+const CATEGORY_SETTINGS: Record<TabKey, string[]> = {
+  general: ['site.name', 'site.logo_url'],
+  auth: ['auth.allow_registration', 'auth.require_email_verification', 'auth.mfa_enabled'],
+  email: [
+    'email.provider', 'email.from_name', 'email.from_email',
+    'email.smtp_host', 'email.smtp_port', 'email.smtp_user', 'email.smtp_password',
+    'email.verification_rate_limit', 'email.password_reset_rate_limit',
+    'email.mfa_code_rate_limit', 'email.login_alert_rate_limit'
+  ],
+  rate_limits: [
+    'rate_limit.login', 'rate_limit.register', 'rate_limit.password_reset',
+    'rate_limit.mfa', 'rate_limit.magic_link', 'rate_limit.export_data',
+    'rate_limit.refresh', 'rate_limit.verify_email',
+    'lockout.max_attempts', 'lockout.window_minutes', 'lockout.duration_minutes',
+    'session.max_concurrent'
+  ],
+  tokens: ['token.access_ttl_minutes', 'token.refresh_ttl_hours', 'session.ttl_hours'],
+  password: [
+    'password.min_length', 'password.max_length',
+    'password.require_uppercase', 'password.require_lowercase',
+    'password.require_digit', 'password.require_special'
+  ],
+  features: [
+    'feature.hibp_enabled', 'feature.captcha_enabled',
+    'feature.captcha_provider', 'feature.captcha_min_score',
+    'feature.magic_link_enabled', 'feature.oauth_enabled',
+    'feature.email_queue_enabled', 'feature.email_rate_limit_enabled'
+  ],
+};
+
+// Setting type hints
+const SETTING_TYPES: Record<string, 'text' | 'number' | 'boolean' | 'password'> = {
+  // Booleans
+  'auth.allow_registration': 'boolean',
+  'auth.require_email_verification': 'boolean',
+  'auth.mfa_enabled': 'boolean',
+  'password.require_uppercase': 'boolean',
+  'password.require_lowercase': 'boolean',
+  'password.require_digit': 'boolean',
+  'password.require_special': 'boolean',
+  'feature.hibp_enabled': 'boolean',
+  'feature.captcha_enabled': 'boolean',
+  'feature.magic_link_enabled': 'boolean',
+  'feature.oauth_enabled': 'boolean',
+  'feature.email_queue_enabled': 'boolean',
+  'feature.email_rate_limit_enabled': 'boolean',
+  // Numbers
+  'email.smtp_port': 'number',
+  'rate_limit.login': 'number',
+  'rate_limit.register': 'number',
+  'rate_limit.password_reset': 'number',
+  'rate_limit.mfa': 'number',
+  'rate_limit.magic_link': 'number',
+  'rate_limit.export_data': 'number',
+  'rate_limit.refresh': 'number',
+  'rate_limit.verify_email': 'number',
+  'lockout.max_attempts': 'number',
+  'lockout.window_minutes': 'number',
+  'lockout.duration_minutes': 'number',
+  'session.max_concurrent': 'number',
+  'token.access_ttl_minutes': 'number',
+  'token.refresh_ttl_hours': 'number',
+  'session.ttl_hours': 'number',
+  'password.min_length': 'number',
+  'password.max_length': 'number',
+  'feature.captcha_min_score': 'number',
+  'email.verification_rate_limit': 'number',
+  'email.password_reset_rate_limit': 'number',
+  'email.mfa_code_rate_limit': 'number',
+  'email.login_alert_rate_limit': 'number',
+  // Passwords
+  'email.smtp_password': 'password',
 };
 
 export function AdminSettingsPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'general' | 'auth' | 'email'>('general');
+  const [activeTab, setActiveTab] = useState<TabKey>('general');
   const [localSettings, setLocalSettings] = useState<Record<string, unknown>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,13 +348,8 @@ export function AdminSettingsPage() {
   }, [settings, searchQuery]);
 
   // Get settings count per category that match search
-  const getCategoryMatchCount = useCallback((category: 'general' | 'auth' | 'email') => {
-    const categorySettings: Record<string, string[]> = {
-      general: ['site.name', 'site.logo_url'],
-      auth: ['auth.allow_registration', 'auth.require_email_verification', 'auth.mfa_enabled'],
-      email: ['email.provider', 'email.from_name', 'email.from_email', 'email.smtp_host', 'email.smtp_port', 'email.smtp_user', 'email.smtp_password'],
-    };
-    return categorySettings[category].filter(key => isSettingVisible(key)).length;
+  const getCategoryMatchCount = useCallback((category: TabKey) => {
+    return (CATEGORY_SETTINGS[category] || []).filter(key => isSettingVisible(key)).length;
   }, [isSettingVisible]);
 
   // Get pending changes (local settings that differ from server settings)
@@ -230,6 +412,51 @@ export function AdminSettingsPage() {
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     },
   });
+
+  // Export settings
+  const handleExportSettings = async () => {
+    try {
+      const data = await adminService.exportSettings();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `settings-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast({ title: 'Success', message: 'Settings exported successfully', type: 'success' });
+    } catch (error) {
+      showToast({ title: 'Error', message: error instanceof Error ? error.message : 'Export failed', type: 'error' });
+    }
+  };
+
+  // Import settings
+  const handleImportSettings = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const settings = data.settings || data;
+        const result = await adminService.importSettings(settings);
+        queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
+        showToast({ 
+          title: 'Success', 
+          message: `Imported ${result.imported} settings (${result.skipped} skipped)`, 
+          type: 'success' 
+        });
+      } catch (error) {
+        showToast({ title: 'Error', message: error instanceof Error ? error.message : 'Import failed', type: 'error' });
+      }
+    };
+    input.click();
+  };
 
   const handleUpdate = (key: string) => {
     if (mergedSettings[key] !== undefined) {
@@ -489,9 +716,21 @@ export function AdminSettingsPage() {
         )}
       </div>
 
+      {/* Export/Import Actions */}
+      <div className="flex gap-3">
+        <Button variant="outline" size="sm" onClick={handleExportSettings}>
+          <Download size={16} className="mr-2" />
+          Export Settings
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleImportSettings}>
+          <Upload size={16} className="mr-2" />
+          Import Settings
+        </Button>
+      </div>
+
       {/* Configuration Tabs with Icons and Descriptions */}
       <div className="flex flex-wrap gap-3">
-        {(['general', 'auth', 'email'] as const).map((tab) => {
+        {(Object.keys(CATEGORY_META) as TabKey[]).map((tab) => {
           const meta = CATEGORY_META[tab];
           const Icon = meta.icon;
           const matchCount = getCategoryMatchCount(tab);
@@ -501,7 +740,7 @@ export function AdminSettingsPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex items-start gap-3 p-4 rounded-xl border transition-all text-left min-w-[180px] ${
+              className={`flex items-start gap-3 p-4 rounded-xl border transition-all text-left min-w-[160px] ${
                 isActive 
                   ? 'bg-white shadow-sm border-[var(--color-border)] ring-2 ring-blue-500/20' 
                   : 'bg-[var(--color-surface-hover)] border-transparent hover:border-[var(--color-border)]'
@@ -560,19 +799,19 @@ export function AdminSettingsPage() {
           {/* Render settings only when loaded */}
           {!settingsLoading && settings.length > 0 && (
             <>
+              {/* General Tab */}
               {activeTab === 'general' && (
                 <>
-                  {renderSettingRow('site.name')}
-                  {renderSettingRow('site.logo_url')}
+                  {CATEGORY_SETTINGS.general.map(key => renderSettingRow(key, SETTING_TYPES[key]))}
                 </>
               )}
+              {/* Auth Tab */}
               {activeTab === 'auth' && (
                 <>
-                  {renderSettingRow('auth.allow_registration', 'boolean')}
-                  {renderSettingRow('auth.require_email_verification', 'boolean')}
-                  {renderSettingRow('auth.mfa_enabled', 'boolean')}
+                  {CATEGORY_SETTINGS.auth.map(key => renderSettingRow(key, SETTING_TYPES[key]))}
                 </>
               )}
+              {/* Email Tab */}
               {activeTab === 'email' && (
                 <>
                   {renderSettingRow('email.provider')}
@@ -587,6 +826,113 @@ export function AdminSettingsPage() {
                       {renderSettingRow('email.smtp_port', 'number')}
                       {renderSettingRow('email.smtp_user')}
                       {renderSettingRow('email.smtp_password', 'password')}
+                    </div>
+                  </div>
+                  <div className="py-6 mt-4 bg-[var(--color-surface-hover)]/30 rounded-xl px-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Gauge size={16} /> Email Rate Limits
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('email.verification_rate_limit', 'number')}
+                      {renderSettingRow('email.password_reset_rate_limit', 'number')}
+                      {renderSettingRow('email.mfa_code_rate_limit', 'number')}
+                      {renderSettingRow('email.login_alert_rate_limit', 'number')}
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Rate Limits Tab */}
+              {activeTab === 'rate_limits' && (
+                <>
+                  <div className="py-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Gauge size={16} /> Request Rate Limits
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('rate_limit.login', 'number')}
+                      {renderSettingRow('rate_limit.register', 'number')}
+                      {renderSettingRow('rate_limit.password_reset', 'number')}
+                      {renderSettingRow('rate_limit.mfa', 'number')}
+                      {renderSettingRow('rate_limit.magic_link', 'number')}
+                      {renderSettingRow('rate_limit.export_data', 'number')}
+                      {renderSettingRow('rate_limit.refresh', 'number')}
+                      {renderSettingRow('rate_limit.verify_email', 'number')}
+                    </div>
+                  </div>
+                  <div className="py-6 mt-4 bg-[var(--color-surface-hover)]/30 rounded-xl px-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Lock size={16} /> Account Lockout
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('lockout.max_attempts', 'number')}
+                      {renderSettingRow('lockout.window_minutes', 'number')}
+                      {renderSettingRow('lockout.duration_minutes', 'number')}
+                      {renderSettingRow('session.max_concurrent', 'number')}
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Tokens & Sessions Tab */}
+              {activeTab === 'tokens' && (
+                <>
+                  {CATEGORY_SETTINGS.tokens.map(key => renderSettingRow(key, SETTING_TYPES[key]))}
+                </>
+              )}
+              {/* Password Policy Tab */}
+              {activeTab === 'password' && (
+                <>
+                  <div className="py-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Key size={16} /> Length Requirements
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('password.min_length', 'number')}
+                      {renderSettingRow('password.max_length', 'number')}
+                    </div>
+                  </div>
+                  <div className="py-6 mt-4 bg-[var(--color-surface-hover)]/30 rounded-xl px-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Shield size={16} /> Character Requirements
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('password.require_uppercase', 'boolean')}
+                      {renderSettingRow('password.require_lowercase', 'boolean')}
+                      {renderSettingRow('password.require_digit', 'boolean')}
+                      {renderSettingRow('password.require_special', 'boolean')}
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Features Tab */}
+              {activeTab === 'features' && (
+                <>
+                  <div className="py-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Shield size={16} /> Security Features
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('feature.hibp_enabled', 'boolean')}
+                      {renderSettingRow('feature.captcha_enabled', 'boolean')}
+                      {renderSettingRow('feature.captcha_provider')}
+                      {renderSettingRow('feature.captcha_min_score', 'number')}
+                    </div>
+                  </div>
+                  <div className="py-6 mt-4 bg-[var(--color-surface-hover)]/30 rounded-xl px-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <ToggleLeft size={16} /> Authentication Features
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('feature.magic_link_enabled', 'boolean')}
+                      {renderSettingRow('feature.oauth_enabled', 'boolean')}
+                    </div>
+                  </div>
+                  <div className="py-6 mt-4 bg-[var(--color-surface-hover)]/30 rounded-xl px-4">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+                      <Mail size={16} /> Email Features
+                    </h3>
+                    <div className="space-y-2">
+                      {renderSettingRow('feature.email_queue_enabled', 'boolean')}
+                      {renderSettingRow('feature.email_rate_limit_enabled', 'boolean')}
                     </div>
                   </div>
                 </>

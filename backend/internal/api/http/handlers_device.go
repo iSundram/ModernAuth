@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -267,4 +268,14 @@ func toLoginHistoryResponse(h *storage.LoginHistory) LoginHistoryResponse {
 		FailureReason:   h.FailureReason,
 		CreatedAt:       h.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// RecordLogin records a login attempt in the login history.
+func (h *DeviceHandler) RecordLogin(ctx context.Context, history *storage.LoginHistory) error {
+	return h.deviceService.RecordLogin(ctx, history)
+}
+
+// RecordDevice records a device for a user.
+func (h *DeviceHandler) RecordDevice(ctx context.Context, req *device.RecordDeviceRequest) (*storage.UserDevice, bool, error) {
+	return h.deviceService.RecordDevice(ctx, req)
 }

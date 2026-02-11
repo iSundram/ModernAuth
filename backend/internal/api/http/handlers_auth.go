@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/device"
 	"github.com/iSundram/ModernAuth/internal/storage"
 )
 
@@ -213,6 +215,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login").Inc()
+
+	// Record login history and device
+	if h.deviceHandler != nil {
+		h.recordLoginHistory(r, result.User.ID, "password", "success", nil)
+		h.recordDevice(r, result.User.ID, req.Fingerprint)
+	}
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
@@ -324,6 +333,13 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login_mfa").Inc()
+
+	// Record login history and device for MFA login
+	if h.deviceHandler != nil {
+		h.recordLoginHistory(r, userID, "mfa", "success", nil)
+		h.recordDevice(r, userID, req.Fingerprint)
+	}
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
@@ -421,8 +437,26 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Blacklist the current access token JTI to prevent reuse
+	if h.tokenBlacklist != nil && claims.ID != "" {
+		expiry := time.Now().Add(h.tokenService.GetConfig().AccessTokenTTL)
+		if claims.ExpiresAt != nil {
+			expiry = claims.ExpiresAt.Time
+		}
+		if err := h.tokenBlacklist.Blacklist(r.Context(), claims.ID, expiry); err != nil {
+			h.logger.Error("Failed to blacklist token on logout", "error", err, "jti", claims.ID)
+			// Continue with logout even if blacklisting fails
+		}
+
+		// Also blacklist the entire session for immediate invalidation
+		if err := h.tokenBlacklist.BlacklistSession(r.Context(), claims.SessionID, h.tokenService.GetConfig().AccessTokenTTL); err != nil {
+			h.logger.Error("Failed to blacklist session on logout", "error", err, "session_id", claims.SessionID)
+		}
+	}
+
 	err = h.authService.Logout(r.Context(), &auth.LogoutRequest{
 		SessionID: sessionID,
+		TokenJTI:  claims.ID,
 		IP:        r.RemoteAddr,
 		UserAgent: r.UserAgent(),
 	})
@@ -617,4 +651,76 @@ func (h *Handler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
+}
+
+// recordLoginHistory records a login attempt in the login history.
+func (h *Handler) recordLoginHistory(r *http.Request, userID uuid.UUID, method, status string, failureReason *string) {
+	if h.deviceHandler == nil {
+		return
+	}
+
+	ip := getClientIP(r)
+	ua := r.UserAgent()
+	history := &storage.LoginHistory{
+		UserID:      userID,
+		IPAddress:   &ip,
+		UserAgent:   &ua,
+		LoginMethod: &method,
+		Status:      status,
+	}
+	if failureReason != nil {
+		history.FailureReason = failureReason
+	}
+
+	go func() {
+		if err := h.deviceHandler.RecordLogin(context.Background(), history); err != nil {
+			h.logger.Error("Failed to record login history", "error", err, "user_id", userID)
+		}
+	}()
+}
+
+// getClientIP extracts the real client IP from the request.
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for proxies/load balancers)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the chain
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	// Fallback to RemoteAddr
+	return r.RemoteAddr
+}
+
+// recordDevice records the device used for login.
+func (h *Handler) recordDevice(r *http.Request, userID uuid.UUID, fingerprint string) {
+	if h.deviceHandler == nil {
+		return
+	}
+
+	var fp *string
+	if fingerprint != "" {
+		fp = &fingerprint
+	}
+
+	// Extract values before goroutine since request may be closed
+	userAgent := r.UserAgent()
+	ipAddress := getClientIP(r)
+
+	go func() {
+		_, _, err := h.deviceHandler.RecordDevice(context.Background(), &device.RecordDeviceRequest{
+			UserID:            userID,
+			DeviceFingerprint: fp,
+			UserAgent:         userAgent,
+			IPAddress:         ipAddress,
+		})
+		if err != nil {
+			h.logger.Error("Failed to record device", "error", err, "user_id", userID)
+		}
+	}()
 }

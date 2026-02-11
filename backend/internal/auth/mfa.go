@@ -113,6 +113,14 @@ func (s *AuthService) EnableTOTP(ctx context.Context, req *EnableTOTPRequest) er
 		return err
 	}
 
+	// Auto-generate backup codes if none exist
+	if len(settings.BackupCodes) == 0 {
+		if _, err := s.GenerateBackupCodes(ctx, req.UserID); err != nil {
+			s.logger.Error("Failed to auto-generate backup codes on MFA enable", "error", err, "user_id", req.UserID)
+			// Don't fail MFA enablement if backup codes fail - user can regenerate later
+		}
+	}
+
 	s.logAuditEvent(ctx, &req.UserID, nil, "mfa.totp_enabled", nil, nil, nil)
 	return nil
 }

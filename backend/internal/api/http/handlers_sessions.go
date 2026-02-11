@@ -53,6 +53,9 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get current session ID from context
+	currentSessionID := getSessionIDFromContext(r.Context())
+
 	// Parse pagination
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
@@ -85,7 +88,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			ExpiresAt: session.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
 			Revoked:   session.Revoked,
-			IsCurrent: false, // Would need to check against current session ID
+			IsCurrent: session.ID.String() == currentSessionID,
 		}
 		if session.TenantID != nil {
 			id := session.TenantID.String()

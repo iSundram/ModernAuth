@@ -149,7 +149,10 @@ func (s *AuthService) SendEmailMFACode(ctx context.Context, userID uuid.UUID) er
 	}
 
 	// Generate a 6-digit code
-	code := utils.GenerateNumericCode(EmailMFACodeLength)
+	code, err := utils.GenerateNumericCode(EmailMFACodeLength)
+	if err != nil {
+		return fmt.Errorf("failed to generate MFA code: %w", err)
+	}
 	codeHash := utils.HashToken(code)
 
 	// Create MFA challenge
@@ -335,7 +338,10 @@ func (s *AuthService) SendSMSMFACode(ctx context.Context, userID uuid.UUID) erro
 		return ErrMFANotSetup
 	}
 
-	code := utils.GenerateNumericCode(SMSMFACodeLength)
+	code, err := utils.GenerateNumericCode(SMSMFACodeLength)
+	if err != nil {
+		return fmt.Errorf("failed to generate SMS MFA code: %w", err)
+	}
 	codeHash := utils.HashToken(code)
 
 	challenge := &storage.MFAChallenge{
@@ -438,7 +444,10 @@ func (s *AuthService) TrustDeviceForMFA(ctx context.Context, userID uuid.UUID, d
 	}
 
 	trustedUntil := time.Now().AddDate(0, 0, trustDays)
-	trustToken := utils.GenerateRandomToken(32)
+	trustToken, err := utils.GenerateRandomToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate trust token: %w", err)
+	}
 
 	if err := s.storage.SetDeviceMFATrust(ctx, *deviceID, trustedUntil, trustToken); err != nil {
 		return err

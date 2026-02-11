@@ -289,7 +289,16 @@ func (h *Handler) processUserImport(r *http.Request, req BulkUserImportRequest) 
 			user.HashedPassword = hashedPassword
 		} else {
 			// Generate a random password that user must reset
-			tempPassword := utils.GenerateRandomToken(16)
+			tempPassword, err := utils.GenerateRandomToken(16)
+			if err != nil {
+				result.Errors = append(result.Errors, UserBulkImportError{
+					Row:     row,
+					Email:   record.Email,
+					Message: "Failed to generate random password",
+				})
+				result.FailureCount++
+				continue
+			}
 			hashedPassword, err := utils.HashPassword(tempPassword, nil)
 			if err != nil {
 				result.Errors = append(result.Errors, UserBulkImportError{

@@ -69,8 +69,10 @@ type AuthService struct {
 	smsService   interface {
 		SendSMS(ctx context.Context, to string, message string) error
 	}
-	sessionTTL time.Duration
-	logger     *slog.Logger
+	tokenBlacklist *TokenBlacklist
+	sessionTTL     time.Duration
+	settingsCache  *SettingsCache
+	logger         *slog.Logger
 }
 
 // SetHIBPService sets the HIBP breached password detection service.
@@ -83,6 +85,16 @@ func (s *AuthService) SetSMSService(svc interface {
 	SendSMS(ctx context.Context, to string, message string) error
 }) {
 	s.smsService = svc
+}
+
+// SetSettingsCache sets the settings cache for cache invalidation on updates.
+func (s *AuthService) SetSettingsCache(cache *SettingsCache) {
+	s.settingsCache = cache
+}
+
+// SetTokenBlacklist sets the token blacklist for session revocation.
+func (s *AuthService) SetTokenBlacklist(blacklist *TokenBlacklist) {
+	s.tokenBlacklist = blacklist
 }
 
 // NewAuthService creates a new authentication service.

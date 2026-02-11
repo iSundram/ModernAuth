@@ -228,3 +228,89 @@ OAUTH_MICROSOFT_CLIENT_SECRET=your-microsoft-client-secret
 OAUTH_REDIRECT_BASE_URL=http://localhost:8080
 OAUTH_ALLOWED_REDIRECT_URLS=http://localhost:3000/auth/callback
 ```
+
+## Dynamic Settings API
+
+Many settings can be updated at runtime via the admin API without restarting the server.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v1/admin/settings` | List all settings (optional `?category=` filter) |
+| `GET` | `/v1/admin/settings/definitions` | Get all setting definitions with validation rules |
+| `PATCH` | `/v1/admin/settings/{key}` | Update a single setting |
+| `PATCH` | `/v1/admin/settings` | Bulk update multiple settings |
+| `GET` | `/v1/admin/settings/export` | Export all non-secret settings as JSON |
+| `POST` | `/v1/admin/settings/import` | Import settings from JSON |
+
+### Available Dynamic Settings
+
+#### Rate Limits (category: `security`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `rate_limit.login` | number | 10 | Login attempts per 15 minutes |
+| `rate_limit.register` | number | 5 | Registrations per hour |
+| `rate_limit.password_reset` | number | 5 | Password resets per hour |
+| `rate_limit.mfa` | number | 10 | MFA attempts per 15 minutes |
+| `rate_limit.magic_link` | number | 3 | Magic links per hour |
+| `rate_limit.export_data` | number | 1 | Data exports per 24 hours |
+| `rate_limit.refresh` | number | 100 | Token refreshes per 15 minutes |
+| `rate_limit.verify_email` | number | 5 | Email verifications per hour |
+
+#### Lockout Settings (category: `security`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `lockout.max_attempts` | number | 5 | Failed attempts before lockout |
+| `lockout.window_minutes` | number | 15 | Window for counting attempts |
+| `lockout.duration_minutes` | number | 30 | Lockout duration |
+| `session.max_concurrent` | number | 5 | Max concurrent sessions per user |
+
+#### Token TTLs (category: `auth`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `token.access_ttl_minutes` | number | 15 | Access token TTL (minutes) |
+| `token.refresh_ttl_hours` | number | 168 | Refresh token TTL (hours) |
+| `session.ttl_hours` | number | 168 | Session TTL (hours) |
+
+#### Password Policy (category: `security`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `password.min_length` | number | 8 | Minimum password length |
+| `password.max_length` | number | 128 | Maximum password length |
+| `password.require_uppercase` | bool | true | Require uppercase letter |
+| `password.require_lowercase` | bool | true | Require lowercase letter |
+| `password.require_digit` | bool | true | Require digit |
+| `password.require_special` | bool | false | Require special character |
+
+#### Feature Toggles (category: `feature`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `feature.hibp_enabled` | bool | false | Enable breached password checking |
+| `feature.captcha_enabled` | bool | false | Enable CAPTCHA on auth endpoints |
+| `feature.captcha_provider` | string | "none" | CAPTCHA provider |
+| `feature.captcha_min_score` | number | 0.5 | reCAPTCHA v3 minimum score |
+| `feature.magic_link_enabled` | bool | true | Enable passwordless magic link |
+| `feature.oauth_enabled` | bool | true | Enable OAuth social login |
+| `feature.email_queue_enabled` | bool | true | Enable async email queue |
+| `feature.email_rate_limit_enabled` | bool | true | Enable email rate limiting |
+
+#### Email Rate Limits (category: `email`)
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `email.verification_rate_limit` | number | 3 | Verification emails per hour |
+| `email.password_reset_rate_limit` | number | 5 | Password reset emails per hour |
+| `email.mfa_code_rate_limit` | number | 10 | MFA code emails per hour |
+| `email.login_alert_rate_limit` | number | 10 | Login alert emails per hour |
+
+### Settings That Must Remain Environment Variables
+
+These settings cannot be changed at runtime for security reasons:
+
+- `JWT_SECRET` - Cryptographic signing key
+- `DATABASE_URL`, `REDIS_URL` - Connection strings
+- `SMTP_PASSWORD`, `SENDGRID_API_KEY` - Credentials
+- All `OAUTH_*_CLIENT_SECRET` - OAuth provider secrets
+- `TWILIO_AUTH_TOKEN`, `HIBP_API_KEY` - API credentials
+- `CAPTCHA_SECRET_KEY` - CAPTCHA verification key
+- `TLS_*` - TLS configuration (requires restart)

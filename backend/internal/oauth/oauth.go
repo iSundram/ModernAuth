@@ -79,6 +79,7 @@ type Config struct {
 	Spotify             *ProviderConfig
 	StateSecret         string   // Secret for signing state tokens
 	AllowedRedirectURLs []string // Allowed redirect URLs for OAuth callbacks
+	Environment         string   // Environment (development/production) - affects security strictness
 }
 
 // UserInfo contains user information from OAuth provider.
@@ -2116,14 +2117,25 @@ func ValidatePKCE(codeVerifier, codeChallenge string) bool {
 // ValidateRedirectURL checks if a redirect URL is in the allowed list.
 func (s *Service) ValidateRedirectURL(redirectURL string) error {
 	if len(s.config.AllowedRedirectURLs) == 0 {
-		// If no allowed URLs configured, allow any (development mode)
-		s.logger.Warn("No allowed redirect URLs configured, allowing any redirect URL")
+		// In production, require explicit whitelist configuration
+		if s.config.Environment == "production" {
+			s.logger.Error("No allowed redirect URLs configured in production mode - rejecting all redirects for security")
+			return ErrInvalidRedirectURL
+		}
+		// In development mode only, allow any redirect with a warning
+		s.logger.Warn("No allowed redirect URLs configured, allowing any redirect URL (development mode only)")
 		return nil
 	}
 
 	// Parse the provided URL
 	parsed, err := url.Parse(redirectURL)
 	if err != nil {
+		return ErrInvalidRedirectURL
+	}
+
+	// Reject URLs with dangerous patterns
+	if strings.HasPrefix(redirectURL, "//") || strings.Contains(redirectURL, "\\") {
+		s.logger.Warn("Potentially malicious redirect URL rejected", "redirect_url", redirectURL)
 		return ErrInvalidRedirectURL
 	}
 

@@ -62,11 +62,11 @@ func (h *Handler) Router() *chi.Mux {
 				captchaMW = func(next http.Handler) http.Handler { return next }
 			}
 
-			r.With(captchaMW, h.RateLimit(5, time.Hour)).Post("/register", h.Register)
-			r.With(captchaMW, h.RateLimit(10, 15*time.Minute)).Post("/login", h.Login)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa", h.LoginMFA)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/google/one-tap", h.GoogleOneTapLogin)
-			r.With(h.RateLimit(100, 15*time.Minute)).Post("/refresh", h.Refresh)
+			r.With(captchaMW, h.DynamicRateLimit("rate_limit.register", 5, time.Hour)).Post("/register", h.Register)
+			r.With(captchaMW, h.DynamicRateLimit("rate_limit.login", 10, 15*time.Minute)).Post("/login", h.Login)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa", h.LoginMFA)
+			r.With(h.DynamicRateLimit("rate_limit.login", 10, 15*time.Minute)).Post("/google/one-tap", h.GoogleOneTapLogin)
+			r.With(h.DynamicRateLimit("rate_limit.refresh", 100, 15*time.Minute)).Post("/refresh", h.Refresh)
 			r.With(h.Auth).Post("/logout", h.Logout)
 			r.With(h.Auth).Get("/me", h.Me)
 			r.With(h.Auth).Put("/me", h.UpdateOwnProfile)
@@ -78,16 +78,16 @@ func (h *Handler) Router() *chi.Mux {
 			r.With(h.Auth).Put("/preferences", h.UpdatePreferencesHandler)
 
 			// Email Verification
-			r.With(h.RateLimit(5, time.Hour)).Post("/verify-email", h.VerifyEmail)
+			r.With(h.DynamicRateLimit("rate_limit.verify_email", 5, time.Hour)).Post("/verify-email", h.VerifyEmail)
 			r.With(h.Auth).Post("/send-verification", h.SendVerificationEmail)
 
 			// Password Reset
-			r.With(h.RateLimit(5, time.Hour)).Post("/forgot-password", h.ForgotPassword)
-			r.With(h.RateLimit(5, time.Hour)).Post("/reset-password", h.ResetPassword)
+			r.With(h.DynamicRateLimit("rate_limit.password_reset", 5, time.Hour)).Post("/forgot-password", h.ForgotPassword)
+			r.With(h.DynamicRateLimit("rate_limit.password_reset", 5, time.Hour)).Post("/reset-password", h.ResetPassword)
 
 			// Magic Link Authentication (Passwordless)
-			r.With(h.RateLimit(3, time.Hour)).Post("/magic-link/send", h.SendMagicLink)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/magic-link/verify", h.VerifyMagicLink)
+			r.With(h.DynamicRateLimit("rate_limit.magic_link", 3, time.Hour)).Post("/magic-link/send", h.SendMagicLink)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/magic-link/verify", h.VerifyMagicLink)
 
 			// Session Management (Protected)
 			r.With(h.Auth).Post("/revoke-all-sessions", h.RevokeAllSessions)
@@ -130,19 +130,19 @@ func (h *Handler) Router() *chi.Mux {
 			})
 
 			// MFA Login with Backup Code (no auth required)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/backup", h.LoginMFABackup)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa/backup", h.LoginMFABackup)
 
 			// Email MFA (no auth required - during login flow)
-			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/email/send", h.SendEmailMFA)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/email", h.LoginEmailMFA)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 5, 15*time.Minute)).Post("/login/mfa/email/send", h.SendEmailMFA)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa/email", h.LoginEmailMFA)
 
 			// SMS MFA (no auth required - during login flow)
-			r.With(h.RateLimit(5, 15*time.Minute)).Post("/login/mfa/sms/send", h.SendSMSMFA)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/sms", h.LoginSMSMFA)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 5, 15*time.Minute)).Post("/login/mfa/sms/send", h.SendSMSMFA)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa/sms", h.LoginSMSMFA)
 
 			// WebAuthn Login (no auth required - during login flow)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/begin", h.BeginWebAuthnLogin)
-			r.With(h.RateLimit(10, 15*time.Minute)).Post("/login/mfa/webauthn/finish", h.FinishWebAuthnLogin)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa/webauthn/begin", h.BeginWebAuthnLogin)
+			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa/webauthn/finish", h.FinishWebAuthnLogin)
 
 			// Password Change (Protected)
 			r.With(h.Auth).Post("/change-password", h.ChangePassword)
@@ -152,10 +152,10 @@ func (h *Handler) Router() *chi.Mux {
 
 			// Data Export (Protected, GDPR)
 			// Rate limiting recommended: 1 request per 24 hours per user
-			r.With(h.Auth, h.RateLimit(1, 24*time.Hour)).Post("/export-data", h.ExportUserData)
+			r.With(h.Auth, h.DynamicRateLimit("rate_limit.export_data", 1, 24*time.Hour)).Post("/export-data", h.ExportUserData)
 
 			// Waitlist (Public)
-			r.With(h.RateLimit(5, time.Hour)).Post("/waitlist", h.JoinWaitlist)
+			r.With(h.DynamicRateLimit("rate_limit.register", 5, time.Hour)).Post("/waitlist", h.JoinWaitlist)
 			r.Get("/waitlist/status", h.GetWaitlistStatus)
 		})
 
@@ -183,6 +183,10 @@ func (h *Handler) Router() *chi.Mux {
 			r.Get("/services", h.GetServicesStatus)
 			r.Get("/settings", h.ListSettings)
 			r.Patch("/settings/{key}", h.UpdateSetting)
+			r.Patch("/settings", h.BulkUpdateSettings)
+			r.Get("/settings/export", h.ExportSettings)
+			r.Post("/settings/import", h.ImportSettings)
+			r.Get("/settings/definitions", h.GetSettingDefinitions)
 			r.Post("/users/{id}/roles", h.AssignUserRole)
 			r.Delete("/users/{id}/roles/{roleId}", h.RemoveUserRole)
 

@@ -16,6 +16,7 @@ type contextKey string
 const (
 	userIDKey    contextKey = "user_id"
 	sessionIDKey contextKey = "session_id"
+	tokenJTIKey  contextKey = "token_jti"
 )
 
 // getUserIDFromContext safely extracts user ID from context.
@@ -25,6 +26,18 @@ func getUserIDFromContext(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("user ID not found in context")
 	}
 	return uuid.Parse(userIDStr)
+}
+
+// getTokenJTIFromContext extracts the token JTI from context.
+func getTokenJTIFromContext(ctx context.Context) string {
+	jti, _ := ctx.Value(tokenJTIKey).(string)
+	return jti
+}
+
+// getSessionIDFromContext extracts the session ID from context.
+func getSessionIDFromContext(ctx context.Context) string {
+	sessionID, _ := ctx.Value(sessionIDKey).(string)
+	return sessionID
 }
 
 // Auth middleware validates the JWT access token and adds user information to the context.
@@ -48,9 +61,9 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if token is blacklisted
+		// Check if token JTI is blacklisted
 		if h.tokenBlacklist != nil {
-			blacklisted, err := h.tokenBlacklist.IsBlacklisted(r.Context(), tokenString)
+			blacklisted, err := h.tokenBlacklist.IsBlacklisted(r.Context(), claims.ID)
 			if err != nil {
 				h.logger.Error("Failed to check token blacklist", "error", err)
 				// Fail closed - if we can't verify the token isn't blacklisted, reject it
@@ -61,10 +74,23 @@ func (h *Handler) Auth(next http.Handler) http.Handler {
 				h.writeError(w, http.StatusUnauthorized, "Token has been revoked", nil)
 				return
 			}
+
+			// Also check if the session is blacklisted
+			sessionBlacklisted, err := h.tokenBlacklist.IsSessionBlacklisted(r.Context(), claims.SessionID)
+			if err != nil {
+				h.logger.Error("Failed to check session blacklist", "error", err)
+				h.writeError(w, http.StatusServiceUnavailable, "Authentication service temporarily unavailable", err)
+				return
+			}
+			if sessionBlacklisted {
+				h.writeError(w, http.StatusUnauthorized, "Session has been revoked", nil)
+				return
+			}
 		}
 
 		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
 		ctx = context.WithValue(ctx, sessionIDKey, claims.SessionID)
+		ctx = context.WithValue(ctx, tokenJTIKey, claims.ID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -135,6 +161,82 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
 
 				h.logger.Warn("Rate limit exceeded", "ip", ip, "path", r.URL.Path)
+				h.writeError(w, http.StatusTooManyRequests, "Rate limit exceeded", nil)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// DynamicRateLimit middleware uses settings service to get rate limits dynamically.
+// settingKey is the key to look up in settings (e.g., "rate_limit.login")
+// defaultLimit is used if settings service is unavailable or key not found
+// window is the time window for the rate limit
+func (h *Handler) DynamicRateLimit(settingKey string, defaultLimit int, window time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Get dynamic limit from settings service
+			limit := defaultLimit
+			if h.settingsService != nil {
+				limit = h.settingsService.GetInt(r.Context(), settingKey, defaultLimit)
+			}
+
+			// Skip rate limiting if Redis is not configured
+			if h.rdb == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ip := r.RemoteAddr
+			// Handle cases where RemoteAddr includes port
+			if lastColon := len(ip) - 1; lastColon >= 0 {
+				for i := lastColon; i >= 0; i-- {
+					if ip[i] == ':' {
+						ip = ip[:i]
+						break
+					}
+				}
+			}
+
+			key := fmt.Sprintf("ratelimit:%s:%s", r.URL.Path, ip)
+			ctx := r.Context()
+
+			count, err := h.rdb.Incr(ctx, key).Result()
+			if err != nil {
+				h.logger.Error("Rate limit error", "error", err)
+				h.writeError(w, http.StatusServiceUnavailable, "Rate limiting service temporarily unavailable", err)
+				return
+			}
+
+			ttl, err := h.rdb.TTL(ctx, key).Result()
+			if err != nil || ttl < 0 {
+				ttl = window
+			}
+
+			if count == 1 {
+				h.rdb.Expire(ctx, key, window)
+				ttl = window
+			}
+
+			remaining := int64(limit) - count
+			if remaining < 0 {
+				remaining = 0
+			}
+			resetTime := time.Now().Add(ttl).Unix()
+
+			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limit))
+			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetTime))
+
+			if count > int64(limit) {
+				retryAfter := int(ttl.Seconds())
+				if retryAfter < 1 {
+					retryAfter = 1
+				}
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+				h.logger.Warn("Rate limit exceeded", "ip", ip, "path", r.URL.Path, "limit", limit)
 				h.writeError(w, http.StatusTooManyRequests, "Rate limit exceeded", nil)
 				return
 			}
@@ -296,6 +398,10 @@ func (h *Handler) SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		// Restrict permissions/features the browser can use
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		// Content Security Policy - restrict resource loading
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; frame-ancestors 'none'; form-action 'self'")
+		// Prevent caching of sensitive responses
+		w.Header().Set("Cache-Control", "no-store, must-revalidate")
 
 		next.ServeHTTP(w, r)
 	})

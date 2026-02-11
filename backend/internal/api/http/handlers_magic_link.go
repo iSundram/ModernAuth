@@ -136,6 +136,12 @@ func (h *Handler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record login history and device for magic link
+	if h.deviceHandler != nil {
+		h.recordLoginHistory(r, result.User.ID, "magic_link", "success", nil)
+		h.recordDevice(r, result.User.ID, "")
+	}
+
 	// Prepare response
 	response := map[string]interface{}{
 		"user":        sanitizeUser(result.User),

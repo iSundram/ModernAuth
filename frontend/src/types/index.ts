@@ -445,6 +445,16 @@ export interface SystemSetting {
   updated_at: string;
 }
 
+export interface SettingDefinition {
+  key: string;
+  type: 'string' | 'bool' | 'number';
+  category: string;
+  description: string;
+  min?: number;
+  max?: number;
+  is_secret: boolean;
+}
+
 // ============================================================================
 // API Response Types
 // ============================================================================

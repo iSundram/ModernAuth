@@ -120,6 +120,26 @@ func main() {
 	// Initialize token blacklist
 	tokenBlacklist := auth.NewTokenBlacklist(rdb)
 
+	// Initialize settings cache and service
+	settingsCache := auth.NewSettingsCache(rdb)
+	settingsDefaults := map[string]interface{}{
+		"rate_limit.login":          cfg.Lockout.MaxAttempts, // Use lockout config as base
+		"rate_limit.register":       5,
+		"rate_limit.password_reset": 5,
+		"rate_limit.mfa":            10,
+		"rate_limit.magic_link":     3,
+		"rate_limit.export_data":    1,
+		"rate_limit.refresh":        100,
+		"rate_limit.verify_email":   5,
+		"lockout.max_attempts":      cfg.Lockout.MaxAttempts,
+		"lockout.window_minutes":    int(cfg.Lockout.LockoutWindow.Minutes()),
+		"lockout.duration_minutes":  int(cfg.Lockout.LockoutDuration.Minutes()),
+		"session.max_concurrent":    5,
+		"token.access_ttl_minutes":  int(cfg.Auth.AccessTokenTTL.Minutes()),
+		"token.refresh_ttl_hours":   int(cfg.Auth.RefreshTokenTTL.Hours()),
+		"session.ttl_hours":         int(cfg.Auth.SessionTTL.Hours()),
+	}
+
 	// Initialize email service
 	var emailService email.Service
 	var queuedEmailService *email.QueuedService           // Track for graceful shutdown
@@ -224,6 +244,11 @@ func main() {
 
 	// Initialize auth service (now after email service is created)
 	authService := auth.NewAuthService(storage, tokenService, emailService, cfg.Auth.SessionTTL)
+	authService.SetSettingsCache(settingsCache)
+	authService.SetTokenBlacklist(tokenBlacklist)
+
+	// Initialize settings service
+	settingsService := auth.NewSettingsService(storage, settingsCache, settingsDefaults)
 
 	// Initialize HIBP breached password detection
 	if cfg.HIBP.Enabled {
@@ -286,6 +311,9 @@ func main() {
 	// Set database pool for health checks
 	handler.SetDBPool(pool)
 
+	// Set settings service for dynamic configuration
+	handler.SetSettingsService(settingsService)
+
 	// Configure CORS
 	if len(cfg.App.CORSOrigins) > 0 {
 		handler.SetCORSOrigins(cfg.App.CORSOrigins)
@@ -328,6 +356,7 @@ func main() {
 	}
 	oauthConfig := &oauth.Config{
 		AllowedRedirectURLs: cfg.OAuth.AllowedRedirectURLs,
+		Environment:         cfg.App.Env,
 	}
 	if cfg.OAuth.IsGoogleConfigured() {
 		oauthConfig.Google = &oauth.ProviderConfig{
@@ -419,6 +448,7 @@ func main() {
 	}
 	oauthService := oauth.NewServiceWithStateStorage(oauthConfig, storage, storage)
 	oauthHandler := httpapi.NewOAuthHandler(oauthService, tokenService, storage, oauthBaseURL)
+	oauthHandler.SetDeviceHandler(deviceHandler) // Enable OAuth login history recording
 	handler.SetOAuthHandler(oauthHandler)
 	slog.Info("OAuth service initialized", "providers", oauthService.GetConfiguredProviders())
 
@@ -441,10 +471,21 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		slog.Info("Starting server", "port", cfg.App.Port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Server failed", "error", err)
-			os.Exit(1)
+		if cfg.App.TLSEnabled && cfg.App.TLSCertFile != "" && cfg.App.TLSKeyFile != "" {
+			slog.Info("Starting server with TLS", "port", cfg.App.Port, "cert", cfg.App.TLSCertFile)
+			if err := server.ListenAndServeTLS(cfg.App.TLSCertFile, cfg.App.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				slog.Error("Server failed", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			if cfg.App.Env == "production" {
+				slog.Warn("TLS is not enabled in production mode - HTTPS should be configured for security")
+			}
+			slog.Info("Starting server", "port", cfg.App.Port)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("Server failed", "error", err)
+				os.Exit(1)
+			}
 		}
 	}()
 

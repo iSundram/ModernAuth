@@ -27,6 +27,9 @@ type AppConfig struct {
 	Env         string   `yaml:"env" env:"APP_ENV" env-default:"development"`
 	CORSOrigins []string `yaml:"cors_origins" env:"CORS_ORIGINS" env-default:"*" env-separator:","`
 	BaseURL     string   `yaml:"base_url" env:"APP_BASE_URL" env-default:""`
+	TLSEnabled  bool     `yaml:"tls_enabled" env:"TLS_ENABLED" env-default:"false"`
+	TLSCertFile string   `yaml:"tls_cert_file" env:"TLS_CERT_FILE" env-default:""`
+	TLSKeyFile  string   `yaml:"tls_key_file" env:"TLS_KEY_FILE" env-default:""`
 }
 
 type DatabaseConfig struct {
