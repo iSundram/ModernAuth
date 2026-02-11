@@ -170,6 +170,7 @@ type LoginWithMFARequest struct {
 	MFAChallengeID *uuid.UUID `json:"mfa_challenge_id"` // Required: proves password was verified
 	Code           string     `json:"code"`
 	Fingerprint    string     `json:"fingerprint,omitempty"`
+	TrustDevice    bool       `json:"trust_device,omitempty"`
 	IP             string     `json:"-"`
 	UserAgent      string     `json:"-"`
 }
@@ -290,8 +291,16 @@ func (s *AuthService) LoginWithMFA(ctx context.Context, req *LoginWithMFARequest
 
 	s.logAuditEvent(ctx, &user.ID, nil, "login.success", &req.IP, &req.UserAgent, map[string]interface{}{"mfa": true})
 
+	// Trust device if requested
+	if req.TrustDevice && req.Fingerprint != "" {
+		if err := s.TrustDeviceForMFA(ctx, user.ID, req.Fingerprint, 30); err != nil {
+			s.logger.Error("Failed to trust device during MFA login", "error", err, "user_id", user.ID)
+		}
+	}
+
 	return &LoginResult{
 		User:      user,
 		TokenPair: tokenPair,
+		SessionID: &session.ID,
 	}, nil
 }

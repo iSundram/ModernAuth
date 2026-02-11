@@ -4,6 +4,7 @@ import { ArrowLeft, Mail } from 'lucide-react';
 import { Button, Input, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
+import { AuthFooter } from '../components/layout';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -107,6 +108,8 @@ export function ForgotPasswordPage() {
               </Link>
             </div>
           </div>
+
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

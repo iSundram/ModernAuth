@@ -36,6 +36,7 @@ type MagicLinkRequest struct {
 type MagicLinkResult struct {
 	User      *storage.User `json:"user"`
 	TokenPair *TokenPair    `json:"tokens"`
+	SessionID *uuid.UUID    `json:"session_id,omitempty"`
 	IsNewUser bool          `json:"is_new_user"`
 }
 
@@ -233,6 +234,7 @@ func (s *AuthService) VerifyMagicLink(ctx context.Context, token string, allowRe
 	return &MagicLinkResult{
 		User:      user,
 		TokenPair: tokenPair,
+		SessionID: &session.ID,
 		IsNewUser: isNewUser,
 	}, nil
 }

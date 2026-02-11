@@ -12,6 +12,7 @@ import (
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/device"
 	"github.com/iSundram/ModernAuth/internal/storage"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // getUserRole fetches the primary role for a user (admin > user)
@@ -87,9 +88,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.authService.Register(r.Context(), &auth.RegisterRequest{
-		Email:    req.Email,
-		Password: req.Password,
-		Username: req.Username,
+		Email:     req.Email,
+		Password:  req.Password,
+		Username:  req.Username,
+		IP:        utils.GetClientIP(r),
+		UserAgent: r.UserAgent(),
 	})
 
 	if err != nil {
@@ -101,6 +104,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Record login history and device
+	h.recordLogin(r, result.User.ID, "register", result.SessionID, "")
 
 	response := RegisterResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
@@ -152,7 +158,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Email:       req.Email,
 		Password:    req.Password,
 		Fingerprint: req.Fingerprint,
-		IP:          r.RemoteAddr,
+		TrustDevice: req.TrustDevice,
+		IP:          utils.GetClientIP(r),
 		UserAgent:   r.UserAgent(),
 	})
 
@@ -217,10 +224,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	authSuccessTotal.WithLabelValues("login").Inc()
 
 	// Record login history and device
-	if h.deviceHandler != nil {
-		h.recordLoginHistory(r, result.User.ID, "password", "success", nil)
-		h.recordDevice(r, result.User.ID, req.Fingerprint)
-	}
+	h.recordLogin(r, result.User.ID, "password", result.SessionID, req.Fingerprint)
 
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
@@ -285,7 +289,8 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 		MFAChallengeID: &mfaChallengeID,
 		Code:           req.Code,
 		Fingerprint:    req.Fingerprint,
-		IP:             r.RemoteAddr,
+		TrustDevice:    req.TrustDevice,
+		IP:             utils.GetClientIP(r),
 		UserAgent:      r.UserAgent(),
 	})
 
@@ -335,10 +340,7 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	authSuccessTotal.WithLabelValues("login_mfa").Inc()
 
 	// Record login history and device for MFA login
-	if h.deviceHandler != nil {
-		h.recordLoginHistory(r, userID, "mfa", "success", nil)
-		h.recordDevice(r, userID, req.Fingerprint)
-	}
+	h.recordLogin(r, userID, "mfa", result.SessionID, req.Fingerprint)
 
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
@@ -372,7 +374,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	tokenPair, err := h.authService.Refresh(r.Context(), &auth.RefreshRequest{
 		RefreshToken: req.RefreshToken,
-		IP:           r.RemoteAddr,
+		IP:           utils.GetClientIP(r),
 		UserAgent:    r.UserAgent(),
 	})
 
@@ -457,7 +459,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	err = h.authService.Logout(r.Context(), &auth.LogoutRequest{
 		SessionID: sessionID,
 		TokenJTI:  claims.ID,
-		IP:        r.RemoteAddr,
+		IP:        utils.GetClientIP(r),
 		UserAgent: r.UserAgent(),
 	})
 
@@ -653,74 +655,85 @@ func (h *Handler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
 }
 
-// recordLoginHistory records a login attempt in the login history.
-func (h *Handler) recordLoginHistory(r *http.Request, userID uuid.UUID, method, status string, failureReason *string) {
+// recordLogin records a successful login attempt, including device info and history.
+func (h *Handler) recordLogin(r *http.Request, userID uuid.UUID, method string, sessionID *uuid.UUID, fingerprint string) {
 	if h.deviceHandler == nil {
 		return
-	}
-
-	ip := getClientIP(r)
-	ua := r.UserAgent()
-	history := &storage.LoginHistory{
-		UserID:      userID,
-		IPAddress:   &ip,
-		UserAgent:   &ua,
-		LoginMethod: &method,
-		Status:      status,
-	}
-	if failureReason != nil {
-		history.FailureReason = failureReason
-	}
-
-	go func() {
-		if err := h.deviceHandler.RecordLogin(context.Background(), history); err != nil {
-			h.logger.Error("Failed to record login history", "error", err, "user_id", userID)
-		}
-	}()
-}
-
-// getClientIP extracts the real client IP from the request.
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies/load balancers)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return strings.TrimSpace(xff)
-	}
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	// Fallback to RemoteAddr
-	return r.RemoteAddr
-}
-
-// recordDevice records the device used for login.
-func (h *Handler) recordDevice(r *http.Request, userID uuid.UUID, fingerprint string) {
-	if h.deviceHandler == nil {
-		return
-	}
-
-	var fp *string
-	if fingerprint != "" {
-		fp = &fingerprint
 	}
 
 	// Extract values before goroutine since request may be closed
 	userAgent := r.UserAgent()
-	ipAddress := getClientIP(r)
+	ipAddress := utils.GetClientIP(r)
 
 	go func() {
-		_, _, err := h.deviceHandler.RecordDevice(context.Background(), &device.RecordDeviceRequest{
+		ctx := context.Background()
+
+		// 1. Record/Update device
+		var fp *string
+		if fingerprint != "" {
+			fp = &fingerprint
+		}
+
+		d, _, err := h.deviceHandler.RecordDevice(ctx, &device.RecordDeviceRequest{
 			UserID:            userID,
 			DeviceFingerprint: fp,
 			UserAgent:         userAgent,
 			IPAddress:         ipAddress,
 		})
+		
+		var deviceID *uuid.UUID
 		if err != nil {
 			h.logger.Error("Failed to record device", "error", err, "user_id", userID)
+		} else if d != nil {
+			deviceID = &d.ID
+			
+			// 2. Link session to device if we have a session
+			if sessionID != nil {
+				if err := h.authService.LinkSessionToDevice(ctx, *sessionID, d.ID); err != nil {
+					h.logger.Error("Failed to link session to device", "error", err, "session_id", *sessionID)
+				}
+			}
+		}
+
+		// 3. Record login history
+		history := &storage.LoginHistory{
+			UserID:      userID,
+			SessionID:   sessionID,
+			DeviceID:    deviceID,
+			IPAddress:   &ipAddress,
+			UserAgent:   &userAgent,
+			LoginMethod: &method,
+			Status:      "success",
+		}
+
+		if err := h.deviceHandler.RecordLogin(ctx, history); err != nil {
+			h.logger.Error("Failed to record login history", "error", err, "user_id", userID)
+		}
+	}()
+}
+
+// recordLoginFailure records a failed login attempt.
+func (h *Handler) recordLoginFailure(r *http.Request, userID uuid.UUID, method string, failureReason string) {
+	if h.deviceHandler == nil {
+		return
+	}
+
+	ipAddress := utils.GetClientIP(r)
+	userAgent := r.UserAgent()
+
+	go func() {
+		ctx := context.Background()
+		history := &storage.LoginHistory{
+			UserID:        userID,
+			IPAddress:     &ipAddress,
+			UserAgent:     &userAgent,
+			LoginMethod:   &method,
+			Status:        "failed",
+			FailureReason: &failureReason,
+		}
+
+		if err := h.deviceHandler.RecordLogin(ctx, history); err != nil {
+			h.logger.Error("Failed to record login failure", "error", err, "user_id", userID)
 		}
 	}()
 }

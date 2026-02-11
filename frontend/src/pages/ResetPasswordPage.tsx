@@ -5,6 +5,7 @@ import { Button, Input, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
 import { PasswordStrength } from '../components/security';
+import { AuthFooter } from '../components/layout';
 
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -169,6 +170,8 @@ export function ResetPasswordPage() {
               </div>
             )}
           </div>
+
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

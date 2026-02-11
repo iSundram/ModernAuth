@@ -123,8 +123,12 @@ func (h *Handler) GoogleOneTapLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record login history and device
+	method := "google_one_tap"
+	h.recordLogin(r, user.ID, method, &session.ID, "")
+
 	// Log the event
-	ip := r.RemoteAddr
+	ip := utils.GetClientIP(r)
 	ua := r.UserAgent()
 	eventType := "login.google_one_tap"
 	if isNew {

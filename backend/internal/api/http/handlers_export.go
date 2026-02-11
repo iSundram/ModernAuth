@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/iSundram/ModernAuth/internal/storage"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // ExportUserData handles GDPR data export requests.
@@ -16,7 +17,7 @@ func (h *Handler) ExportUserData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.authService.ExportUserData(r.Context(), userID, r.RemoteAddr, r.UserAgent())
+	result, err := h.authService.ExportUserData(r.Context(), userID, utils.GetClientIP(r), r.UserAgent())
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to export user data", err)
 		return

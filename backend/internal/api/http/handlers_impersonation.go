@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // ImpersonateUserRequest represents a request to impersonate a user.
@@ -68,7 +69,7 @@ func (h *Handler) ImpersonateUser(w http.ResponseWriter, r *http.Request) {
 		AdminUserID:  adminUserID,
 		TargetUserID: targetUserID,
 		Reason:       req.Reason,
-		IPAddress:    r.RemoteAddr,
+		IPAddress:    utils.GetClientIP(r),
 		UserAgent:    r.Header.Get("User-Agent"),
 	}
 

@@ -259,7 +259,7 @@ export function AdminEmailBrandingPage() {
                   value={effectiveFormData.footer_text}
                   onChange={(e) => handleChange('footer_text', e.target.value)}
                   className="w-full h-24 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                  placeholder="© 2024 Your Company. All rights reserved."
+                  placeholder={`© ${new Date().getFullYear()} Your Company. All rights reserved.`}
                 />
               </div>
             </CardContent>
@@ -318,7 +318,7 @@ export function AdminEmailBrandingPage() {
                   style={{ backgroundColor: effectiveFormData.secondary_color }}
                 >
                   <p className="text-white text-xs">
-                    {effectiveFormData.footer_text || '© 2024 Your Company. All rights reserved.'}
+                    {effectiveFormData.footer_text || `© ${new Date().getFullYear()} Your Company. All rights reserved.`}
                   </p>
                   {effectiveFormData.support_email && (
                     <p className="text-white/80 text-xs mt-1">

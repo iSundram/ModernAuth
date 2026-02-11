@@ -7,6 +7,7 @@ import (
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/storage"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // UpdatePreferencesHTTPRequest represents the request body for updating user preferences.
@@ -102,7 +103,7 @@ func (h *Handler) UpdatePreferencesHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Log audit event with IP and User-Agent
-	ip := r.RemoteAddr
+	ip := utils.GetClientIP(r)
 	userAgent := r.UserAgent()
 
 	prefs, err := h.authService.UpdatePreferences(r.Context(), userID, &auth.UpdatePreferencesRequest{

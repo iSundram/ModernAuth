@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // RevokeAllSessions handles revoking all user sessions.
@@ -21,7 +22,7 @@ func (h *Handler) RevokeAllSessions(w http.ResponseWriter, r *http.Request) {
 
 	err = h.authService.RevokeAllSessions(r.Context(), &auth.RevokeAllSessionsRequest{
 		UserID:    userID,
-		IP:        r.RemoteAddr,
+		IP:        utils.GetClientIP(r),
 		UserAgent: r.UserAgent(),
 	})
 

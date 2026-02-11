@@ -9,6 +9,7 @@ import (
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/email"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // ForgotPassword handles password reset requests.
@@ -127,7 +128,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		UserID:          userID,
 		CurrentPassword: req.CurrentPassword,
 		NewPassword:     req.NewPassword,
-		IP:              r.RemoteAddr,
+		IP:              utils.GetClientIP(r),
 		UserAgent:       r.UserAgent(),
 	})
 

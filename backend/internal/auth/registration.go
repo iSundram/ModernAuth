@@ -13,15 +13,18 @@ import (
 
 // RegisterRequest represents a user registration request.
 type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Username string `json:"username,omitempty"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	Username  string `json:"username,omitempty"`
+	IP        string `json:"-"`
+	UserAgent string `json:"-"`
 }
 
 // RegisterResult represents the result of user registration.
 type RegisterResult struct {
 	User      *storage.User `json:"user"`
 	TokenPair *TokenPair    `json:"tokens"`
+	SessionID *uuid.UUID    `json:"session_id,omitempty"`
 }
 
 // Register creates a new user account.
@@ -108,12 +111,13 @@ func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (*Regi
 	}
 
 	// Log the registration event
-	if err := s.logAuditEvent(ctx, &user.ID, nil, "user.registered", nil, nil, nil); err != nil {
+	if err := s.logAuditEvent(ctx, &user.ID, nil, "user.registered", &req.IP, &req.UserAgent, nil); err != nil {
 		s.logger.Error("Failed to log registration event", "error", err, "user_id", user.ID)
 	}
 
 	return &RegisterResult{
 		User:      user,
 		TokenPair: tokenPair,
+		SessionID: &session.ID,
 	}, nil
 }

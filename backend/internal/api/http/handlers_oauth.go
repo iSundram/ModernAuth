@@ -281,28 +281,42 @@ func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	// Record login history and device for OAuth
 	if h.deviceHandler != nil {
 		method := "oauth_" + providerName
-		ip := getClientIP(r)
+		ip := utils.GetClientIP(r)
 		ua := r.UserAgent()
 		status := "success"
-		history := &storage.LoginHistory{
-			UserID:      user.ID,
-			IPAddress:   &ip,
-			UserAgent:   &ua,
-			LoginMethod: &method,
-			Status:      status,
-		}
+		
 		go func() {
-			if err := h.deviceHandler.RecordLogin(context.Background(), history); err != nil {
-				slog.Error("Failed to record OAuth login history", "error", err, "user_id", user.ID)
-			}
-			// Record device
-			_, _, err := h.deviceHandler.RecordDevice(context.Background(), &device.RecordDeviceRequest{
+			// Record device first to get ID
+			d, _, err := h.deviceHandler.RecordDevice(context.Background(), &device.RecordDeviceRequest{
 				UserID:    user.ID,
 				UserAgent: ua,
 				IPAddress: ip,
 			})
-			if err != nil {
+			
+			var deviceID *uuid.UUID
+			if err == nil && d != nil {
+				deviceID = &d.ID
+				
+				// Update session with device ID
+				session.DeviceID = deviceID
+				if err := h.storage.UpdateSession(context.Background(), session); err != nil {
+					slog.Error("Failed to link OAuth session to device", "error", err, "session_id", session.ID)
+				}
+			} else if err != nil {
 				slog.Error("Failed to record OAuth device", "error", err, "user_id", user.ID)
+			}
+
+			history := &storage.LoginHistory{
+				UserID:      user.ID,
+				SessionID:   &session.ID,
+				DeviceID:    deviceID,
+				IPAddress:   &ip,
+				UserAgent:   &ua,
+				LoginMethod: &method,
+				Status:      status,
+			}
+			if err := h.deviceHandler.RecordLogin(context.Background(), history); err != nil {
+				slog.Error("Failed to record OAuth login history", "error", err, "user_id", user.ID)
 			}
 		}()
 	}

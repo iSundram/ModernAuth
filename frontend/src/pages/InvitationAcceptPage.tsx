@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button, Input, LoadingBar } from '../components/ui';
 import { invitationService } from '../api/services';
 import { Lock, Mail } from 'lucide-react';
+import { AuthFooter } from '../components/layout';
 
 export function InvitationAcceptPage() {
   const [searchParams] = useSearchParams();
@@ -137,6 +138,7 @@ export function InvitationAcceptPage() {
             )}
           </CardContent>
         </Card>
+        <AuthFooter className="mt-6" />
       </div>
     </div>
   );

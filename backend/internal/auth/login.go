@@ -15,6 +15,7 @@ type LoginRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	TrustDevice bool   `json:"trust_device,omitempty"`
 	IP          string `json:"-"`
 	UserAgent   string `json:"-"`
 }
@@ -23,6 +24,7 @@ type LoginRequest struct {
 type LoginResult struct {
 	User           *storage.User `json:"user"`
 	TokenPair      *TokenPair    `json:"tokens,omitempty"`
+	SessionID      *uuid.UUID    `json:"session_id,omitempty"`
 	MFARequired    bool          `json:"mfa_required"`
 	MFAChallengeID *uuid.UUID    `json:"mfa_challenge_id,omitempty"`
 }
@@ -142,9 +144,17 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 	// Log successful login
 	s.logAuditEvent(ctx, &user.ID, nil, "login.success", &req.IP, &req.UserAgent, nil)
 
+	// Trust device if requested
+	if req.TrustDevice && req.Fingerprint != "" {
+		if err := s.TrustDeviceForMFA(ctx, user.ID, req.Fingerprint, 30); err != nil {
+			s.logger.Error("Failed to trust device during login", "error", err, "user_id", user.ID)
+		}
+	}
+
 	return &LoginResult{
 		User:      user,
 		TokenPair: tokenPair,
+		SessionID: &session.ID,
 	}, nil
 }
 

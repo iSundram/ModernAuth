@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // SendMagicLinkRequest represents a request to send a magic link.
@@ -62,7 +63,7 @@ func (h *Handler) SendMagicLink(w http.ResponseWriter, r *http.Request) {
 	// Create magic link request
 	magicLinkReq := &auth.MagicLinkRequest{
 		Email:     req.Email,
-		IPAddress: r.RemoteAddr,
+		IPAddress: utils.GetClientIP(r),
 		UserAgent: r.Header.Get("User-Agent"),
 	}
 
@@ -137,10 +138,7 @@ func (h *Handler) VerifyMagicLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record login history and device for magic link
-	if h.deviceHandler != nil {
-		h.recordLoginHistory(r, result.User.ID, "magic_link", "success", nil)
-		h.recordDevice(r, result.User.ID, "")
-	}
+	h.recordLogin(r, result.User.ID, "magic_link", result.SessionID, "")
 
 	// Prepare response
 	response := map[string]interface{}{

@@ -4,6 +4,7 @@ import { CheckCircle, XCircle } from 'lucide-react';
 import { Button, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
+import { AuthFooter } from '../components/layout';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -143,6 +144,8 @@ export function VerifyEmailPage() {
               )}
             </div>
           </div>
+
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

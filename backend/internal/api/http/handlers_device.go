@@ -13,12 +13,16 @@ import (
 
 // DeviceHandler provides HTTP handlers for device management.
 type DeviceHandler struct {
-	deviceService *device.Service
+	deviceService  *device.Service
+	sessionStorage storage.SessionStorage
 }
 
 // NewDeviceHandler creates a new device handler.
-func NewDeviceHandler(service *device.Service) *DeviceHandler {
-	return &DeviceHandler{deviceService: service}
+func NewDeviceHandler(service *device.Service, sessStor storage.SessionStorage) *DeviceHandler {
+	return &DeviceHandler{
+		deviceService:  service,
+		sessionStorage: sessStor,
+	}
 }
 
 // DeviceRoutes returns chi routes for device management.
@@ -80,6 +84,17 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, _ := uuid.Parse(userIDStr)
 
+	// Get current device ID from session
+	var currentDeviceID *uuid.UUID
+	sessionIDStr, _ := r.Context().Value(sessionIDKey).(string)
+	if sessionIDStr != "" {
+		if sessionID, err := uuid.Parse(sessionIDStr); err == nil {
+			if session, err := h.sessionStorage.GetSessionByID(r.Context(), sessionID); err == nil && session != nil {
+				currentDeviceID = session.DeviceID
+			}
+		}
+	}
+
 	devices, err := h.deviceService.ListUserDevices(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to list devices", err)
@@ -88,7 +103,7 @@ func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]DeviceResponse, len(devices))
 	for i, d := range devices {
-		response[i] = h.toDeviceResponse(d)
+		response[i] = h.toDeviceResponse(d, currentDeviceID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -128,7 +143,18 @@ func (h *DeviceHandler) GetDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, h.toDeviceResponse(d))
+	// Get current device ID from session
+	var currentDeviceID *uuid.UUID
+	sessionIDStr, _ := r.Context().Value(sessionIDKey).(string)
+	if sessionIDStr != "" {
+		if sessionID, err := uuid.Parse(sessionIDStr); err == nil {
+			if session, err := h.sessionStorage.GetSessionByID(r.Context(), sessionID); err == nil && session != nil {
+				currentDeviceID = session.DeviceID
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, h.toDeviceResponse(d, currentDeviceID))
 }
 
 // RemoveDevice removes a device.
@@ -236,7 +262,12 @@ func (h *DeviceHandler) GetLoginHistory(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (h *DeviceHandler) toDeviceResponse(d *storage.UserDevice) DeviceResponse {
+func (h *DeviceHandler) toDeviceResponse(d *storage.UserDevice, currentDeviceID *uuid.UUID) DeviceResponse {
+	isCurrent := false
+	if currentDeviceID != nil && d.ID == *currentDeviceID {
+		isCurrent = true
+	}
+
 	resp := DeviceResponse{
 		ID:              d.ID.String(),
 		DeviceName:      d.DeviceName,
@@ -247,7 +278,7 @@ func (h *DeviceHandler) toDeviceResponse(d *storage.UserDevice) DeviceResponse {
 		LocationCountry: d.LocationCountry,
 		LocationCity:    d.LocationCity,
 		IsTrusted:       d.IsTrusted,
-		IsCurrent:       d.IsCurrent,
+		IsCurrent:       isCurrent,
 		CreatedAt:       d.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if d.LastSeenAt != nil {

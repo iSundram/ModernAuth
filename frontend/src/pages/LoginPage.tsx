@@ -1,12 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../components/ui/Toast';
 import { Button, Input, LoadingBar } from '../components/ui';
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, Github, Chrome, Globe } from 'lucide-react';
 import { authService } from '../api/services';
 import { CaptchaWidget } from '../components/security';
+import { AuthFooter } from '../components/layout';
 import type { UserRole } from '../types';
 
 function getDashboardRoute(role?: UserRole): string {
@@ -24,13 +26,14 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
   const [searchParams] = useSearchParams();
   
   // MFA State
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaUserId, setMfaUserId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+
+  const { showToast } = useToast();
 
   // CAPTCHA State
   const [captchaToken, setCaptchaToken] = useState('');
@@ -42,11 +45,13 @@ export function LoginPage() {
   });
   const oauthProviders = oauthData?.providers || [];
 
-  // Derive OAuth error from search params
-  const oauthError = useMemo(() => {
+  // Handle OAuth error from search params
+  useEffect(() => {
     const errorParam = searchParams.get('error');
-    return errorParam ? `OAuth error: ${errorParam}` : '';
-  }, [searchParams]);
+    if (errorParam) {
+      showToast({ title: 'OAuth Error', message: errorParam, type: 'error' });
+    }
+  }, [searchParams, showToast]);
 
   const handleOAuthLogin = async (provider: string) => {
     try {
@@ -55,7 +60,7 @@ export function LoginPage() {
       window.location.href = response.authorization_url;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to initiate OAuth login';
-      setError(errorMessage);
+      showToast({ title: 'Error', message: errorMessage, type: 'error' });
     }
   };
 
@@ -65,10 +70,9 @@ export function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
     
     if (!email || !password) {
-      setError('Please enter both email and password');
+      showToast({ title: 'Error', message: 'Please enter both email and password', type: 'error' });
       return;
     }
 
@@ -80,16 +84,15 @@ export function LoginPage() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
-      setError(errorMessage);
+      showToast({ title: 'Error', message: errorMessage, type: 'error' });
     }
   };
 
   const handleMfaSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
 
     if (!mfaCode || mfaCode.length !== 6) {
-      setError('Please enter a valid 6-digit code');
+      showToast({ title: 'Error', message: 'Please enter a valid 6-digit code', type: 'error' });
       return;
     }
 
@@ -97,7 +100,7 @@ export function LoginPage() {
       await loginMfa(mfaUserId, mfaCode);
     } catch (err) {
        const errorMessage = err instanceof Error ? err.message : 'Invalid MFA code';
-       setError(errorMessage);
+       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     }
   };
 
@@ -128,12 +131,6 @@ export function LoginPage() {
           <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-6">
             {mfaRequired ? 'Two-Factor Authentication' : 'Sign in to your account'}
           </h2>
-
-          {(error || oauthError) && (
-            <div className="mb-4 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-              {error || oauthError}
-            </div>
-          )}
 
           {!mfaRequired ? (
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -383,10 +380,7 @@ export function LoginPage() {
           )}
         </div>
 
-        {/* Footer */}
-        <p className="text-center mt-8 text-sm text-[var(--color-text-muted)]">
-          © 2024 ModernAuth. All rights reserved.
-        </p>
+        <AuthFooter className="mt-8" />
         </div>
       </div>
     </div>

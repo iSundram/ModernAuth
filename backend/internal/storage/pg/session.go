@@ -96,6 +96,25 @@ func (s *PostgresStorage) GetUserSessions(ctx context.Context, userID uuid.UUID,
 	return sessions, rows.Err()
 }
 
+// UpdateSession updates an existing session.
+func (s *PostgresStorage) UpdateSession(ctx context.Context, session *storage.Session) error {
+	query := `
+		UPDATE sessions
+		SET tenant_id = $2, device_id = $3, fingerprint = $4, expires_at = $5, revoked = $6, metadata = $7
+		WHERE id = $1
+	`
+	_, err := s.pool.Exec(ctx, query,
+		session.ID,
+		session.TenantID,
+		session.DeviceID,
+		session.Fingerprint,
+		session.ExpiresAt,
+		session.Revoked,
+		session.Metadata,
+	)
+	return err
+}
+
 // RevokeSession revokes a session by its ID.
 func (s *PostgresStorage) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE sessions SET revoked = true WHERE id = $1`

@@ -9,7 +9,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginRequest) => Promise<LoginMfaRequiredResponse | void>;
-  loginMfa: (userId: string, code: string) => Promise<void>;
+  loginMfa: (userId: string, code: string, options?: { trustDevice?: boolean }) => Promise<void>;
   /** Store tokens and user from a login response (e.g. after email/backup/passkey MFA). */
   completeLogin: (response: LoginResponse) => void;
   logout: () => Promise<void>;

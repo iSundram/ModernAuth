@@ -46,6 +46,20 @@ func (s *AuthService) RevokeAllSessions(ctx context.Context, req *RevokeAllSessi
 	return nil
 }
 
+// LinkSessionToDevice links a session to a device.
+func (s *AuthService) LinkSessionToDevice(ctx context.Context, sessionID, deviceID uuid.UUID) error {
+	session, err := s.storage.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session == nil {
+		return ErrSessionNotFound
+	}
+
+	session.DeviceID = &deviceID
+	return s.storage.UpdateSession(ctx, session)
+}
+
 // GetUserSessions retrieves active sessions for a user.
 func (s *AuthService) GetUserSessions(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*storage.Session, error) {
 	if limit <= 0 {

@@ -333,7 +333,7 @@ func main() {
 
 	// Initialize specialized handlers
 	tenantHandler := httpapi.NewTenantHandler(tenantService, authService)
-	deviceHandler := httpapi.NewDeviceHandler(deviceService)
+	deviceHandler := httpapi.NewDeviceHandler(deviceService, storage)
 	apiKeyHandler := httpapi.NewAPIKeyHandler(apiKeyService)
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)
 	invitationHandler := httpapi.NewInvitationHandler(invitationService)

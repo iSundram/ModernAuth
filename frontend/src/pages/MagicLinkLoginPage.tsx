@@ -5,11 +5,11 @@ import { Mail, Wand2, ArrowLeft, CheckCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
+import { AuthFooter } from '../components/layout';
 
 export function MagicLinkLoginPage() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const { showToast } = useToast();
   const { isAuthenticated } = useAuth();
@@ -22,17 +22,16 @@ export function MagicLinkLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     
     if (!email) {
-      setError('Please enter your email address');
+      showToast({ title: 'Error', message: 'Please enter your email address', type: 'error' });
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
     if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
+      showToast({ title: 'Error', message: 'Please enter a valid email address', type: 'error' });
       return;
     }
 
@@ -125,12 +124,6 @@ export function MagicLinkLoginPage() {
               </p>
             </div>
 
-            {error && (
-              <div className="mb-6 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-                {error}
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-6">
               <Input
                 label="Email"
@@ -165,9 +158,7 @@ export function MagicLinkLoginPage() {
             </div>
           </div>
 
-          <p className="text-center mt-6 text-sm text-[var(--color-text-muted)]">
-            © 2024 ModernAuth. All rights reserved.
-          </p>
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

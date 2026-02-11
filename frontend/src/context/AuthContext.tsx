@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { User, LoginRequest, LoginResponse, LoginMfaRequiredResponse } from '../types';
 import { AuthContext } from './AuthContextDef';
 import { authService } from '../api/services';
+import { getDeviceFingerprint } from '../utils/fingerprint';
 export type { AuthContextType } from './AuthContextDef';
 
 // Type guard to check if a response is an MFA required response
@@ -119,6 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (credentials: LoginRequest): Promise<LoginMfaRequiredResponse | void> => {
     setIsLoading(true);
     try {
+      // Inject fingerprint if not present
+      if (!credentials.fingerprint) {
+        credentials.fingerprint = await getDeviceFingerprint();
+      }
+
       const response = await authService.login(credentials);
       
       if (isMfaRequiredResponse(response)) {
@@ -155,10 +161,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginMfa = async (userId: string, code: string): Promise<void> => {
+  const loginMfa = async (userId: string, code: string, options?: { trustDevice?: boolean }): Promise<void> => {
     setIsLoading(true);
     try {
-      const response = await authService.loginMfa({ user_id: userId, code });
+      const fingerprint = await getDeviceFingerprint();
+      const response = await authService.loginMfa({ 
+        user_id: userId, 
+        code,
+        fingerprint,
+        trust_device: options?.trustDevice,
+      });
       
       if (!isLoginResponseWithTokens(response)) {
         throw new Error('Invalid response: missing tokens');

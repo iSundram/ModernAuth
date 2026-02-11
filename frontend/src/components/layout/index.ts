@@ -5,3 +5,4 @@ export { Header } from './Header';
 export { Sidebar } from './Sidebar';
 export { AdminSidebar } from './AdminSidebar';
 export { UserSidebar } from './UserSidebar';
+export { AuthFooter } from './AuthFooter';

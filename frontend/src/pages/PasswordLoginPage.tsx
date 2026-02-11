@@ -6,12 +6,12 @@ import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Cloc
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
+import { AuthFooter } from '../components/layout';
 
 export function PasswordLoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [email, setEmail] = useState('');
   
   // MFA State
@@ -65,10 +65,9 @@ export function PasswordLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     
     if (!password) {
-      setError('Please enter your password');
+      showToast({ title: 'Error', message: 'Please enter your password', type: 'error' });
       return;
     }
 
@@ -99,7 +98,6 @@ export function PasswordLoginPage() {
       navigate('/');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid password';
-      setError(errorMessage);
       showToast({ title: 'Login Failed', message: errorMessage, type: 'error' });
     } finally {
       if (!mfaRequired) {
@@ -110,16 +108,15 @@ export function PasswordLoginPage() {
 
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
 
     if (mfaMethod === 'backup') {
       const normalized = mfaCode?.trim().replace(/-/g, '').toLowerCase() ?? '';
       if (normalized.length < 8) {
-        setError('Backup code must be 8 characters (e.g. xxxx-xxxx)');
+        showToast({ title: 'Error', message: 'Backup code must be 8 characters (e.g. xxxx-xxxx)', type: 'error' });
         return;
       }
     } else if (!mfaCode || mfaCode.length !== 6) {
-      setError('Please enter a valid 6-digit code');
+      showToast({ title: 'Error', message: 'Please enter a valid 6-digit code', type: 'error' });
       return;
     }
 
@@ -137,7 +134,7 @@ export function PasswordLoginPage() {
         const res = await authService.loginWithBackupCode(mfaUserId, backupCodeNormalized);
         completeLogin(res);
       } else {
-        await loginMfa(mfaUserId, mfaCode);
+        await loginMfa(mfaUserId, mfaCode, { trustDevice });
       }
       
       // Clear session storage
@@ -147,7 +144,6 @@ export function PasswordLoginPage() {
       navigate('/');
     } catch (err) {
        const errorMessage = err instanceof Error ? err.message : 'Invalid MFA code';
-       setError(errorMessage);
        showToast({ title: 'MFA Failed', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -162,7 +158,6 @@ export function PasswordLoginPage() {
       showToast({ title: 'Code Sent', message: 'Check your email for the verification code', type: 'success' });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send email code';
-      setError(errorMessage);
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -177,7 +172,6 @@ export function PasswordLoginPage() {
       showToast({ title: 'Code Sent', message: 'Check your phone for the verification code', type: 'success' });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send SMS code';
-      setError(errorMessage);
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -186,7 +180,6 @@ export function PasswordLoginPage() {
 
   const handlePasskeyLogin = async () => {
     setIsLoading(true);
-    setError('');
     
     try {
       // Get authentication options (and challenge id) from server
@@ -219,7 +212,6 @@ export function PasswordLoginPage() {
         showToast({ title: 'Cancelled', message: 'Passkey authentication was cancelled', type: 'info' });
       } else {
         const errorMessage = error instanceof Error ? error.message : 'Passkey authentication failed';
-        setError(errorMessage);
         showToast({ title: 'Error', message: errorMessage, type: 'error' });
       }
     } finally {
@@ -271,12 +263,6 @@ export function PasswordLoginPage() {
               {email && maskEmail(email)}
             </p>
           </div>
-
-            {error && (
-              <div className="mb-6 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-                {error}
-              </div>
-            )}
 
             {!mfaRequired ? (
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -460,7 +446,7 @@ export function PasswordLoginPage() {
                         {showMethod('totp') && (
                           <button
                             type="button"
-                            onClick={() => { setMfaMethod('totp'); setMfaCode(''); setError(''); }}
+                            onClick={() => { setMfaMethod('totp'); setMfaCode(''); }}
                             className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                               mfaMethod === 'totp' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                             }`}
@@ -472,7 +458,7 @@ export function PasswordLoginPage() {
                         {showMethod('email') && (
                           <button
                             type="button"
-                            onClick={() => { setMfaMethod('email'); setMfaCode(''); setError(''); setEmailMfaSent(false); }}
+                            onClick={() => { setMfaMethod('email'); setMfaCode(''); setEmailMfaSent(false); }}
                             className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                               mfaMethod === 'email' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                             }`}
@@ -484,7 +470,7 @@ export function PasswordLoginPage() {
                         {showMethod('sms') && (
                           <button
                             type="button"
-                            onClick={() => { setMfaMethod('sms'); setMfaCode(''); setError(''); setSmsMfaSent(false); }}
+                            onClick={() => { setMfaMethod('sms'); setMfaCode(''); setSmsMfaSent(false); }}
                             className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                               mfaMethod === 'sms' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                             }`}
@@ -496,7 +482,7 @@ export function PasswordLoginPage() {
                         {showMethod('webauthn') && (
                           <button
                             type="button"
-                            onClick={() => { setMfaMethod('passkey'); setMfaCode(''); setError(''); }}
+                            onClick={() => { setMfaMethod('passkey'); setMfaCode(''); }}
                             className={`flex-1 flex items-center justify-center gap-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                               mfaMethod === 'passkey' ? 'bg-white text-[var(--color-text-primary)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                             }`}
@@ -513,7 +499,7 @@ export function PasswordLoginPage() {
                 {mfaMethod !== 'backup' && (
                   <button 
                     type="button"
-                    onClick={() => { setMfaMethod('backup'); setMfaCode(''); setError(''); }}
+                    onClick={() => { setMfaMethod('backup'); setMfaCode(''); }}
                     className="w-full text-center text-sm text-[var(--color-info)] hover:text-[var(--color-info-dark)]"
                   >
                     Use a backup code instead
@@ -537,10 +523,7 @@ export function PasswordLoginPage() {
             )}
            </div>
 
-           {/* Additional footer */}
-           <p className="text-center mt-6 text-sm text-[var(--color-text-muted)]">
-             © 2024 ModernAuth. All rights reserved.
-           </p>
+           <AuthFooter className="mt-6" />
          </div>
        </div>
      </div>

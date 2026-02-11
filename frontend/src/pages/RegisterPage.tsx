@@ -6,6 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
 import { PasswordStrength, CaptchaWidget } from '../components/security';
+import { AuthFooter } from '../components/layout';
 
 export function RegisterPage() {
   const { settings } = useAuth();
@@ -16,7 +17,6 @@ export function RegisterPage() {
     confirmPassword: '',
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
   
   const { showToast } = useToast();
@@ -41,21 +41,20 @@ export function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
 
     // Validation
     if (!formData.email || !formData.password || !formData.username) {
-      setError('Please fill in all required fields');
+      showToast({ title: 'Error', message: 'Please fill in all required fields', type: 'error' });
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      showToast({ title: 'Error', message: 'Passwords do not match', type: 'error' });
       return;
     }
 
     if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      showToast({ title: 'Error', message: 'Password must be at least 8 characters long', type: 'error' });
       return;
     }
 
@@ -79,7 +78,6 @@ export function RegisterPage() {
       navigate('/login');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
-      setError(errorMessage);
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -106,17 +104,12 @@ export function RegisterPage() {
                 Create Account
               </h2>
               <p className="text-base text-[var(--color-text-secondary)] text-center mt-4">
-                Join ModernAuth today
-              </p>
-            </div>
-
-            {error && (
-              <div className="mb-6 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
+                              Join ModernAuth today
+                            </p>
+                          </div>
+                
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                
               <Input
                 label="Email"
                 name="email"
@@ -192,6 +185,8 @@ export function RegisterPage() {
               </p>
             </div>
           </div>
+
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

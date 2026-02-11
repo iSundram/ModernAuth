@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 type contextKey string
@@ -45,19 +47,7 @@ func (m *Middleware) Authenticate(requiredScopes ...string) func(http.Handler) h
 			}
 
 			// Get client IP
-			clientIP := r.RemoteAddr
-			if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
-				// Take the first IP in the chain
-				if idx := strings.Index(forwardedFor, ","); idx != -1 {
-					clientIP = strings.TrimSpace(forwardedFor[:idx])
-				} else {
-					clientIP = strings.TrimSpace(forwardedFor)
-				}
-			}
-			// Remove port if present
-			if idx := strings.LastIndex(clientIP, ":"); idx != -1 {
-				clientIP = clientIP[:idx]
-			}
+			clientIP := utils.GetClientIP(r)
 
 			// Validate the API key
 			key, err := m.service.ValidateAPIKey(r.Context(), apiKey, requiredScopes, clientIP)

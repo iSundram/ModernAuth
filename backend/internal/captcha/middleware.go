@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // Middleware returns a chi-compatible middleware that verifies CAPTCHA tokens.
@@ -50,13 +52,13 @@ func Middleware(svc Service) func(http.Handler) http.Handler {
 			}
 
 			if token == "" {
-				logger.Warn("CAPTCHA token missing", "remote_addr", r.RemoteAddr, "path", r.URL.Path)
+				logger.Warn("CAPTCHA token missing", "remote_addr", utils.GetClientIP(r), "path", r.URL.Path)
 				writeJSONError(w, http.StatusForbidden, "CAPTCHA verification required")
 				return
 			}
 
 			// Use X-Forwarded-For / X-Real-IP if available (chi middleware.RealIP sets RemoteAddr).
-			remoteIP := r.RemoteAddr
+			remoteIP := utils.GetClientIP(r)
 
 			result, err := svc.Verify(r.Context(), token, remoteIP)
 			if err != nil {

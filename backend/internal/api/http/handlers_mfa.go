@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 // DisableMFARequest represents a request to disable MFA.
@@ -140,7 +141,7 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 	result, err := h.authService.LoginWithBackupCode(r.Context(), &auth.LoginWithBackupCodeRequest{
 		UserID:     userID,
 		BackupCode: req.BackupCode,
-		IP:         r.RemoteAddr,
+		IP:         utils.GetClientIP(r),
 		UserAgent:  r.UserAgent(),
 	})
 
@@ -181,6 +182,10 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login_backup").Inc()
+
+	// Record login history and device
+	h.recordLogin(r, result.User.ID, "backup_code", result.SessionID, "")
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
@@ -330,7 +335,7 @@ func (h *Handler) LoginEmailMFA(w http.ResponseWriter, r *http.Request) {
 	result, err := h.authService.LoginWithEmailMFA(r.Context(), &auth.LoginWithEmailMFARequest{
 		UserID:    userID,
 		Code:      req.Code,
-		IP:        r.RemoteAddr,
+		IP:        utils.GetClientIP(r),
 		UserAgent: r.UserAgent(),
 	})
 
@@ -370,6 +375,10 @@ func (h *Handler) LoginEmailMFA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login_email_mfa").Inc()
+
+	// Record login history and device
+	h.recordLogin(r, result.User.ID, "email_mfa", result.SessionID, "")
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
@@ -667,7 +676,7 @@ func (h *Handler) FinishWebAuthnLogin(w http.ResponseWriter, r *http.Request) {
 	result, err := h.authService.FinishWebAuthnLogin(r.Context(), userID, &auth.FinishWebAuthnLoginRequest{
 		ChallengeID: challengeID,
 		Credential:  req.Credential,
-		IP:          r.RemoteAddr,
+		IP:          utils.GetClientIP(r),
 		UserAgent:   r.UserAgent(),
 	})
 
@@ -687,6 +696,10 @@ func (h *Handler) FinishWebAuthnLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login_webauthn").Inc()
+
+	// Record login history and device
+	h.recordLogin(r, result.User.ID, "passkey", result.SessionID, "")
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{
@@ -919,7 +932,7 @@ func (h *Handler) LoginSMSMFA(w http.ResponseWriter, r *http.Request) {
 	result, err := h.authService.LoginWithSMSMFA(r.Context(), &auth.LoginWithSMSMFARequest{
 		UserID:    userID,
 		Code:      req.Code,
-		IP:        r.RemoteAddr,
+		IP:        utils.GetClientIP(r),
 		UserAgent: r.UserAgent(),
 	})
 
@@ -959,6 +972,10 @@ func (h *Handler) LoginSMSMFA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authSuccessTotal.WithLabelValues("login_sms_mfa").Inc()
+
+	// Record login history and device
+	h.recordLogin(r, result.User.ID, "sms_mfa", result.SessionID, "")
+
 	response := LoginResponse{
 		User: h.buildUserResponse(r.Context(), result.User),
 		Tokens: TokensResponse{

@@ -4,11 +4,11 @@ import { Button, Input, LoadingBar } from '../components/ui';
 import { Mail, ChevronRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
+import { AuthFooter } from '../components/layout';
 
 export function EmailLoginPage() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const { showToast } = useToast();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -20,17 +20,16 @@ export function EmailLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     
     if (!email) {
-      setError('Please enter your email address');
+      showToast({ title: 'Error', message: 'Please enter your email address', type: 'error' });
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
     if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
+      showToast({ title: 'Error', message: 'Please enter a valid email address', type: 'error' });
       return;
     }
 
@@ -47,7 +46,6 @@ export function EmailLoginPage() {
       navigate('/login/password');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
-      setError(errorMessage);
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -81,12 +79,6 @@ export function EmailLoginPage() {
               Use your ModernAuth Account
             </p>
           </div>
-
-            {error && (
-              <div className="mb-6 p-3 rounded-lg bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 text-[var(--color-error)] text-sm">
-                {error}
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <Input
@@ -135,10 +127,7 @@ export function EmailLoginPage() {
             </div>
           </div>
 
-          {/* Additional footer */}
-          <p className="text-center mt-6 text-sm text-[var(--color-text-muted)]">
-            © 2024 ModernAuth. All rights reserved.
-          </p>
+          <AuthFooter className="mt-6" />
         </div>
       </div>
     </div>

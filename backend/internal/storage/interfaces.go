@@ -60,6 +60,7 @@ type SessionStorage interface {
 	CreateSession(ctx context.Context, session *Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*Session, error)
 	GetUserSessions(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Session, error)
+	UpdateSession(ctx context.Context, session *Session) error
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	RevokeUserSessions(ctx context.Context, userID uuid.UUID) error
 }

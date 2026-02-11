@@ -47,11 +47,12 @@ type DeviceInfo struct {
 
 // RecordDeviceRequest represents a request to record a device.
 type RecordDeviceRequest struct {
-	UserID          uuid.UUID
+	UserID            uuid.UUID
 	DeviceFingerprint *string
-	UserAgent       string
-	IPAddress       string
-	Location        *LocationInfo
+	UserAgent         string
+	IPAddress         string
+	Location          *LocationInfo
+	SessionID         *uuid.UUID
 }
 
 // LocationInfo contains geolocation information.
@@ -78,12 +79,37 @@ func (s *Service) RecordDevice(ctx context.Context, req *RecordDeviceRequest) (*
 	// Parse user agent
 	deviceInfo := ParseUserAgent(req.UserAgent)
 
+	// Fallback: match by UserAgent and IPAddress if no device found by fingerprint
+	if device == nil {
+		devices, err := s.storage.ListUserDevices(ctx, req.UserID)
+		if err == nil {
+			for _, d := range devices {
+				if d.IPAddress != nil && *d.IPAddress == req.IPAddress && d.Browser != nil && *d.Browser == deviceInfo.Browser && d.OS != nil && *d.OS == deviceInfo.OS {
+					device = d
+					break
+				}
+			}
+		}
+	}
+
 	now := time.Now()
+
+	// Clear IsCurrent for all other devices of this user
+	// This is a simple way to ensure only one device is marked as current in the DB
+	// although dynamic calculation is better, this matches existing schema.
+	devices, _ := s.storage.ListUserDevices(ctx, req.UserID)
+	for _, d := range devices {
+		if d.IsCurrent {
+			d.IsCurrent = false
+			_ = s.storage.UpdateDevice(ctx, d)
+		}
+	}
 
 	if device != nil {
 		// Update existing device
 		device.LastSeenAt = &now
 		device.IPAddress = &req.IPAddress
+		device.IsCurrent = true
 		if req.Location != nil {
 			device.LocationCountry = &req.Location.Country
 			device.LocationCity = &req.Location.City

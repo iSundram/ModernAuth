@@ -38,12 +38,15 @@ export interface LoginRequest {
   password: string;
   fingerprint?: string;
   captcha_token?: string;
+  trust_device?: boolean;
 }
 
 export interface LoginMFARequest {
   user_id: string;
+  mfa_challenge_id?: string;
   code: string;
   fingerprint?: string;
+  trust_device?: boolean;
 }
 
 export interface RegisterRequest {

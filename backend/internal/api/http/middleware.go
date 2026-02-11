@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/iSundram/ModernAuth/internal/utils"
 )
 
 type contextKey string
@@ -107,16 +108,7 @@ func (h *Handler) RateLimit(limit int, window time.Duration) func(http.Handler) 
 				return
 			}
 
-			ip := r.RemoteAddr
-			// Handle cases where RemoteAddr includes port
-			if lastColon := len(ip) - 1; lastColon >= 0 {
-				for i := lastColon; i >= 0; i-- {
-					if ip[i] == ':' {
-						ip = ip[:i]
-						break
-					}
-				}
-			}
+			ip := utils.GetClientIP(r)
 
 			key := fmt.Sprintf("ratelimit:%s:%s", r.URL.Path, ip)
 			ctx := r.Context()
@@ -189,16 +181,7 @@ func (h *Handler) DynamicRateLimit(settingKey string, defaultLimit int, window t
 				return
 			}
 
-			ip := r.RemoteAddr
-			// Handle cases where RemoteAddr includes port
-			if lastColon := len(ip) - 1; lastColon >= 0 {
-				for i := lastColon; i >= 0; i-- {
-					if ip[i] == ':' {
-						ip = ip[:i]
-						break
-					}
-				}
-			}
+			ip := utils.GetClientIP(r)
 
 			key := fmt.Sprintf("ratelimit:%s:%s", r.URL.Path, ip)
 			ctx := r.Context()

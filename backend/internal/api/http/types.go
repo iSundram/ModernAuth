@@ -46,6 +46,7 @@ type LoginRequest struct {
 	Email       string `json:"email" validate:"required,email"`
 	Password    string `json:"password" validate:"required"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	TrustDevice bool   `json:"trust_device,omitempty"`
 }
 
 // LoginResponse represents the login response.
@@ -60,6 +61,7 @@ type LoginMFARequest struct {
 	MFAChallengeID string `json:"mfa_challenge_id" validate:"required,uuid"` // Required to prove password was verified
 	Code           string `json:"code" validate:"required,len=6"`
 	Fingerprint    string `json:"fingerprint,omitempty"`
+	TrustDevice    bool   `json:"trust_device,omitempty"`
 }
 
 // RefreshRequest represents the refresh request body.
