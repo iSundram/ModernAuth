@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/iSundram/ModernAuth/internal/storage"
@@ -361,6 +362,16 @@ func (q *RedisStreamQueue) extractUser(payload map[string]interface{}) *storage.
 		return nil
 	}
 	user := &storage.User{}
+	if idStr, ok := userMap["id"].(string); ok {
+		if id, err := uuid.Parse(idStr); err == nil {
+			user.ID = id
+		}
+	}
+	if tidStr, ok := userMap["tenant_id"].(string); ok && tidStr != "" {
+		if tid, err := uuid.Parse(tidStr); err == nil {
+			user.TenantID = &tid
+		}
+	}
 	if email, ok := userMap["email"].(string); ok {
 		user.Email = email
 	}
@@ -567,9 +578,29 @@ func (q *RedisStreamQueue) enqueue(jobType, recipient string, payload interface{
 	return nil
 }
 
+func (q *RedisStreamQueue) uuidPtrToString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+func (q *RedisStreamQueue) buildUserPayload(user *storage.User) map[string]interface{} {
+	if user == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"id":         user.ID.String(),
+		"tenant_id":  q.uuidPtrToString(user.TenantID),
+		"email":      user.Email,
+		"first_name": user.FirstName,
+		"last_name":  user.LastName,
+	}
+}
+
 func (q *RedisStreamQueue) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
 	return q.enqueue(jobTypeVerification, user.Email, map[string]interface{}{
-		"user":       map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":       q.buildUserPayload(user),
 		"token":      token,
 		"verify_url": verifyURL,
 	})
@@ -577,7 +608,7 @@ func (q *RedisStreamQueue) SendVerificationEmail(ctx context.Context, user *stor
 
 func (q *RedisStreamQueue) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
 	return q.enqueue(jobTypePasswordReset, user.Email, map[string]interface{}{
-		"user":      map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":      q.buildUserPayload(user),
 		"token":     token,
 		"reset_url": resetURL,
 	})
@@ -585,13 +616,13 @@ func (q *RedisStreamQueue) SendPasswordResetEmail(ctx context.Context, user *sto
 
 func (q *RedisStreamQueue) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypeWelcome, user.Email, map[string]interface{}{
-		"user": map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user": q.buildUserPayload(user),
 	})
 }
 
 func (q *RedisStreamQueue) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
 	return q.enqueue(jobTypeLoginAlert, user.Email, map[string]interface{}{
-		"user":   map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":   q.buildUserPayload(user),
 		"device": map[string]interface{}{"ip": device.IPAddress, "user_agent": device.Browser, "location": device.Location},
 	})
 }
@@ -604,7 +635,7 @@ func (q *RedisStreamQueue) SendInvitationEmail(ctx context.Context, invitation *
 
 func (q *RedisStreamQueue) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypeMFAEnabled, user.Email, map[string]interface{}{
-		"user": map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user": q.buildUserPayload(user),
 	})
 }
 
@@ -617,20 +648,20 @@ func (q *RedisStreamQueue) SendMFACodeEmail(ctx context.Context, email string, c
 
 func (q *RedisStreamQueue) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
 	return q.enqueue(jobTypeLowBackupCodes, user.Email, map[string]interface{}{
-		"user":      map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":      q.buildUserPayload(user),
 		"remaining": remaining,
 	})
 }
 
 func (q *RedisStreamQueue) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypePasswordChanged, user.Email, map[string]interface{}{
-		"user": map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user": q.buildUserPayload(user),
 	})
 }
 
 func (q *RedisStreamQueue) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
 	return q.enqueue(jobTypeSessionRevoked, user.Email, map[string]interface{}{
-		"user":   map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":   q.buildUserPayload(user),
 		"reason": reason,
 	})
 }
@@ -641,7 +672,7 @@ func (q *RedisStreamQueue) SendMagicLink(ctx context.Context, email string, magi
 
 func (q *RedisStreamQueue) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
 	return q.enqueue(jobTypeAccountDeactivated, user.Email, map[string]interface{}{
-		"user":             map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":             q.buildUserPayload(user),
 		"reason":           reason,
 		"reactivation_url": reactivationURL,
 	})
@@ -649,7 +680,7 @@ func (q *RedisStreamQueue) SendAccountDeactivatedEmail(ctx context.Context, user
 
 func (q *RedisStreamQueue) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
 	return q.enqueue(jobTypeEmailChanged, oldEmail, map[string]interface{}{
-		"user":      map[string]interface{}{"email": newEmail, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":      q.buildUserPayload(user),
 		"old_email": oldEmail,
 		"new_email": newEmail,
 	})
@@ -657,7 +688,7 @@ func (q *RedisStreamQueue) SendEmailChangedEmail(ctx context.Context, user *stor
 
 func (q *RedisStreamQueue) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
 	return q.enqueue(jobTypePasswordExpiry, user.Email, map[string]interface{}{
-		"user":                map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":                q.buildUserPayload(user),
 		"days_until_expiry":   daysUntilExpiry,
 		"expiry_date":         expiryDate,
 		"change_password_url": changePasswordURL,
@@ -666,7 +697,7 @@ func (q *RedisStreamQueue) SendPasswordExpiryEmail(ctx context.Context, user *st
 
 func (q *RedisStreamQueue) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
 	return q.enqueue(jobTypeSecurityAlert, user.Email, map[string]interface{}{
-		"user":          map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":          q.buildUserPayload(user),
 		"alert_title":   title,
 		"alert_message": message,
 		"alert_details": details,
@@ -677,7 +708,7 @@ func (q *RedisStreamQueue) SendSecurityAlertEmail(ctx context.Context, user *sto
 
 func (q *RedisStreamQueue) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
 	return q.enqueue(jobTypeRateLimitWarning, user.Email, map[string]interface{}{
-		"user":          map[string]interface{}{"email": user.Email, "first_name": user.FirstName, "last_name": user.LastName},
+		"user":          q.buildUserPayload(user),
 		"action_type":   actionType,
 		"current_count": currentCount,
 		"max_count":     maxCount,

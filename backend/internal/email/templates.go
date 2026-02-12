@@ -22,7 +22,8 @@ const (
 // - #B3B3B3 - Secondary text
 // - #2B2B2B - Primary text
 
-const verificationEmailHTML = `<!DOCTYPE html>
+const (
+	VerificationEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -30,6 +31,9 @@ const verificationEmailHTML = `<!DOCTYPE html>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        {{if .AppLogo}}
+        <img src="{{.AppLogo}}" alt="{{.AppName}}" style="max-height: 50px; margin-bottom: 10px;">
+        {{end}}
         <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Verify Your Email</h1>
     </div>
     <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
@@ -47,7 +51,7 @@ const verificationEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const passwordResetEmailHTML = `<!DOCTYPE html>
+	PasswordResetEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -73,7 +77,7 @@ const passwordResetEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const welcomeEmailHTML = `<!DOCTYPE html>
+	WelcomeEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -102,7 +106,7 @@ const welcomeEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const loginAlertEmailHTML = `<!DOCTYPE html>
+	LoginAlertEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -152,7 +156,7 @@ const loginAlertEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const invitationEmailHTML = `<!DOCTYPE html>
+	InvitationEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -182,7 +186,7 @@ const invitationEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const mfaEnabledEmailHTML = `<!DOCTYPE html>
+	MFAEnabledEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -206,7 +210,7 @@ const mfaEnabledEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const mfaCodeEmailHTML = `<!DOCTYPE html>
+	MFACodeEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -230,7 +234,7 @@ const mfaCodeEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const lowBackupCodesEmailHTML = `<!DOCTYPE html>
+	LowBackupCodesEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -238,11 +242,14 @@ const lowBackupCodesEmailHTML = `<!DOCTYPE html>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        {{if .AppLogo}}
+        <img src="{{.AppLogo}}" alt="{{.AppName}}" style="max-height: 50px; margin-bottom: 10px;">
+        {{end}}
         <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Action Required</h1>
     </div>
     <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
         <p>Hi {{.FullName}},</p>
-        <p>You have only <strong>{{.Remaining}} backup codes remaining</strong> for two-factor authentication.</p>
+        <p>You have only <strong>{{.RemainingCodes}} backup codes remaining</strong> for two-factor authentication.</p>
         <div style="background: #FFF9E6; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid {{.SecondaryColor}};">
             <p style="margin: 0; color: #2B2B2B;"><strong>Why this matters:</strong><br>
             Backup codes are your safety net if you lose access to your authenticator app or device. Once you use all your backup codes, you may be locked out of your account.</p>
@@ -260,7 +267,7 @@ const lowBackupCodesEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const passwordChangedEmailHTML = `<!DOCTYPE html>
+	PasswordChangedEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -283,7 +290,7 @@ const passwordChangedEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const sessionRevokedEmailHTML = `<!DOCTYPE html>
+	SessionRevokedEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -307,7 +314,7 @@ const sessionRevokedEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const accountDeactivatedEmailHTML = `<!DOCTYPE html>
+	AccountDeactivatedEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -337,7 +344,7 @@ const accountDeactivatedEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const emailChangedEmailHTML = `<!DOCTYPE html>
+	EmailChangedEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -360,7 +367,7 @@ const emailChangedEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const passwordExpiryEmailHTML = `<!DOCTYPE html>
+	PasswordExpiryEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -384,7 +391,7 @@ const passwordExpiryEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const securityAlertEmailHTML = `<!DOCTYPE html>
+	SecurityAlertEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -415,7 +422,7 @@ const securityAlertEmailHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-const rateLimitWarningEmailHTML = `<!DOCTYPE html>
+	RateLimitWarningEmailHTML = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -443,5 +450,30 @@ const rateLimitWarningEmailHTML = `<!DOCTYPE html>
     </div>
 </body>
 </html>`
+
+	MagicLinkEmailHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2B2B2B; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{.PrimaryColor}}; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">Sign In</h1>
+    </div>
+    <div style="background: #FFFFFF; padding: 30px; border: 1px solid #D4D4D4; border-top: none; border-radius: 0 0 10px 10px;">
+        <p>Hi,</p>
+        <p>Click the button below to sign in to your account:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.MagicLinkURL}}" style="background: {{.PrimaryColor}}; color: #FFFFFF; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Sign In</a>
+        </div>
+        <p style="color: #B3B3B3; font-size: 14px;">This link will expire in 15 minutes.</p>
+        <p style="color: #B3B3B3; font-size: 14px;">If you didn't request this, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #D4D4D4; margin: 30px 0;">
+        <p style="color: #D4D4D4; font-size: 12px; text-align: center;">{{.FooterText}}</p>
+    </div>
+</body>
+</html>`
+)
 
 const TrackingPixel = `<img src="{{.BaseURL}}/api/email/track/{{.Email}}/{{.TemplateType}}/{{.EventID}}" width="1" height="1" alt="" style="display:none;" />`

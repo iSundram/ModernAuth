@@ -599,6 +599,14 @@ export interface EmailTemplateVersion {
   created_at: string;
 }
 
+export interface DailyEmailStats {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+}
+
 export interface EmailStats {
   total_sent: number;
   total_delivered: number;
@@ -608,6 +616,7 @@ export interface EmailStats {
   total_dropped: number;
   by_template: Record<string, number>;
   by_day: Record<string, number>;
+  daily_breakdown?: Record<string, DailyEmailStats>;
 }
 
 export interface EmailBounce {

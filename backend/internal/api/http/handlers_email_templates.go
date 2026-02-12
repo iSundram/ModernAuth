@@ -20,16 +20,11 @@ import (
 	tenantpkg "github.com/iSundram/ModernAuth/internal/tenant"
 )
 
-// EmailSender interface for sending emails.
-type EmailSender interface {
-	SendEmail(to, subject, htmlBody, textBody string) error
-}
-
 // EmailTemplateHandler handles email template admin endpoints.
 type EmailTemplateHandler struct {
 	storage         storage.EmailTemplateStorage
 	templateService *email.TemplateService
-	emailSender     EmailSender
+	emailSender     email.EmailSender
 }
 
 // NewEmailTemplateHandler creates a new email template handler.
@@ -41,7 +36,7 @@ func NewEmailTemplateHandler(store storage.EmailTemplateStorage, templateService
 }
 
 // SetEmailSender sets the email sender for test emails.
-func (h *EmailTemplateHandler) SetEmailSender(sender EmailSender) {
+func (h *EmailTemplateHandler) SetEmailSender(sender email.EmailSender) {
 	h.emailSender = sender
 }
 
@@ -350,6 +345,22 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 		})
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Logged out from all devices")
+	case email.TemplateAccountDeactivated:
+		vars.WithAccountDeactivation("Violation of terms", "https://example.com/reactivate")
+	case email.TemplateEmailChanged:
+		vars.WithEmailChange("old@example.com", "new@example.com")
+	case email.TemplatePasswordExpiry:
+		vars.WithPasswordExpiry("7", "February 19, 2026", "https://example.com/change-password")
+	case email.TemplateSecurityAlert:
+		vars.WithSecurityAlert("Suspicious Activity Detected", "We noticed a login from an unusual location.", "Location: North Pole, IP: 1.2.3.4", "https://example.com/secure", "Secure Account")
+	case email.TemplateRateLimitWarning:
+		vars.WithRateLimitWarning("API Requests", "950", "1000", "past 24 hours", "https://example.com/upgrade")
+	case email.TemplateMFACode:
+		vars.WithMFACode("123456")
+	case email.TemplateLowBackupCodes:
+		vars.WithRemainingCodes(2)
+	case email.TemplateMagicLink:
+		vars.WithMagicLink("https://example.com/magic-login?token=abc")
 	}
 
 	// Render template
@@ -484,24 +495,39 @@ func getTemplateDescription(t email.TemplateType) string {
 }
 
 func getDefaultTemplate(t email.TemplateType) (subject, html, text string) {
-	// Return simplified defaults for API display
 	switch t {
 	case email.TemplateVerification:
-		return "Verify your email address", "[Default HTML template]", "Hi {{.FullName}}, Please verify your email..."
+		return "Verify your email address", email.VerificationEmailHTML, "Hi {{.FullName}}, Please verify your email address..."
 	case email.TemplatePasswordReset:
-		return "Reset your password", "[Default HTML template]", "Hi {{.FullName}}, Click to reset your password..."
+		return "Reset your password", email.PasswordResetEmailHTML, "Hi {{.FullName}}, You requested to reset your password..."
 	case email.TemplateWelcome:
-		return "Welcome to {{.AppName}}", "[Default HTML template]", "Hi {{.FullName}}, Welcome to {{.AppName}}..."
+		return "Welcome to {{.AppName}}", email.WelcomeEmailHTML, "Hi {{.FullName}}, Welcome to {{.AppName}}!"
 	case email.TemplateLoginAlert:
-		return "New login to your account", "[Default HTML template]", "Hi {{.FullName}}, New login detected..."
+		return "New login to your account", email.LoginAlertEmailHTML, "Hi {{.FullName}}, New login detected..."
 	case email.TemplateInvitation:
-		return "You've been invited to join {{.TenantName}}", "[Default HTML template]", "You've been invited..."
+		return "You've been invited to join {{.TenantName}}", email.InvitationEmailHTML, "You've been invited..."
 	case email.TemplateMFAEnabled:
-		return "Two-factor authentication enabled", "[Default HTML template]", "Hi {{.FullName}}, 2FA has been enabled..."
+		return "Two-factor authentication enabled", email.MFAEnabledEmailHTML, "Hi {{.FullName}}, 2FA has been enabled..."
 	case email.TemplatePasswordChanged:
-		return "Your password was changed", "[Default HTML template]", "Hi {{.FullName}}, Your password was changed..."
+		return "Your password was changed", email.PasswordChangedEmailHTML, "Hi {{.FullName}}, Your password was changed..."
 	case email.TemplateSessionRevoked:
-		return "Your session was terminated", "[Default HTML template]", "Hi {{.FullName}}, Your session was terminated..."
+		return "Your session was terminated", email.SessionRevokedEmailHTML, "Hi {{.FullName}}, Your session was terminated..."
+	case email.TemplateMagicLink:
+		return "Sign in to your account", email.MagicLinkEmailHTML, "Click the link below to sign in..."
+	case email.TemplateAccountDeactivated:
+		return "Account Deactivated", email.AccountDeactivatedEmailHTML, "Hi {{.FullName}}, Your account has been deactivated..."
+	case email.TemplateEmailChanged:
+		return "Email Address Changed", email.EmailChangedEmailHTML, "Hi {{.FullName}}, Your email address has been changed..."
+	case email.TemplatePasswordExpiry:
+		return "Password Expiring Soon", email.PasswordExpiryEmailHTML, "Hi {{.FullName}}, Your password will expire soon..."
+	case email.TemplateSecurityAlert:
+		return "{{.AlertTitle}}", email.SecurityAlertEmailHTML, "Hi {{.FullName}}, {{.AlertTitle}}..."
+	case email.TemplateRateLimitWarning:
+		return "Rate Limit Approaching", email.RateLimitWarningEmailHTML, "Hi {{.FullName}}, Rate limit approaching..."
+	case email.TemplateMFACode:
+		return "Your Verification Code", email.MFACodeEmailHTML, "Your code is {{.MFACode}}"
+	case email.TemplateLowBackupCodes:
+		return "Action Required: Low backup codes remaining", email.LowBackupCodesEmailHTML, "Hi {{.FullName}}, Low backup codes..."
 	default:
 		return "", "", ""
 	}
@@ -620,6 +646,22 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 		})
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Test session revocation")
+	case email.TemplateAccountDeactivated:
+		vars.WithAccountDeactivation("Test deactivation reason", "https://example.com/reactivate")
+	case email.TemplateEmailChanged:
+		vars.WithEmailChange("old-test@example.com", "new-test@example.com")
+	case email.TemplatePasswordExpiry:
+		vars.WithPasswordExpiry("5", "February 17, 2026", "https://example.com/change-password")
+	case email.TemplateSecurityAlert:
+		vars.WithSecurityAlert("Test Security Alert", "This is a test security alert message.", "Details: Test details, IP: 127.0.0.1", "https://example.com/action", "Take Action")
+	case email.TemplateRateLimitWarning:
+		vars.WithRateLimitWarning("Test Actions", "90", "100", "past hour", "https://example.com/upgrade")
+	case email.TemplateMFACode:
+		vars.WithMFACode("999999")
+	case email.TemplateLowBackupCodes:
+		vars.WithRemainingCodes(1)
+	case email.TemplateMagicLink:
+		vars.WithMagicLink("https://example.com/magic-login?token=test-token")
 	}
 
 	// Render template

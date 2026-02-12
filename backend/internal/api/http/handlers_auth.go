@@ -655,6 +655,33 @@ func (h *Handler) UpdateOwnProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.buildUserResponse(r.Context(), user))
 }
 
+// CheckEmail checks if an email address exists and returns login-related info.
+func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if errors := ValidateStruct(req); errors != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error":   "Validation failed",
+			"details": errors,
+		})
+		return
+	}
+
+	result, err := h.authService.CheckEmail(r.Context(), req.Email)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to check email", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
 // recordLogin records a successful login attempt, including device info and history.
 func (h *Handler) recordLogin(r *http.Request, userID uuid.UUID, method string, sessionID *uuid.UUID, fingerprint string) {
 	if h.deviceHandler == nil {

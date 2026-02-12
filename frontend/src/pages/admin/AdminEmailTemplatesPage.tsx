@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Mail, Edit2, Eye, Save, RotateCcw, 
   FileText, Send, History, AlertCircle, Check,
   Search, Copy, Download,
-  Undo, Redo, Smartphone, Monitor
+  Undo, Redo, Smartphone, Monitor, Plus
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button, Input, Modal, LoadingBar, Badge } from '../../components/ui';
@@ -81,8 +81,45 @@ export function AdminEmailTemplatesPage() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
 
+  // Refs for cursor tracking
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const htmlBodyRef = useRef<HTMLTextAreaElement>(null);
+  const textBodyRef = useRef<HTMLTextAreaElement>(null);
+  const [lastFocusedRef, setLastFocusedRef] = useState<'subject' | 'html' | 'text' | null>(null);
+
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+
+  // ... (existing code)
+
+  // Function to insert variable at cursor position
+  const insertVariable = (varName: string) => {
+    let targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement> | null = null;
+    let field: 'subject' | 'html_body' | 'text_body' | null = null;
+
+    if (lastFocusedRef === 'subject') { targetRef = subjectRef; field = 'subject'; }
+    else if (lastFocusedRef === 'html') { targetRef = htmlBodyRef; field = 'html_body'; }
+    else if (lastFocusedRef === 'text') { targetRef = textBodyRef; field = 'text_body'; }
+
+    if (!targetRef?.current || !field) {
+      showToast({ title: 'Select a field', message: 'Click inside a text field first to insert a variable.', type: 'info' });
+      return;
+    }
+
+    const input = targetRef.current;
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const text = editData[field];
+    const newText = text.substring(0, start) + varName + text.substring(end);
+
+    saveToHistory({ ...editData, [field]: newText });
+
+    // Reset focus and cursor (need timeout to wait for React render)
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(start + varName.length, start + varName.length);
+    }, 0);
+  };
 
   // Fetch templates list (summaries)
   const { data: templates = [], isLoading } = useQuery<EmailTemplateSummary[]>({
@@ -624,101 +661,161 @@ export function AdminEmailTemplatesPage() {
         title={`Edit Template: ${templateLabels[selectedTemplate?.type || '']?.name || selectedTemplate?.type}`}
         size="xl"
       >
-        <div className="space-y-4">
-          <Input
-            label="Subject"
-            value={editData.subject}
-            onChange={(e) => saveToHistory({ ...editData, subject: e.target.value })}
-            placeholder="Email subject line"
-          />
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-[var(--color-text-primary)]">
-                HTML Body
-              </label>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleUndo}
-                  disabled={historyIndex <= 0}
-                  title="Undo"
-                >
-                  <Undo size={14} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRedo}
-                  disabled={historyIndex >= history.length - 1}
-                  title="Redo"
-                >
-                  <Redo size={14} />
-                </Button>
-              </div>
-            </div>
-            <textarea
-              value={editData.html_body}
-              onChange={(e) => saveToHistory({ ...editData, html_body: e.target.value })}
-              className="w-full h-64 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              placeholder="HTML template content..."
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-3 space-y-4">
+            <Input
+              ref={subjectRef}
+              label="Subject"
+              value={editData.subject}
+              onFocus={() => setLastFocusedRef('subject')}
+              onChange={(e) => saveToHistory({ ...editData, subject: e.target.value })}
+              placeholder="Email subject line"
             />
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-2">
-              Plain Text Body (Optional)
-            </label>
-            <textarea
-              value={editData.text_body}
-              onChange={(e) => saveToHistory({ ...editData, text_body: e.target.value })}
-              className="w-full h-32 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              placeholder="Plain text fallback..."
-            />
-          </div>
-
-          {/* Validation Errors */}
-          {validationErrors.length > 0 && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center gap-2 text-red-400 mb-2">
-                <AlertCircle size={16} />
-                <span className="font-medium">Template Validation Errors</span>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-[var(--color-text-primary)]">
+                  HTML Body
+                </label>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    title="Undo"
+                  >
+                    <Undo size={14} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRedo}
+                    disabled={historyIndex >= history.length - 1}
+                    title="Redo"
+                  >
+                    <Redo size={14} />
+                  </Button>
+                </div>
               </div>
-              <ul className="list-disc list-inside text-sm text-red-300 space-y-1">
-                {validationErrors.map((error, idx) => (
-                  <li key={idx}>{error}</li>
-                ))}
-              </ul>
+              <textarea
+                ref={htmlBodyRef}
+                value={editData.html_body}
+                onFocus={() => setLastFocusedRef('html')}
+                onChange={(e) => saveToHistory({ ...editData, html_body: e.target.value })}
+                className="w-full h-[500px] p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                placeholder="HTML template content..."
+              />
             </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <Button 
-              variant="ghost" 
-              onClick={() => { setEditMode(false); setSelectedTemplate(null); setHistory([]); setHistoryIndex(-1); }}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleValidate}
-              isLoading={isValidating}
-            >
-              <Check size={16} className="mr-2" />
-              Validate
-            </Button>
-            <Button 
-              variant="primary" 
-              onClick={handleSave}
-              isLoading={updateMutation.isPending}
-              className="flex-1"
-            >
-              <Save size={16} className="mr-2" />
-              Save Changes
-            </Button>
           </div>
+
+          {/* Sidebar for Variables */}
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)]">
+              <h4 className="flex items-center gap-2 text-sm font-bold text-[var(--color-text-primary)] mb-4">
+                <Plus size={16} className="text-[var(--color-primary)]" />
+                Quick Insert
+              </h4>
+              
+              <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                {/* User Variables */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">User</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['FullName', 'FirstName', 'LastName', 'Email', 'Username'].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => insertVariable(`{{.${v}}}`)}
+                        className="px-2 py-1 text-[11px] rounded bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors text-[var(--color-text-primary)]"
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Branding Variables */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Brand</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['AppName', 'CompanyName', 'SupportEmail', 'PrimaryColor'].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => insertVariable(`{{.${v}}}`)}
+                        className="px-2 py-1 text-[11px] rounded bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors text-[var(--color-text-primary)]"
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Context Variables */}
+                {selectedTemplate && variables?.context?.[selectedTemplate.type] && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Context</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {variables.context[selectedTemplate.type].map(v => (
+                        <button
+                          key={v.name}
+                          onClick={() => insertVariable(`{{.${v.name}}}`)}
+                          className="px-2 py-1 text-[11px] rounded bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors text-[var(--color-text-primary)]"
+                        >
+                          {v.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <p className="mt-4 text-[10px] text-[var(--color-text-muted)] leading-relaxed italic">
+                Click a variable to insert it at your cursor position.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <div className="flex items-center gap-2 text-red-400 mb-2">
+              <AlertCircle size={16} />
+              <span className="font-medium">Template Validation Errors</span>
+            </div>
+            <ul className="list-disc list-inside text-sm text-red-300 space-y-1">
+              {validationErrors.map((error, idx) => (
+                <li key={idx}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-6">
+          <Button 
+            variant="ghost" 
+            onClick={() => { setEditMode(false); setSelectedTemplate(null); setHistory([]); setHistoryIndex(-1); }}
+            className="flex-1"
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleValidate}
+            isLoading={isValidating}
+          >
+            <Check size={16} className="mr-2" />
+            Validate
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleSave}
+            isLoading={updateMutation.isPending}
+            className="flex-1"
+          >
+            <Save size={16} className="mr-2" />
+            Save Changes
+          </Button>
         </div>
       </Modal>
 

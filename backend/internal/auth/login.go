@@ -29,6 +29,54 @@ type LoginResult struct {
 	MFAChallengeID *uuid.UUID    `json:"mfa_challenge_id,omitempty"`
 }
 
+// CheckEmailResult contains information about an email address for login.
+type CheckEmailResult struct {
+	Exists          bool     `json:"exists"`
+	MFARequired     bool     `json:"mfa_required"`
+	PreferredMethod string   `json:"preferred_method,omitempty"`
+	Methods         []string `json:"methods,omitempty"`
+}
+
+// CheckEmail checks if an email address exists and returns login-related info.
+func (s *AuthService) CheckEmail(ctx context.Context, email string) (*CheckEmailResult, error) {
+	user, err := s.storage.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if user == nil {
+		return &CheckEmailResult{Exists: false}, nil
+	}
+
+	res := &CheckEmailResult{
+		Exists: true,
+	}
+
+	// Check MFA settings
+	mfa, err := s.storage.GetMFASettings(ctx, user.ID)
+	if err == nil && mfa != nil {
+		// MFA is enabled if any method is enabled
+		isEnabled := mfa.IsTOTPEnabled || mfa.IsEmailMFAEnabled || mfa.IsSMSMFAEnabled
+		if isEnabled {
+			res.MFARequired = true
+			res.PreferredMethod = mfa.PreferredMethod
+
+			// Add available methods
+			if mfa.IsTOTPEnabled {
+				res.Methods = append(res.Methods, "totp")
+			}
+			if mfa.IsSMSMFAEnabled && user.Phone != nil && *user.Phone != "" {
+				res.Methods = append(res.Methods, "sms")
+			}
+			if mfa.IsEmailMFAEnabled {
+				res.Methods = append(res.Methods, "email")
+			}
+		}
+	}
+
+	return res, nil
+}
+
 // Login authenticates a user with email and password.
 func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResult, error) {
 	// Find the user

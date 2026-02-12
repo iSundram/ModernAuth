@@ -142,7 +142,7 @@ func main() {
 
 	// Initialize email service
 	var emailService email.Service
-	var queuedEmailService *email.QueuedService           // Track for graceful shutdown
+	var emailQueue interface{ Stop() }             // Track for graceful shutdown
 	var rateLimitedEmailService *email.RateLimitedService // Track for cleanup
 
 	// Validate provider configuration
@@ -208,6 +208,7 @@ func main() {
 		Sender:          emailSender,
 		TemplateService: templateService,
 		Storage:         storage,
+		BaseURL:         cfg.App.BaseURL,
 	})
 	slog.Info("Email template service enabled")
 
@@ -232,14 +233,18 @@ func main() {
 
 	// Wrap with queue if enabled
 	if cfg.Email.QueueEnabled {
-		queueConfig := &email.QueueConfig{
-			QueueSize:       cfg.Email.QueueSize,
-			MaxRetries:      3,
+		redisQueue, err := email.NewRedisStreamQueue(rdb, emailService, &email.RedisQueueConfig{
+			ConsumerName:    "auth-server",
+			WorkerCount:     3,
 			DeadLetterStore: storage,
+		})
+		if err != nil {
+			slog.Error("Failed to initialize Redis email queue", "error", err)
+			os.Exit(1)
 		}
-		queuedEmailService = email.NewQueuedService(emailService, queueConfig)
-		emailService = queuedEmailService
-		slog.Info("Email queue enabled", "queue_size", cfg.Email.QueueSize)
+		emailService = redisQueue
+		emailQueue = redisQueue
+		slog.Info("Email queue enabled (Redis Streams)", "workers", 3)
 	}
 
 	// Initialize auth service (now after email service is created)
@@ -338,6 +343,9 @@ func main() {
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)
 	invitationHandler := httpapi.NewInvitationHandler(invitationService)
 	emailTemplateHandler := httpapi.NewEmailTemplateHandler(storage, templateService)
+	if emailSender != nil {
+		emailTemplateHandler.SetEmailSender(emailSender)
+	}
 	groupHandler := httpapi.NewGroupHandler(groupsService)
 
 	// Set handlers on main handler
@@ -497,9 +505,9 @@ func main() {
 	slog.Info("Shutting down server...")
 
 	// Stop email services gracefully
-	if queuedEmailService != nil {
+	if emailQueue != nil {
 		slog.Info("Stopping email queue...")
-		queuedEmailService.Stop()
+		emailQueue.Stop()
 	}
 	if rateLimitedEmailService != nil {
 		rateLimitedEmailService.Stop()

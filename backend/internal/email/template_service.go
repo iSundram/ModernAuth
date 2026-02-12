@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"sync"
+        "strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -164,11 +165,43 @@ func (s *TemplateService) GetBranding(ctx context.Context, tenantID *uuid.UUID) 
 
 // RenderTemplate renders a template with the given variables.
 func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUID, templateType TemplateType, vars *TemplateVars) (subject, htmlBody, textBody string, err error) {
+	// Pre-render footer if it contains variables
+	if strings.Contains(vars.FooterText, "{{") {
+		renderedFooter, err := s.renderString(vars.FooterText, vars)
+		if err == nil {
+			vars.FooterText = renderedFooter
+		}
+	}
+
+	// Check for active A/B tests
+	variantID := ""
+	abTests, err := s.storage.ListEmailABTests(ctx, tenantID)
+	if err == nil {
+		for _, test := range abTests {
+			if test.TemplateType == string(templateType) && test.IsActive {
+				// Simple random selection based on weights
+				// In production, this could be deterministic based on Recipient email hash
+				if s.selectVariant(test.WeightA) {
+					variantID = test.VariantA
+				} else {
+					variantID = test.VariantB
+				}
+				break
+			}
+		}
+	}
+
 	// Get custom template from DB
-	customTemplate, err := s.GetTemplate(ctx, tenantID, templateType)
-	if err != nil {
-		s.logger.Error("Failed to get custom template", "type", templateType, "error", err)
-		// Fall back to default
+	var customTemplate *storage.EmailTemplate
+	if variantID != "" {
+		// Use A/B test variant (stored as a specific template type override or via a different mechanism)
+		// For simplicity, we'll assume variants are just another template type name for now
+		// or we can just use the variant ID as the type.
+		customTemplate, err = s.storage.GetEmailTemplate(ctx, tenantID, variantID)
+	}
+
+	if customTemplate == nil {
+		customTemplate, err = s.GetTemplate(ctx, tenantID, templateType)
 	}
 
 	if customTemplate != nil && customTemplate.IsActive {
@@ -214,7 +247,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 	switch templateType {
 	case TemplateVerification:
 		subject = "Verify your email address"
-		htmlBody, err = s.renderString(verificationEmailHTML, vars)
+		htmlBody, err = s.renderString(VerificationEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -222,7 +255,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplatePasswordReset:
 		subject = "Reset your password"
-		htmlBody, err = s.renderString(passwordResetEmailHTML, vars)
+		htmlBody, err = s.renderString(PasswordResetEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -230,7 +263,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateWelcome:
 		subject = "Welcome to " + vars.AppName
-		htmlBody, err = s.renderString(welcomeEmailHTML, vars)
+		htmlBody, err = s.renderString(WelcomeEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -238,7 +271,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateLoginAlert:
 		subject = "New login to your account"
-		htmlBody, err = s.renderString(loginAlertEmailHTML, vars)
+		htmlBody, err = s.renderString(LoginAlertEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -246,7 +279,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateInvitation:
 		subject = "You've been invited to join " + vars.TenantName
-		htmlBody, err = s.renderString(invitationEmailHTML, vars)
+		htmlBody, err = s.renderString(InvitationEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -254,7 +287,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateMFAEnabled:
 		subject = "Two-factor authentication enabled"
-		htmlBody, err = s.renderString(mfaEnabledEmailHTML, vars)
+		htmlBody, err = s.renderString(MFAEnabledEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -262,7 +295,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateMFACode:
 		subject = "Your Verification Code"
-		htmlBody, err = s.renderString(mfaCodeEmailHTML, vars)
+		htmlBody, err = s.renderString(MFACodeEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -270,7 +303,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateLowBackupCodes:
 		subject = "Action Required: Low backup codes remaining"
-		htmlBody, err = s.renderString(lowBackupCodesEmailHTML, vars)
+		htmlBody, err = s.renderString(LowBackupCodesEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -278,7 +311,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplatePasswordChanged:
 		subject = "Your password was changed"
-		htmlBody, err = s.renderString(passwordChangedEmailHTML, vars)
+		htmlBody, err = s.renderString(PasswordChangedEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -286,7 +319,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateSessionRevoked:
 		subject = "Your session was terminated"
-		htmlBody, err = s.renderString(sessionRevokedEmailHTML, vars)
+		htmlBody, err = s.renderString(SessionRevokedEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -294,7 +327,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateAccountDeactivated:
 		subject = "Account Deactivated"
-		htmlBody, err = s.renderString(accountDeactivatedEmailHTML, vars)
+		htmlBody, err = s.renderString(AccountDeactivatedEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -302,7 +335,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateEmailChanged:
 		subject = "Email Address Changed"
-		htmlBody, err = s.renderString(emailChangedEmailHTML, vars)
+		htmlBody, err = s.renderString(EmailChangedEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -310,7 +343,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplatePasswordExpiry:
 		subject = "Password Expiring Soon"
-		htmlBody, err = s.renderString(passwordExpiryEmailHTML, vars)
+		htmlBody, err = s.renderString(PasswordExpiryEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -318,7 +351,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateSecurityAlert:
 		subject = vars.AlertTitle
-		htmlBody, err = s.renderString(securityAlertEmailHTML, vars)
+		htmlBody, err = s.renderString(SecurityAlertEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -326,7 +359,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateRateLimitWarning:
 		subject = "Rate Limit Approaching"
-		htmlBody, err = s.renderString(rateLimitWarningEmailHTML, vars)
+		htmlBody, err = s.renderString(RateLimitWarningEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -334,7 +367,7 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 
 	case TemplateMagicLink:
 		subject = "Sign in to your account"
-		htmlBody, err = s.renderString(magicLinkEmailHTML, vars)
+		htmlBody, err = s.renderString(MagicLinkEmailHTML, vars)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -346,6 +379,11 @@ func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars 
 	}
 
 	return subject, htmlBody, textBody, nil
+}
+
+// selectVariant returns true if variant A should be selected based on weight.
+func (s *TemplateService) selectVariant(weightA float64) bool {
+	return (float64(time.Now().UnixNano()%100) / 100.0) < weightA
 }
 
 // InvalidateCache clears the cache for a specific tenant and template type.

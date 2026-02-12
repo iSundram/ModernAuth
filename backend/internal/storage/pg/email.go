@@ -484,8 +484,9 @@ func (s *PostgresStorage) CreateEmailEvent(ctx context.Context, event *storage.E
 // GetEmailStats retrieves aggregated email statistics.
 func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID, days int) (*storage.EmailStats, error) {
 	stats := &storage.EmailStats{
-		ByTemplate: make(map[string]int),
-		ByDay:      make(map[string]int),
+		ByTemplate:     make(map[string]int),
+		ByDay:          make(map[string]int),
+		DailyBreakdown: make(map[string]storage.DailyEmailStats),
 	}
 
 	since := time.Now().AddDate(0, 0, -days)
@@ -494,7 +495,7 @@ func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID
 	query := `
 		SELECT event_type, COUNT(*) as count
 		FROM email_events
-		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		WHERE ($1::uuid IS NULL OR tenant_id = $1)
 		AND created_at > $2
 		GROUP BY event_type
 	`
@@ -529,11 +530,54 @@ func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID
 		return nil, err
 	}
 
+	// Get daily breakdown by event type
+	query = `
+		SELECT DATE(created_at)::text as day, event_type, COUNT(*) as count
+		FROM email_events
+		WHERE ($1::uuid IS NULL OR tenant_id = $1)
+		AND created_at > $2
+		GROUP BY DATE(created_at), event_type
+		ORDER BY day
+	`
+	rows, err = s.pool.Query(ctx, query, tenantID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var day string
+		var eventType string
+		var count int
+		if err := rows.Scan(&day, &eventType, &count); err != nil {
+			return nil, err
+		}
+
+		entry := stats.DailyBreakdown[day]
+		switch eventType {
+		case "sent":
+			entry.Sent = count
+			stats.ByDay[day] = count
+		case "delivered":
+			entry.Delivered = count
+		case "opened":
+			entry.Opened = count
+		case "clicked":
+			entry.Clicked = count
+		case "bounced":
+			entry.Bounced = count
+		}
+		stats.DailyBreakdown[day] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	// Get counts by template
 	query = `
 		SELECT template_type, COUNT(*) as count
 		FROM email_events
-		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
+		WHERE ($1::uuid IS NULL OR tenant_id = $1)
 		AND created_at > $2 AND event_type = 'sent'
 		GROUP BY template_type
 	`
@@ -550,33 +594,6 @@ func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID
 			return nil, err
 		}
 		stats.ByTemplate[templateType] = count
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Get counts by day
-	query = `
-		SELECT DATE(created_at)::text as day, COUNT(*) as count
-		FROM email_events
-		WHERE (tenant_id = $1 OR ($1 IS NULL AND tenant_id IS NULL))
-		AND created_at > $2 AND event_type = 'sent'
-		GROUP BY DATE(created_at)
-		ORDER BY day
-	`
-	rows, err = s.pool.Query(ctx, query, tenantID, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var day string
-		var count int
-		if err := rows.Scan(&day, &count); err != nil {
-			return nil, err
-		}
-		stats.ByDay[day] = count
 	}
 
 	return stats, rows.Err()

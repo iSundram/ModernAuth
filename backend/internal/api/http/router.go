@@ -64,6 +64,7 @@ func (h *Handler) Router() *chi.Mux {
 
 			r.With(captchaMW, h.DynamicRateLimit("rate_limit.register", 5, time.Hour)).Post("/register", h.Register)
 			r.With(captchaMW, h.DynamicRateLimit("rate_limit.login", 10, 15*time.Minute)).Post("/login", h.Login)
+			r.Post("/login/check", h.CheckEmail)
 			r.With(h.DynamicRateLimit("rate_limit.mfa", 10, 15*time.Minute)).Post("/login/mfa", h.LoginMFA)
 			r.With(h.DynamicRateLimit("rate_limit.login", 10, 15*time.Minute)).Post("/google/one-tap", h.GoogleOneTapLogin)
 			r.With(h.DynamicRateLimit("rate_limit.refresh", 100, 15*time.Minute)).Post("/refresh", h.Refresh)

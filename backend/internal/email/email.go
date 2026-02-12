@@ -7,7 +7,7 @@ import (
 	"github.com/iSundram/ModernAuth/internal/storage"
 )
 
-// Service defines the email service interface.
+// Service defines the high-level email service interface.
 type Service interface {
 	// SendVerificationEmail sends an email verification email.
 	SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error
@@ -56,6 +56,11 @@ type Service interface {
 
 	// SendRateLimitWarningEmail sends rate limit warning notification.
 	SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error
+}
+
+// EmailSender defines the low-level email sending interface.
+type EmailSender interface {
+	SendEmail(to, subject, htmlBody, textBody string) error
 }
 
 // DeviceInfo contains device information for login alerts.

@@ -10,7 +10,7 @@ import { useToast } from '../../components/ui/Toast';
 import { adminService } from '../../api/services';
 import type { EmailStats, EmailBounce, EmailSuppression, EmailABTest } from '../../types';
 
-interface DailyData {
+interface DailyEmailData {
   date: string;
   sent: number;
   delivered: number;
@@ -96,26 +96,22 @@ export function AdminEmailAnalyticsPage() {
     createABTestMutation.mutate();
   };
 
-  // Note: by_day only contains sent counts from the API
-  // For a real implementation, the backend should return daily breakdowns
-  // for all metrics (delivered, opened, clicked, bounced)
-  const dailyData: DailyData[] = useMemo(() => {
-    if (!stats?.by_day) return [];
-    return Object.entries(stats.by_day)
+  // Use the new daily_breakdown field from the backend
+  const dailyData: DailyEmailData[] = useMemo(() => {
+    if (!stats?.daily_breakdown) return [];
+    return Object.entries(stats.daily_breakdown)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, sent]) => ({
+      .map(([date, data]) => ({
         date,
-        sent,
-        // TODO: Backend should provide daily breakdowns for these metrics
-        // Currently showing sent only in the chart
-        delivered: 0,
-        opened: 0,
-        clicked: 0,
-        bounced: 0,
+        sent: (data as any).sent,
+        delivered: (data as any).delivered,
+        opened: (data as any).opened,
+        clicked: (data as any).clicked,
+        bounced: (data as any).bounced,
       }));
   }, [stats]);
 
-  const maxDailyValue = Math.max(...dailyData.map(d => d.sent), 1);
+  const maxDailyValue = Math.max(...dailyData.map(d => Math.max(d.sent, d.delivered, d.opened, d.clicked, d.bounced)), 1);
 
   const deliveryRate = stats && stats.total_sent > 0 
     ? ((stats.total_delivered / stats.total_sent) * 100).toFixed(1) 
@@ -228,8 +224,17 @@ export function AdminEmailAnalyticsPage() {
                     <div className="absolute bottom-full mb-2 hidden group-hover:block z-10">
                       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded text-xs shadow-lg whitespace-nowrap">
                         <div className="font-medium">{day.date}</div>
-                        <div className="text-[var(--color-text-muted)]">
-                          Sent: {day.sent.toLocaleString()}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                          <span className="text-blue-400">Sent:</span>
+                          <span className="text-right">{day.sent.toLocaleString()}</span>
+                          <span className="text-green-400">Delivered:</span>
+                          <span className="text-right">{day.delivered.toLocaleString()}</span>
+                          <span className="text-purple-400">Opened:</span>
+                          <span className="text-right">{day.opened.toLocaleString()}</span>
+                          <span className="text-orange-400">Clicked:</span>
+                          <span className="text-right">{day.clicked.toLocaleString()}</span>
+                          <span className="text-red-400">Bounced:</span>
+                          <span className="text-right">{day.bounced.toLocaleString()}</span>
                         </div>
                       </div>
                     </div>

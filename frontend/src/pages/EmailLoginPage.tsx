@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Input, LoadingBar } from '../components/ui';
 import { Mail, ChevronRight } from 'lucide-react';
+import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { AuthFooter } from '../components/layout';
@@ -36,11 +37,31 @@ export function EmailLoginPage() {
     setIsLoading(true);
 
     try {
+      const result = await authService.checkEmail(email);
+      
       // Store email for next step
       sessionStorage.setItem('loginEmail', email);
 
-      // Simulate checking if email exists
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!result.exists) {
+        showToast({ 
+          title: 'Account not found', 
+          message: 'Would you like to create an account?', 
+          type: 'info' 
+        });
+        navigate('/register', { state: { email } });
+        return;
+      }
+
+      // Store MFA info if needed
+      if (result.mfa_required) {
+        sessionStorage.setItem('loginMfaRequired', 'true');
+        if (result.preferred_method) {
+          sessionStorage.setItem('loginPreferredMfa', result.preferred_method);
+        }
+      } else {
+        sessionStorage.removeItem('loginMfaRequired');
+        sessionStorage.removeItem('loginPreferredMfa');
+      }
 
       // Navigate to password page
       navigate('/login/password');

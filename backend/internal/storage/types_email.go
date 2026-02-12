@@ -102,16 +102,26 @@ type EmailSuppression struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+// DailyEmailStats represents email statistics for a single day.
+type DailyEmailStats struct {
+	Sent      int `json:"sent"`
+	Delivered int `json:"delivered"`
+	Opened    int `json:"opened"`
+	Clicked   int `json:"clicked"`
+	Bounced   int `json:"bounced"`
+}
+
 // EmailStats represents aggregated email statistics.
 type EmailStats struct {
-	TotalSent      int            `json:"total_sent"`
-	TotalDelivered int            `json:"total_delivered"`
-	TotalOpened    int            `json:"total_opened"`
-	TotalClicked   int            `json:"total_clicked"`
-	TotalBounced   int            `json:"total_bounced"`
-	TotalDropped   int            `json:"total_dropped"`
-	ByTemplate     map[string]int `json:"by_template"`
-	ByDay          map[string]int `json:"by_day"`
+	TotalSent      int                        `json:"total_sent"`
+	TotalDelivered int                        `json:"total_delivered"`
+	TotalOpened    int                        `json:"total_opened"`
+	TotalClicked   int                        `json:"total_clicked"`
+	TotalBounced   int                        `json:"total_bounced"`
+	TotalDropped   int                        `json:"total_dropped"`
+	ByTemplate     map[string]int             `json:"by_template"`
+	ByDay          map[string]int             `json:"by_day"` // Legacy: sent counts only
+	DailyBreakdown map[string]DailyEmailStats `json:"daily_breakdown"`
 }
 
 // EmailABTest represents an A/B test configuration for a template.

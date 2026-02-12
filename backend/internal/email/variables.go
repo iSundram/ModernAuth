@@ -83,6 +83,10 @@ type TemplateVars struct {
 
 	// Magic link
 	MagicLinkURL string
+
+	// Tracking and Analytics
+	EventID      string
+	TemplateType string
 }
 
 // NewTemplateVars creates template variables from user and branding data.
@@ -139,8 +143,8 @@ func NewTemplateVars(user *storage.User, branding *storage.EmailBranding) *Templ
 	} else {
 		// Default branding with new color scheme
 		vars.AppName = "ModernAuth"
-		vars.PrimaryColor = "#2B2B2B"   // Dark
-		vars.SecondaryColor = "#B3B3B3" // Medium gray
+		vars.PrimaryColor = DefaultPrimaryColor
+		vars.SecondaryColor = DefaultSecondaryColor
 		vars.CompanyName = "ModernAuth"
 		vars.FooterText = "© " + vars.CurrentYear + " ModernAuth. All rights reserved."
 	}

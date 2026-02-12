@@ -37,6 +37,14 @@ export const authService = {
   login: (credentials: LoginRequest) =>
     apiClient.post<LoginResponse | LoginMfaRequiredResponse>('/v1/auth/login', credentials),
 
+  checkEmail: (email: string) =>
+    apiClient.post<{ 
+      exists: boolean; 
+      mfa_required: boolean; 
+      preferred_method?: string; 
+      methods?: string[] 
+    }>('/v1/auth/login/check', { email }),
+
   loginMfa: (data: LoginMFARequest) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa', data),
 
