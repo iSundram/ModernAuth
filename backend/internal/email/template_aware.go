@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,38 +16,56 @@ import (
 	"github.com/iSundram/ModernAuth/internal/storage"
 )
 
-// injectTrackingPixel injects a tracking pixel into the HTML body.
-func (s *TemplateAwareService) injectTrackingPixel(htmlBody string, vars *TemplateVars, templateType TemplateType) (string, string) {
+// injectTrackingPixel injects a tracking pixel into the HTML body and stores a record in the database.
+func (s *TemplateAwareService) injectTrackingPixel(ctx context.Context, htmlBody string, vars *TemplateVars, templateType TemplateType, recipient string, tenantID *uuid.UUID) (string, string) {
+	pixelID := uuid.New()
 	eventID := uuid.New().String()
 	vars.EventID = eventID
 	vars.TemplateType = string(templateType)
 
-	pixel, err := s.renderString(TrackingPixel, map[string]string{
-		"BaseURL":      vars.BaseURL,
-		"Email":        vars.Email,
-		"TemplateType": vars.TemplateType,
-		"EventID":      vars.EventID,
+	// Create tracking pixel record in DB
+	pixel := &storage.EmailTrackingPixel{
+		ID:         pixelID,
+		TenantID:   tenantID,
+		Recipient:  recipient,
+		TemplateID: string(templateType),
+		IsOpened:   false,
+		CreatedAt:  time.Now(),
+	}
+	
+	if err := s.storage.CreateEmailTrackingPixel(ctx, pixel); err != nil {
+		s.logger.Error("Failed to create tracking pixel record", "error", err)
+		return htmlBody, eventID
+	}
+
+	renderedPixel, err := s.renderString(TrackingPixel, map[string]string{
+		"BaseURL": s.baseURL,
+		"PixelID": pixelID.String(),
 	})
 	if err != nil {
 		return htmlBody, eventID
 	}
 
 	if idx := strings.LastIndex(strings.ToLower(htmlBody), "</body>"); idx != -1 {
-		return htmlBody[:idx] + pixel + htmlBody[idx:], eventID
+		return htmlBody[:idx] + renderedPixel + htmlBody[idx:], eventID
 	}
-	return htmlBody + pixel, eventID
+	return htmlBody + renderedPixel, eventID
 }
 
 // recordSentEvent records a sent email event in the database.
-func (s *TemplateAwareService) recordSentEvent(ctx context.Context, user *storage.User, recipient string, templateType string, eventID string) {
+func (s *TemplateAwareService) recordSentEvent(ctx context.Context, user *storage.User, recipient string, templateType string, eventID string, templateID string, jobID string) {
 	event := &storage.EmailEvent{
 		ID:           uuid.New(),
 		TenantID:     getTenantID(user),
+		JobID:        &jobID,
 		TemplateType: templateType,
 		EventType:    "sent",
 		Recipient:    recipient,
 		EventID:      &eventID,
-		CreatedAt:    time.Now(),
+		Metadata: map[string]interface{}{
+			"template_id": templateID,
+		},
+		CreatedAt: time.Now(),
 	}
 	if user != nil {
 		event.UserID = &user.ID
@@ -53,6 +73,26 @@ func (s *TemplateAwareService) recordSentEvent(ctx context.Context, user *storag
 
 	if err := s.storage.CreateEmailEvent(ctx, event); err != nil {
 		s.logger.Error("Failed to record email sent event", "error", err, "event_id", eventID)
+	}
+}
+
+// recordEvent records a generic email event.
+func (s *TemplateAwareService) recordEvent(ctx context.Context, user *storage.User, recipient string, templateType string, eventType string, jobID string) {
+	event := &storage.EmailEvent{
+		ID:           uuid.New(),
+		TenantID:     getTenantID(user),
+		JobID:        &jobID,
+		TemplateType: templateType,
+		EventType:    eventType,
+		Recipient:    recipient,
+		CreatedAt:    time.Now(),
+	}
+	if user != nil {
+		event.UserID = &user.ID
+	}
+
+	if err := s.storage.CreateEmailEvent(ctx, event); err != nil {
+		s.logger.Error("Failed to record email event", "error", err, "type", eventType)
 	}
 }
 
@@ -76,11 +116,12 @@ type TemplateAwareConfig struct {
 
 // NewTemplateAwareService creates a new template-aware email service.
 func NewTemplateAwareService(cfg *TemplateAwareConfig) *TemplateAwareService {
+	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
 	return &TemplateAwareService{
 		sender:          cfg.Sender,
 		templateService: cfg.TemplateService,
 		storage:         cfg.Storage,
-		baseURL:         cfg.BaseURL,
+		baseURL:         baseURL,
 		logger:          slog.Default().With("component", "template_aware_email"),
 	}
 }
@@ -108,426 +149,235 @@ func getTenantID(user *storage.User) *uuid.UUID {
 	return nil
 }
 
-// SendVerificationEmail sends an email verification email using templates.
-func (s *TemplateAwareService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
+// sendTemplateEmail is a common helper to render and send templated emails.
+func (s *TemplateAwareService) sendTemplateEmail(ctx context.Context, user *storage.User, recipient string, tt TemplateType, vars *TemplateVars) error {
 	tenantID := getTenantID(user)
 
-	// Get branding
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-
-	// Create template variables
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithVerification(token, verifyURL)
-
-	// Render template
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateVerification, vars)
+	subject, html, text, templateID, err := s.templateService.RenderTemplate(ctx, tenantID, tt, vars)
 	if err != nil {
 		return err
 	}
 
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateVerification)
+	htmlWithTracking, eventID := s.injectTrackingPixel(ctx, html, vars, tt, recipient, tenantID)
+	
+	// Add click tracking to links
+	htmlWithTracking = s.wrapLinksWithTracking(htmlWithTracking, eventID, string(tt), recipient, tenantID)
 
-	s.logger.Info("Sending verification email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
+	jobID, err := s.sender.SendEmail(recipient, subject, htmlWithTracking, text)
 	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateVerification), eventID)
+		s.recordSentEvent(ctx, user, recipient, string(tt), eventID, templateID, jobID)
+		
+		// For synchronous senders (console, smtp), record delivery immediately
+		// Check if it's NOT sendgrid. SendGrid URLs usually contain "sendgrid.com"
+		if !strings.Contains(s.baseURL, "sendgrid.com") {
+			s.recordEvent(ctx, user, recipient, string(tt), "delivered", jobID)
+		}
 	}
 	return err
+}
+
+// SendVerificationEmail sends an email verification email using templates.
+func (s *TemplateAwareService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
+	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithVerification(token, verifyURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateVerification, vars)
 }
 
 // SendPasswordResetEmail sends a password reset email using templates.
 func (s *TemplateAwareService) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithPasswordReset(token, resetURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordReset, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplatePasswordReset)
-
-	s.logger.Info("Sending password reset email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplatePasswordReset), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithPasswordReset(token, resetURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordReset, vars)
 }
 
 // SendWelcomeEmail sends a welcome email using templates.
 func (s *TemplateAwareService) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateWelcome, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateWelcome)
-
-	s.logger.Info("Sending welcome email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateWelcome), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateWelcome, vars)
 }
 
 // SendLoginAlertEmail sends a login alert email using templates.
 func (s *TemplateAwareService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithDevice(device)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateLoginAlert, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateLoginAlert)
-
-	s.logger.Info("Sending login alert email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateLoginAlert), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithDevice(device)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateLoginAlert, vars)
 }
 
 // SendInvitationEmail sends an invitation email using templates.
 func (s *TemplateAwareService) SendInvitationEmail(ctx context.Context, invitation *InvitationEmail) error {
-	// For invitations, we don't have a user yet, so use nil tenant
-	branding, err := s.storage.GetEmailBranding(ctx, nil)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(nil, branding).WithBaseURL(s.baseURL).WithInvitation(invitation)
+	branding, _ := s.storage.GetEmailBranding(ctx, nil)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
 
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateInvitation, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateInvitation)
-
-	s.logger.Info("Sending invitation email", "to", invitation.Email)
-	err = s.sender.SendEmail(invitation.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, nil, invitation.Email, string(TemplateInvitation), eventID)
-	}
-	return err
+	vars := NewTemplateVars(nil, branding, advanced).WithBaseURL(s.baseURL).WithInvitation(invitation)
+	return s.sendTemplateEmail(ctx, nil, invitation.Email, TemplateInvitation, vars)
 }
 
 // SendMFAEnabledEmail sends MFA enabled notification using templates.
 func (s *TemplateAwareService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL)
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateMFAEnabled, vars)
+}
 
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateMFAEnabled, vars)
-	if err != nil {
-		return err
-	}
+// SendMFADisabledEmail sends MFA disabled notification using templates.
+func (s *TemplateAwareService) SendMFADisabledEmail(ctx context.Context, user *storage.User) error {
+	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateMFAEnabled)
-
-	s.logger.Info("Sending MFA enabled email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateMFAEnabled), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateMFADisabled, vars)
 }
 
 // SendMFACodeEmail sends MFA verification code.
 func (s *TemplateAwareService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
-	branding, err := s.storage.GetEmailBranding(ctx, nil)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
+	branding, _ := s.storage.GetEmailBranding(ctx, nil)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
 
-	vars := NewTemplateVars(nil, branding).WithBaseURL(s.baseURL).WithMFACode(code)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateMFACode, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateMFACode)
-
-	s.logger.Info("Sending MFA code email", "to", email)
-	err = s.sender.SendEmail(email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, nil, email, string(TemplateMFACode), eventID)
-	}
-	return err
+	vars := NewTemplateVars(nil, branding, advanced).WithBaseURL(s.baseURL).WithMFACode(code)
+	return s.sendTemplateEmail(ctx, nil, email, TemplateMFACode, vars)
 }
 
 // SendLowBackupCodesEmail sends notification when backup codes are running low.
 func (s *TemplateAwareService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithRemainingCodes(remaining)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateLowBackupCodes, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateLowBackupCodes)
-
-	s.logger.Info("Sending low backup codes email", "to", user.Email, "remaining", remaining)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateLowBackupCodes), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithRemainingCodes(remaining)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateLowBackupCodes, vars)
 }
 
 // SendPasswordChangedEmail sends password changed notification using templates.
 func (s *TemplateAwareService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordChanged, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplatePasswordChanged)
-
-	s.logger.Info("Sending password changed email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplatePasswordChanged), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordChanged, vars)
 }
 
 // SendSessionRevokedEmail sends session revoked notification using templates.
 func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithReason(reason)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateSessionRevoked, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateSessionRevoked)
-
-	s.logger.Info("Sending session revoked email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateSessionRevoked), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithReason(reason)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateSessionRevoked, vars)
 }
 
 // SendAccountDeactivatedEmail sends account deactivation notification.
 func (s *TemplateAwareService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithAccountDeactivation(reason, reactivationURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateAccountDeactivated, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateAccountDeactivated)
-
-	s.logger.Info("Sending account deactivated email", "to", user.Email)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateAccountDeactivated), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithAccountDeactivation(reason, reactivationURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateAccountDeactivated, vars)
 }
 
 // SendEmailChangedEmail sends email change notification.
 func (s *TemplateAwareService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithEmailChange(oldEmail, newEmail)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateEmailChanged, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateEmailChanged)
-
-	s.logger.Info("Sending email changed notification", "to", oldEmail, "new_email", newEmail)
-	err = s.sender.SendEmail(oldEmail, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, oldEmail, string(TemplateEmailChanged), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithEmailChange(oldEmail, newEmail)
+	return s.sendTemplateEmail(ctx, user, oldEmail, TemplateEmailChanged, vars)
 }
 
 // SendPasswordExpiryEmail sends password expiry warning.
 func (s *TemplateAwareService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithPasswordExpiry(daysUntilExpiry, expiryDate, changePasswordURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplatePasswordExpiry, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplatePasswordExpiry)
-
-	s.logger.Info("Sending password expiry warning", "to", user.Email, "days_until_expiry", daysUntilExpiry)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplatePasswordExpiry), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithPasswordExpiry(daysUntilExpiry, expiryDate, changePasswordURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordExpiry, vars)
 }
 
 // SendSecurityAlertEmail sends security alert notification.
 func (s *TemplateAwareService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithSecurityAlert(title, message, details, actionURL, actionText)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateSecurityAlert, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateSecurityAlert)
-
-	s.logger.Info("Sending security alert", "to", user.Email, "title", title)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateSecurityAlert), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithSecurityAlert(title, message, details, actionURL, actionText)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateSecurityAlert, vars)
 }
 
 // SendRateLimitWarningEmail sends rate limit warning notification.
 func (s *TemplateAwareService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
 	tenantID := getTenantID(user)
+	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
 
-	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
-	}
-	vars := NewTemplateVars(user, branding).WithBaseURL(s.baseURL).WithRateLimitWarning(actionType, currentCount, maxCount, timeWindow, upgradeURL)
-
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, tenantID, TemplateRateLimitWarning, vars)
-	if err != nil {
-		return err
-	}
-
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateRateLimitWarning)
-
-	s.logger.Info("Sending rate limit warning", "to", user.Email, "action", actionType)
-	err = s.sender.SendEmail(user.Email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, user, user.Email, string(TemplateRateLimitWarning), eventID)
-	}
-	return err
+	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithRateLimitWarning(actionType, currentCount, maxCount, timeWindow, upgradeURL)
+	return s.sendTemplateEmail(ctx, user, user.Email, TemplateRateLimitWarning, vars)
 }
 
 // SendMagicLink sends a magic link email for passwordless authentication.
 func (s *TemplateAwareService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
-	s.logger.Info("Sending magic link email", "to", email)
+	branding, _ := s.storage.GetEmailBranding(ctx, nil)
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
 
-	branding, err := s.storage.GetEmailBranding(ctx, nil)
-	if err != nil {
-		s.logger.Warn("Failed to get branding, using defaults", "error", err)
+	sampleUser := &storage.User{Email: email}
+	vars := NewTemplateVars(sampleUser, branding, advanced).WithMagicLink(magicLinkURL)
+	return s.sendTemplateEmail(ctx, nil, email, TemplateMagicLink, vars)
+}
+
+var hrefRegexp = regexp.MustCompile(`href="([^"]+)"`)
+
+// wrapLinksWithTracking rewrites URLs in the HTML body to route through the tracking endpoint.
+func (s *TemplateAwareService) wrapLinksWithTracking(htmlBody, eventID, templateType, recipient string, tenantID *uuid.UUID) string {
+	if s.baseURL == "" {
+		return htmlBody
 	}
 
-	sampleUser := &storage.User{
-		Email: email,
+	tid := "global"
+	if tenantID != nil {
+		tid = tenantID.String()
 	}
 
-	vars := NewTemplateVars(sampleUser, branding).WithMagicLink(magicLinkURL)
+	return hrefRegexp.ReplaceAllStringFunc(htmlBody, func(match string) string {
+		submatch := hrefRegexp.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+		
+		originalURL := submatch[1]
+		// Don't track relative URLs or mailto/tel
+		if strings.HasPrefix(originalURL, "#") || strings.HasPrefix(originalURL, "mailto:") || strings.HasPrefix(originalURL, "tel:") {
+			return match
+		}
 
-	subject, htmlBody, textBody, err := s.templateService.RenderTemplate(ctx, nil, TemplateMagicLink, vars)
-	if err != nil {
-		return err
-	}
+		// Don't track URLs that are already tracking URLs
+		if strings.Contains(originalURL, "/v1/email/track") {
+			return match
+		}
 
-	// Inject tracking pixel
-	htmlWithTracking, eventID := s.injectTrackingPixel(htmlBody, vars, TemplateMagicLink)
-
-	err = s.sender.SendEmail(email, subject, htmlWithTracking, textBody)
-	if err == nil {
-		s.recordSentEvent(ctx, nil, email, string(TemplateMagicLink), eventID)
-	}
-	return err
+		trackingURL := fmt.Sprintf("%s/v1/email/track/click/%s?url=%s&recipient=%s&tenant_id=%s&event_id=%s", 
+			s.baseURL, templateType, url.QueryEscape(originalURL), url.QueryEscape(recipient), tid, eventID)
+		return fmt.Sprintf(`href="%s"`, trackingURL)
+	})
 }
 
 // Verify TemplateAwareService implements Service interface

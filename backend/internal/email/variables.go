@@ -28,6 +28,16 @@ type TemplateVars struct {
 	FooterText     string
 	CurrentYear    string
 
+	// Advanced Branding
+	HeaderImageURL string
+	CustomCSS      string
+	FontFamily     string
+	FontFamilyURL  string
+	FacebookURL    string
+	TwitterURL     string
+	LinkedInURL    string
+	InstagramURL   string
+
 	// Common context variables
 	UnsubscribeURL string
 	CurrentDate    string
@@ -90,7 +100,7 @@ type TemplateVars struct {
 }
 
 // NewTemplateVars creates template variables from user and branding data.
-func NewTemplateVars(user *storage.User, branding *storage.EmailBranding) *TemplateVars {
+func NewTemplateVars(user *storage.User, branding *storage.EmailBranding, advanced *storage.EmailBrandingAdvanced) *TemplateVars {
 	now := time.Now()
 	vars := &TemplateVars{
 		CurrentYear:  strconv.Itoa(now.Year()),
@@ -147,6 +157,36 @@ func NewTemplateVars(user *storage.User, branding *storage.EmailBranding) *Templ
 		vars.SecondaryColor = DefaultSecondaryColor
 		vars.CompanyName = "ModernAuth"
 		vars.FooterText = "© " + vars.CurrentYear + " ModernAuth. All rights reserved."
+	}
+
+	// Set advanced branding
+	if advanced != nil {
+		if advanced.HeaderImageURL != nil {
+			vars.HeaderImageURL = *advanced.HeaderImageURL
+		}
+		if advanced.CustomCSS != nil {
+			vars.CustomCSS = *advanced.CustomCSS
+		}
+		if advanced.FontFamily != nil {
+			vars.FontFamily = *advanced.FontFamily
+		}
+		if advanced.FontFamilyURL != nil {
+			vars.FontFamilyURL = *advanced.FontFamilyURL
+		}
+		if advanced.SocialLinks != nil {
+			if advanced.SocialLinks.Facebook != nil {
+				vars.FacebookURL = *advanced.SocialLinks.Facebook
+			}
+			if advanced.SocialLinks.Twitter != nil {
+				vars.TwitterURL = *advanced.SocialLinks.Twitter
+			}
+			if advanced.SocialLinks.LinkedIn != nil {
+				vars.LinkedInURL = *advanced.SocialLinks.LinkedIn
+			}
+			if advanced.SocialLinks.Instagram != nil {
+				vars.InstagramURL = *advanced.SocialLinks.Instagram
+			}
+		}
 	}
 
 	return vars

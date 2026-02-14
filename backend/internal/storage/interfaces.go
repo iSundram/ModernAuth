@@ -287,6 +287,7 @@ type EmailTemplateStorage interface {
 	GetEmailABTest(ctx context.Context, id uuid.UUID) (*EmailABTest, error)
 	UpdateEmailABTest(ctx context.Context, test *EmailABTest) error
 	DeleteEmailABTest(ctx context.Context, id uuid.UUID) error
+	GetEmailABTestResults(ctx context.Context, abTestID uuid.UUID) ([]*EmailABTestResult, error)
 
 	// Advanced Branding operations
 	GetEmailBrandingAdvanced(ctx context.Context, tenantID *uuid.UUID) (*EmailBrandingAdvanced, error)

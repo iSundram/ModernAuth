@@ -70,14 +70,14 @@ func (l *AccountLockout) IsLocked(ctx context.Context, identifier string) (bool,
 	return true, ttl, nil
 }
 
-// RecordFailedAttempt records a failed login attempt and returns whether the account is now locked.
-func (l *AccountLockout) RecordFailedAttempt(ctx context.Context, identifier string) (bool, error) {
+// RecordFailedAttempt records a failed login attempt and returns whether the account is now locked and the current attempt count.
+func (l *AccountLockout) RecordFailedAttempt(ctx context.Context, identifier string) (bool, int, error) {
 	key := failedAttemptsPrefix + identifier
 	
 	// Increment the counter
 	count, err := l.rdb.Incr(ctx, key).Result()
 	if err != nil {
-		return false, fmt.Errorf("failed to record attempt: %w", err)
+		return false, 0, fmt.Errorf("failed to record attempt: %w", err)
 	}
 	
 	// Set expiry on first attempt
@@ -89,14 +89,14 @@ func (l *AccountLockout) RecordFailedAttempt(ctx context.Context, identifier str
 	if count >= int64(l.maxAttempts) {
 		lockKey := lockoutKeyPrefix + identifier
 		if err := l.rdb.Set(ctx, lockKey, "1", l.lockoutDuration).Err(); err != nil {
-			return false, fmt.Errorf("failed to set lockout: %w", err)
+			return false, int(count), fmt.Errorf("failed to set lockout: %w", err)
 		}
 		// Clear the failed attempts counter
 		l.rdb.Del(ctx, key)
-		return true, nil
+		return true, int(count), nil
 	}
 	
-	return false, nil
+	return false, int(count), nil
 }
 
 // ClearFailedAttempts clears failed attempts after successful login.

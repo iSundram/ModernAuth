@@ -1,0 +1,14 @@
+Two-Factor Authentication Enabled
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+Two-factor authentication (MFA) has been successfully enabled on your {{.AppName}} account.
+
+Your account is now more secure. From now on, you will be required to provide a verification code when signing in.
+
+Important: Make sure to save your backup codes in a secure location.
+
+If you didn't enable MFA yourself, please contact our support team immediately.
+
+Thanks,
+The {{.AppName}} Team

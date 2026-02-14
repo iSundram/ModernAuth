@@ -1,0 +1,15 @@
+Sign In to {{.AppName}}
+
+Hi,
+
+We received a request to sign in to your {{.AppName}} account using this email address.
+
+Click the link below to sign in:
+{{.MagicLinkURL}}
+
+This link will expire in 15 minutes and can only be used once.
+
+If you didn't request this sign-in link, you can safely ignore this email.
+
+Thanks,
+The {{.AppName}} Team

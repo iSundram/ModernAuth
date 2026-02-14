@@ -1,0 +1,22 @@
+{{define "title"}}Session Terminated{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>One of your active sessions on <strong>{{.AppName}}</strong> has been terminated.</p>
+    
+    <div style="background: #F3F4F6; padding: 20px; border-radius: 8px; margin: 24px 0;">
+        <p style="margin: 0; color: #4B5563; font-size: 14px;"><strong>Reason:</strong></p>
+        <p style="margin: 8px 0 0 0; color: #111827;">{{.Reason}}</p>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        If you did this intentionally (e.g., you logged out from another device), no further action is needed.
+    </p>
+    
+    <p style="color: #DC2626; font-size: 14px; font-weight: 600;">
+        If you didn't do this, it's possible your account was compromised. Please change your password immediately and review your active sessions.
+    </p>
+    
+    <div style="text-align: center; margin-top: 32px;">
+        <a href="{{.BaseURL}}/settings/security" class="button">Review Active Sessions</a>
+    </div>
+{{end}}

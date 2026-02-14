@@ -1,0 +1,26 @@
+{{define "title"}}Account Deactivated{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>Your account on <strong>{{.AppName}}</strong> has been deactivated.</p>
+    
+    {{if .Reason}}
+    <div style="background: #FEF2F2; padding: 20px; border-radius: 8px; border-left: 4px solid #EF4444; margin: 24px 0;">
+        <p style="margin: 0; color: #991B1B; font-size: 14px;"><strong>Reason:</strong></p>
+        <p style="margin: 8px 0 0 0; color: #B91C1C;">{{.Reason}}</p>
+    </div>
+    {{end}}
+    
+    {{if .ReactivationURL}}
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.ReactivationURL}}" class="button">Reactivate Account</a>
+    </div>
+    {{else}}
+    <p style="color: #6B7280; font-size: 14px;">
+        While your account is deactivated, you will not be able to sign in or use any of our services.
+    </p>
+    {{end}}
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 24px;">
+        If you believe this is a mistake, please contact our support team.
+    </p>
+{{end}}

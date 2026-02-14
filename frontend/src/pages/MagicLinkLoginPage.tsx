@@ -113,8 +113,8 @@ export function MagicLinkLoginPage() {
         <div className="w-full max-w-md relative z-10">
           <div className="bg-white rounded-2xl p-8 shadow-xl border border-[var(--color-border)]">
             <div className="flex flex-col items-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-2xl mb-4">
-                <Wand2 className="w-8 h-8 text-white" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-2xl mb-4 overflow-hidden p-2">
+                <img src="/logo.svg" alt="ModernAuth Logo" className="w-full h-full object-contain" />
               </div>
               <h2 className="text-3xl font-bold text-[var(--color-text-primary)] text-center font-poppins">
                 Magic Link

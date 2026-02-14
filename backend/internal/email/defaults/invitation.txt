@@ -1,0 +1,15 @@
+You're Invited
+
+Hi there,
+
+{{.InviterName}} has invited you to join {{.TenantName}} on {{.AppName}}.
+
+{{if .Message}}"{{.Message}}"{{end}}
+
+Accept the invitation by clicking the link below:
+{{.InviteURL}}
+
+Note: This invitation will expire on {{.ExpiresAt}}.
+
+Thanks,
+The {{.AppName}} Team

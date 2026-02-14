@@ -1,0 +1,13 @@
+Email Address Changed
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+The email address associated with your {{.AppName}} account has been changed.
+
+Old Email: {{.OldEmail}}
+New Email: {{.NewEmail}}
+
+If you did not authorize this change, please contact our support team immediately.
+
+Thanks,
+The {{.AppName}} Team

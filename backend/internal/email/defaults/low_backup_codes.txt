@@ -1,0 +1,12 @@
+Security Action Required
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+You have only {{.RemainingCodes}} backup codes remaining for your Two-Factor Authentication (MFA) on {{.AppName}}.
+
+Backup codes are your safety net. We strongly recommend generating a new set at: {{.BaseURL}}/settings/security
+
+Note: Generating new codes will invalidate all current ones.
+
+Thanks,
+The {{.AppName}} Team

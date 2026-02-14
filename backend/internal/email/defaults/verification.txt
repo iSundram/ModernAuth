@@ -1,0 +1,12 @@
+Verify Your Email
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+Thanks for signing up for {{.AppName}}! Please verify your email address by clicking the link below:
+
+{{.VerifyURL}}
+
+If you didn't create an account, you can safely ignore this email.
+
+Thanks,
+The {{.AppName}} Team

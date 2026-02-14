@@ -1,0 +1,18 @@
+{{define "title"}}MFA Enabled{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>Two-factor authentication (MFA) has been successfully <strong>enabled</strong> on your <strong>{{.AppName}}</strong> account.</p>
+    
+    <div style="background: #ECFDF5; padding: 20px; border-radius: 8px; border-left: 4px solid #10B981; margin: 24px 0;">
+        <p style="margin: 0; color: #065F46; font-weight: 600;">Your account is now more secure.</p>
+        <p style="margin: 10px 0 0 0; color: #065F46; font-size: 14px;">From now on, you will be required to provide a verification code in addition to your password when signing in.</p>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        <strong>Important:</strong> If you haven't already, make sure to save your backup codes in a secure location. You will need them if you lose access to your primary MFA device.
+    </p>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 24px;">
+        If you didn't enable MFA yourself, please contact our support team immediately.
+    </p>
+{{end}}

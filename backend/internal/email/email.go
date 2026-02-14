@@ -27,6 +27,9 @@ type Service interface {
 	// SendMFAEnabledEmail sends notification that MFA was enabled.
 	SendMFAEnabledEmail(ctx context.Context, user *storage.User) error
 
+	// SendMFADisabledEmail sends notification that MFA was disabled.
+	SendMFADisabledEmail(ctx context.Context, user *storage.User) error
+
 	// SendMFACodeEmail sends an MFA verification code to user's email.
 	SendMFACodeEmail(ctx context.Context, email string, code string) error
 
@@ -60,7 +63,8 @@ type Service interface {
 
 // EmailSender defines the low-level email sending interface.
 type EmailSender interface {
-	SendEmail(to, subject, htmlBody, textBody string) error
+	// SendEmail sends an email and returns the provider's message ID if available.
+	SendEmail(to, subject, htmlBody, textBody string) (string, error)
 }
 
 // DeviceInfo contains device information for login alerts.

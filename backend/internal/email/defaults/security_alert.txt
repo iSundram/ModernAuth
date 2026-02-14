@@ -1,0 +1,15 @@
+{{.AlertTitle}}
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+{{.AlertTitle}}
+{{.AlertMessage}}
+
+{{if .AlertDetails}}Details: {{.AlertDetails}}{{end}}
+
+{{if .ActionURL}}Take Action: {{.ActionURL}}{{end}}
+
+If you have any questions, please contact our support team.
+
+Thanks,
+The {{.AppName}} Team

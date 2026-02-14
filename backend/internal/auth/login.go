@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,6 +80,17 @@ func (s *AuthService) CheckEmail(ctx context.Context, email string) (*CheckEmail
 
 // Login authenticates a user with email and password.
 func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResult, error) {
+	// Check if account is locked
+	if s.accountLockout != nil {
+		locked, ttl, err := s.accountLockout.IsLocked(ctx, req.Email)
+		if err != nil {
+			s.logger.Error("Failed to check lockout", "error", err, "email", req.Email)
+		}
+		if locked {
+			return nil, fmt.Errorf("account locked, try again in %v", ttl.Round(time.Second))
+		}
+	}
+
 	// Find the user
 	user, err := s.storage.GetUserByEmail(ctx, req.Email)
 	if err != nil {
@@ -102,12 +114,33 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 		return nil, err
 	}
 	if !match {
+		// Record failed attempt
+		if s.accountLockout != nil {
+			locked, count, err := s.accountLockout.RecordFailedAttempt(ctx, req.Email)
+			if err != nil {
+				s.logger.Error("Failed to record failed attempt", "error", err, "email", req.Email)
+			}
+			if locked {
+				s.logger.Warn("Account locked due to multiple failed attempts", "user_id", user.ID, "ip", req.IP)
+				// Send security alert email
+				_ = s.emailService.SendSecurityAlertEmail(ctx, user, "Account Locked", 
+					fmt.Sprintf("Your account has been locked after %d failed login attempts.", count),
+					fmt.Sprintf("Locked from IP: %s. Your account will be unlocked automatically in 30 minutes.", req.IP),
+					"", "")
+			}
+		}
+
 		// Log failed login attempt without exposing email (use user ID instead)
 		s.logger.Warn("Failed login attempt", "user_id", user.ID, "ip", req.IP)
 		s.logAuditEvent(ctx, &user.ID, nil, "login.failed", &req.IP, &req.UserAgent, map[string]interface{}{
 			"reason": "invalid_password",
 		})
 		return nil, ErrInvalidCredentials
+	}
+
+	// Clear failed attempts on success
+	if s.accountLockout != nil {
+		_ = s.accountLockout.ClearFailedAttempts(ctx, req.Email)
 	}
 
 	// Check MFA policy (system-wide and tenant-specific) including trusted device logic.

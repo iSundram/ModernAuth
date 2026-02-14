@@ -213,6 +213,35 @@ func (h *Handler) DynamicRateLimit(settingKey string, defaultLimit int, window t
 			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetTime))
 
+			// Send warning email if remaining is low (e.g., less than 10% of limit)
+			// Only for authenticated users to avoid spamming
+			if h.emailService != nil && count > 0 && remaining < int64(limit)/10 && count <= int64(limit) {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+					claims, err := h.tokenService.ValidateAccessToken(tokenString)
+					if err == nil {
+						// Check if we already sent a warning recently (cooldown)
+						warningKey := fmt.Sprintf("ratelimit_warning:%s:%s", settingKey, claims.UserID)
+						alreadySent, _ := h.rdb.SetNX(ctx, warningKey, "1", 24*time.Hour).Result()
+						
+						if alreadySent {
+							go func() {
+								uid, err := uuid.Parse(claims.UserID)
+								if err == nil {
+									user, err := h.storage.GetUserByID(context.Background(), uid)
+									if err == nil && user != nil {
+										_ = h.emailService.SendRateLimitWarningEmail(context.Background(), user, 
+											settingKey, fmt.Sprintf("%d", count), fmt.Sprintf("%d", limit), 
+											window.String(), "")
+									}
+								}
+							}()
+						}
+					}
+				}
+			}
+
 			if count > int64(limit) {
 				retryAfter := int(ttl.Seconds())
 				if retryAfter < 1 {

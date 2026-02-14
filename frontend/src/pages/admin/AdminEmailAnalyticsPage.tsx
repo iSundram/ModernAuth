@@ -19,6 +19,137 @@ interface DailyEmailData {
   bounced: number;
 }
 
+// Template type labels - matched with templates.go
+const templateTypeLabels: Record<string, string> = {
+  welcome: 'Welcome Email',
+  verification: 'Email Verification',
+  password_reset: 'Password Reset',
+  password_changed: 'Password Changed',
+  login_alert: 'Login Alert',
+  invitation: 'Invitation',
+  mfa_enabled: 'MFA Enabled',
+  mfa_code: 'MFA Code',
+  session_revoked: 'Session Revoked',
+  magic_link: 'Magic Link',
+  account_deactivated: 'Account Deactivated',
+  email_changed: 'Email Address Changed',
+  password_expiry: 'Password Expiry',
+  security_alert: 'Security Alert',
+  rate_limit_warning: 'Rate Limit Warning',
+  low_backup_codes: 'Low Backup Codes',
+};
+
+function ABTestCard({ test, onRefresh }: { test: EmailABTest; onRefresh: () => void }) {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: results, isLoading } = useQuery<EmailABTestResult[]>({
+    queryKey: ['email-abtest-results', test.id],
+    queryFn: () => adminService.getEmailABTestResults(test.id),
+  });
+
+  const declareWinnerMutation = useMutation({
+    mutationFn: (variant: 'a' | 'b') => adminService.declareEmailABTestWinner(test.id, variant),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-abtests'] });
+      showToast({ title: 'Success', message: 'Winner declared successfully', type: 'success' });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      showToast({ title: 'Error', message: error.message || 'Failed to declare winner', type: 'error' });
+    },
+  });
+
+  const variantA = results?.find(r => r.variant === 'a');
+  const variantB = results?.find(r => r.variant === 'b');
+
+  return (
+    <div className="p-4 rounded-lg border border-[var(--color-border)]">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h4 className="font-medium">{test.name}</h4>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {templateTypeLabels[test.template_type] || test.template_type} • Started {test.start_date}
+          </p>
+        </div>
+        <Badge variant={test.is_active ? 'success' : 'default'}>
+          {test.is_active ? 'Active' : 'Completed'}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Variant A */}
+        <div className={`p-4 rounded-lg bg-[var(--color-surface-hover)] border ${test.winner_variant === 'a' ? 'border-green-500/50' : 'border-transparent'}`}>
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Variant A (Control)</span>
+              <p className="font-medium text-[var(--color-text-primary)]">{test.variant_a}</p>
+            </div>
+            {test.is_active && (
+              <Button size="xs" variant="outline" onClick={() => declareWinnerMutation.mutate('a')}>
+                Declare Winner
+              </Button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Sent</p>
+              <p className="font-semibold">{variantA?.sent || 0}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Open Rate</p>
+              <p className="font-semibold text-blue-400">{variantA?.open_rate.toFixed(1) || 0}%</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Click Rate</p>
+              <p className="font-semibold text-orange-400">{variantA?.click_rate.toFixed(1) || 0}%</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Variant B */}
+        <div className={`p-4 rounded-lg bg-[var(--color-surface-hover)] border ${test.winner_variant === 'b' ? 'border-green-500/50' : 'border-transparent'}`}>
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Variant B (Treatment)</span>
+              <p className="font-medium text-[var(--color-text-primary)]">{test.variant_b}</p>
+            </div>
+            {test.is_active && (
+              <Button size="xs" variant="outline" onClick={() => declareWinnerMutation.mutate('b')}>
+                Declare Winner
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Sent</p>
+              <p className="font-semibold">{variantB?.sent || 0}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Open Rate</p>
+              <p className="font-semibold text-blue-400">{variantB?.open_rate.toFixed(1) || 0}%</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-[var(--color-text-muted)]">Click Rate</p>
+              <p className="font-semibold text-orange-400">{variantB?.click_rate.toFixed(1) || 0}%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {test.winner_variant && (
+        <div className="mt-4 p-3 rounded bg-green-500/10 text-green-500 flex items-center gap-2">
+          <CheckCircle size={16} />
+          <span>Winner: <strong>Variant {test.winner_variant.toUpperCase()}</strong></span>
+          <span className="text-xs ml-auto text-green-500/70">Ended {test.end_date}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminEmailAnalyticsPage() {
   const [days, setDays] = useState(30);
   const [activeTab, setActiveTab] = useState<'stats' | 'bounces' | 'suppressions' | 'abtests'>('stats');
@@ -626,46 +757,9 @@ export function AdminEmailAnalyticsPage() {
                 <Button onClick={() => setShowCreateTestModal(true)}>Create A/B Test</Button>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {abTests.map((test) => (
-                  <div
-                    key={test.id}
-                    className="p-4 rounded-lg border border-[var(--color-border)]"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h4 className="font-medium">{test.name}</h4>
-                        <p className="text-sm text-[var(--color-text-muted)]">
-                          {test.template_type.replace(/_/g, ' ')} • Started {test.start_date}
-                        </p>
-                      </div>
-                      <Badge variant={test.is_active ? 'success' : 'default'}>
-                        {test.is_active ? 'Active' : 'Completed'}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 rounded bg-[var(--color-surface-hover)]">
-                        <div className="text-sm text-[var(--color-text-muted)] mb-1">Variant A</div>
-                        <div className="font-medium">{test.variant_a}</div>
-                        <div className="text-xs text-[var(--color-text-muted)]">
-                          Weight: {test.weight_a}%
-                        </div>
-                      </div>
-                      <div className="p-3 rounded bg-[var(--color-surface-hover)]">
-                        <div className="text-sm text-[var(--color-text-muted)] mb-1">Variant B</div>
-                        <div className="font-medium">{test.variant_b}</div>
-                        <div className="text-xs text-[var(--color-text-muted)]">
-                          Weight: {test.weight_b}%
-                        </div>
-                      </div>
-                    </div>
-                    {test.winner_variant && (
-                      <div className="mt-4 p-3 rounded bg-green-500/10 text-green-500 flex items-center gap-2">
-                        <ArrowUpRight size={16} />
-                        Winner: Variant {test.winner_variant.toUpperCase()}
-                      </div>
-                    )}
-                  </div>
+                  <ABTestCard key={test.id} test={test} onRefresh={() => queryClient.invalidateQueries({ queryKey: ['email-abtests'] })} />
                 ))}
               </div>
             )}
@@ -691,15 +785,10 @@ export function AdminEmailAnalyticsPage() {
             label="Template Type"
             value={newTest.template_type}
             onChange={(e) => setNewTest(prev => ({ ...prev, template_type: e.target.value }))}
-            options={[
-              { value: 'welcome', label: 'Welcome Email' },
-              { value: 'verification', label: 'Email Verification' },
-              { value: 'password_reset', label: 'Password Reset' },
-              { value: 'password_changed', label: 'Password Changed' },
-              { value: 'login_alert', label: 'Login Alert' },
-              { value: 'invitation', label: 'Invitation' },
-              { value: 'mfa_enabled', label: 'MFA Enabled' },
-            ]}
+            options={Object.entries(templateTypeLabels).map(([value, label]) => ({
+              value,
+              label,
+            }))}
           />
 
           <Input

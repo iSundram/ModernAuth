@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iSundram/ModernAuth/internal/email"
 	"github.com/iSundram/ModernAuth/internal/hibp"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/iSundram/ModernAuth/internal/utils"
@@ -62,11 +63,12 @@ var (
 
 // AuthService provides authentication operations.
 type AuthService struct {
-	storage      storage.Storage
-	tokenService *TokenService
-	emailService interface{}
-	hibpService  *hibp.Service
-	smsService   interface {
+	storage        storage.Storage
+	tokenService   *TokenService
+	emailService   email.Service
+	accountLockout *AccountLockout
+	hibpService    *hibp.Service
+	smsService     interface {
 		SendSMS(ctx context.Context, to string, message string) error
 	}
 	tokenBlacklist *TokenBlacklist
@@ -98,7 +100,7 @@ func (s *AuthService) SetTokenBlacklist(blacklist *TokenBlacklist) {
 }
 
 // NewAuthService creates a new authentication service.
-func NewAuthService(store storage.Storage, tokenService *TokenService, emailService interface{}, sessionTTL time.Duration) *AuthService {
+func NewAuthService(store storage.Storage, tokenService *TokenService, emailService email.Service, sessionTTL time.Duration) *AuthService {
 	if sessionTTL == 0 {
 		sessionTTL = 7 * 24 * time.Hour // Default 7 days
 	}
@@ -109,6 +111,11 @@ func NewAuthService(store storage.Storage, tokenService *TokenService, emailServ
 		sessionTTL:   sessionTTL,
 		logger:       slog.Default().With("component", "auth_service"),
 	}
+}
+
+// SetAccountLockout sets the account lockout manager.
+func (s *AuthService) SetAccountLockout(lockout *AccountLockout) {
+	s.accountLockout = lockout
 }
 
 // logAuditEvent creates an audit log entry.

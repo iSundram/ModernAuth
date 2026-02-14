@@ -142,16 +142,17 @@ type EmailABTest struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
-// EmailABTestResult stores results for an A/B test variant.
+// EmailABTestResult stores aggregated results for an A/B test variant.
 type EmailABTestResult struct {
-	ID           uuid.UUID  `json:"id"`
-	ABTestID     uuid.UUID  `json:"ab_test_id"`
-	TenantID     *uuid.UUID `json:"tenant_id,omitempty"`
-	Variant      string     `json:"variant"` // "a" or "b"
-	Recipient    string     `json:"recipient"`
-	TemplateType string     `json:"template_type"`
-	EventType    string     `json:"event_type"` // sent, delivered, opened, clicked
-	CreatedAt    time.Time  `json:"created_at"`
+	Variant      string  `json:"variant"` // "a" or "b"
+	Sent         int     `json:"sent"`
+	Delivered    int     `json:"delivered"`
+	Opened       int     `json:"opened"`
+	Clicked      int     `json:"clicked"`
+	Bounced      int     `json:"bounced"`
+	BounceRate   float64 `json:"bounce_rate"`
+	OpenRate     float64 `json:"open_rate"`
+	ClickRate    float64 `json:"click_rate"`
 }
 
 // EmailSocialLinks represents social media links for email branding.

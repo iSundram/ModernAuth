@@ -1,0 +1,38 @@
+{{define "title"}}New Login Detected{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>We noticed a new login to your <strong>{{.AppName}}</strong> account from a device or location we don't recognize:</p>
+    
+    <div style="background: #F3F4F6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+            <tr>
+                <td style="padding: 8px 0; color: #6B7280; width: 100px;"><strong>Device:</strong></td>
+                <td style="padding: 8px 0; color: #111827;">{{.DeviceName}}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #6B7280;"><strong>Browser:</strong></td>
+                <td style="padding: 8px 0; color: #111827;">{{.Browser}}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #6B7280;"><strong>Location:</strong></td>
+                <td style="padding: 8px 0; color: #111827;">{{.Location}}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #6B7280;"><strong>IP Address:</strong></td>
+                <td style="padding: 8px 0; color: #111827;">{{.IPAddress}}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #6B7280;"><strong>Time:</strong></td>
+                <td style="padding: 8px 0; color: #111827;">{{.Time}}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <p><strong>Was this you?</strong></p>
+    <p style="color: #6B7280; font-size: 14px;">If this was you, you can safely ignore this email.</p>
+    <p style="color: #DC2626; font-size: 14px; font-weight: 600;">If this wasn't you, please change your password immediately and check your account security settings.</p>
+    
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="{{.BaseURL}}/settings/security" class="button">Review Account Security</a>
+    </div>
+{{end}}

@@ -251,6 +251,7 @@ func (h *Handler) Router() *chi.Mux {
 					r.Get("/", h.emailTemplateHandler.ListABTests)
 					r.Post("/", h.emailTemplateHandler.CreateABTest)
 					r.Get("/{testId}", h.emailTemplateHandler.GetABTest)
+					r.Get("/{testId}/results", h.emailTemplateHandler.GetABTestResults)
 					r.Post("/{testId}/winner", h.emailTemplateHandler.DeclareABTestWinner)
 				})
 			}

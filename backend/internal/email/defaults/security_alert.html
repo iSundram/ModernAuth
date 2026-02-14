@@ -1,0 +1,24 @@
+{{define "title"}}{{.AlertTitle}}{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    
+    <div style="background: #FEF2F2; padding: 24px; border-radius: 12px; border: 1px solid #FEE2E2; margin: 24px 0;">
+        <h3 style="margin-top: 0; color: #991B1B;">{{.AlertTitle}}</h3>
+        <p style="color: #4B5563;">{{.AlertMessage}}</p>
+        {{if .AlertDetails}}
+        <p style="background: #FFFFFF; padding: 12px; border-radius: 6px; font-size: 13px; color: #6B7280; border: 1px solid #F3F4F6;">
+            {{.AlertDetails}}
+        </p>
+        {{end}}
+    </div>
+    
+    {{if .ActionURL}}
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.ActionURL}}" class="button">{{if .ActionText}}{{.ActionText}}{{else}}Review Activity{{end}}</a>
+    </div>
+    {{end}}
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        If you have any questions or didn't expect this alert, please contact our support team.
+    </p>
+{{end}}

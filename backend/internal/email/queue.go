@@ -225,6 +225,7 @@ const (
 	jobTypeLoginAlert         = "login_alert"
 	jobTypeInvitation         = "invitation"
 	jobTypeMFAEnabled         = "mfa_enabled"
+	jobTypeMFADisabled        = "mfa_disabled"
 	jobTypeMFACode            = "mfa_code"
 	jobTypeLowBackupCodes     = "low_backup_codes"
 	jobTypePasswordChanged    = "password_changed"
@@ -274,6 +275,10 @@ type lowBackupCodesPayload struct {
 }
 
 type mfaEnabledPayload struct {
+	User *storage.User
+}
+
+type mfaDisabledPayload struct {
 	User *storage.User
 }
 
@@ -351,6 +356,9 @@ func (q *QueuedService) processJob(job *EmailJob) error {
 	case jobTypeMFAEnabled:
 		p := job.Payload.(*mfaEnabledPayload)
 		return q.inner.SendMFAEnabledEmail(ctx, p.User)
+	case jobTypeMFADisabled:
+		p := job.Payload.(*mfaDisabledPayload)
+		return q.inner.SendMFADisabledEmail(ctx, p.User)
 	case jobTypeMFACode:
 		p := job.Payload.(*mfaCodePayload)
 		return q.inner.SendMFACodeEmail(ctx, p.Email, p.Code)
@@ -445,6 +453,10 @@ func (q *QueuedService) SendInvitationEmail(ctx context.Context, invitation *Inv
 
 func (q *QueuedService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypeMFAEnabled, user.Email, &mfaEnabledPayload{User: user})
+}
+
+func (q *QueuedService) SendMFADisabledEmail(ctx context.Context, user *storage.User) error {
+	return q.enqueue(jobTypeMFADisabled, user.Email, &mfaDisabledPayload{User: user})
 }
 
 // SendMFACodeEmail sends MFA code email (queued).

@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/iSundram/ModernAuth/internal/auth"
 	"github.com/iSundram/ModernAuth/internal/captcha"
@@ -25,6 +26,7 @@ type Handler struct {
 	tokenBlacklist  *auth.TokenBlacklist
 	emailService    email.Service
 	logger          *slog.Logger
+	baseURL         string
 	corsOrigins     []string
 	dbPool          interface { // Database pool interface for health checks
 		Ping(ctx context.Context) error
@@ -230,15 +232,23 @@ func (h *Handler) SetDBPool(dbPool interface {
 	h.dbPool = dbPool
 }
 
+// SetBaseURL sets the base URL for the application.
+func (h *Handler) SetBaseURL(url string) {
+	h.baseURL = strings.TrimSuffix(url, "/")
+}
+
 // getBaseURL returns the base URL for the application.
 func (h *Handler) getBaseURL(r *http.Request) string {
+	if h.baseURL != "" {
+		return h.baseURL
+	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
 	host := r.Host
 	if host == "" {
-		host = "localhost:8080"
+		return scheme + "://localhost:8080" // Last resort fallback
 	}
 	return scheme + "://" + host
 }

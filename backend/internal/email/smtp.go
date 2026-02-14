@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/smtp"
+
+	"github.com/google/uuid"
 )
 
 // SMTPService is an email service that sends emails via SMTP.
@@ -26,7 +28,8 @@ func NewSMTPService(config *Config) *SMTPService {
 }
 
 // SendEmail sends an email using SMTP.
-func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
+func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) (string, error) {
+	msgID := uuid.New().String()
 	from := s.config.FromEmail
 	if s.config.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", s.config.FromName, s.config.FromEmail)
@@ -35,12 +38,14 @@ func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
 	s.logger.Info("Sending email via SMTP",
 		"to", to,
 		"subject", subject,
+		"msg_id", msgID,
 		"smtp_host", s.config.SMTPHost,
 		"smtp_port", s.config.SMTPPort,
 	)
 
 	// Build the email message with MIME headers
 	var msg bytes.Buffer
+	msg.WriteString(fmt.Sprintf("Message-ID: <%s@modernauth.internal>\r\n", msgID))
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
 	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
@@ -50,7 +55,7 @@ func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
 		// Multipart message with both HTML and plain text
 		boundaryBytes := make([]byte, 16)
 		if _, err := rand.Read(boundaryBytes); err != nil {
-			return fmt.Errorf("failed to generate boundary: %w", err)
+			return msgID, fmt.Errorf("failed to generate boundary: %w", err)
 		}
 		boundary := "boundary-" + hex.EncodeToString(boundaryBytes)
 		msg.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary))
@@ -82,7 +87,8 @@ func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
 
 	// Use TLS for ports 465, regular SMTP for others
 	if s.config.SMTPPort == 465 {
-		return s.sendEmailTLS(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes())
+		err := s.sendEmailTLS(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes())
+		return msgID, err
 	}
 
 	if err := smtp.SendMail(addr, auth, s.config.FromEmail, []string{to}, msg.Bytes()); err != nil {
@@ -91,10 +97,10 @@ func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) error {
 			"subject", subject,
 			"error", err,
 		)
-		return err
+		return msgID, err
 	}
 
-	return nil
+	return msgID, nil
 }
 
 // sendEmailTLS sends email using implicit TLS (port 465).

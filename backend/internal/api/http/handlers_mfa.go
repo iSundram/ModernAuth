@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -50,6 +51,14 @@ func (h *Handler) DisableMFA(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Send MFA disabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err == nil && user != nil {
+			_ = h.emailService.SendMFADisabledEmail(context.Background(), user)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "MFA disabled successfully"})
 }
@@ -148,7 +157,7 @@ func (h *Handler) LoginMFABackup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Record failed MFA attempt
 		if h.mfaLockout != nil && err == auth.ErrInvalidMFACode {
-			locked, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
+			locked, _, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
 			if lockErr != nil {
 				h.logger.Error("Failed to record MFA attempt", "error", lockErr)
 			}
@@ -341,7 +350,7 @@ func (h *Handler) LoginEmailMFA(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if h.mfaLockout != nil && err == auth.ErrInvalidMFACode {
-			locked, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
+			locked, _, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
 			if lockErr != nil {
 				h.logger.Error("Failed to record MFA attempt", "error", lockErr)
 			}
@@ -406,6 +415,14 @@ func (h *Handler) EnableEmailMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send MFA enabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err == nil && user != nil {
+			_ = h.emailService.SendMFAEnabledEmail(context.Background(), user)
+		}
+	}()
+
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Email MFA enabled successfully"})
 }
 
@@ -422,6 +439,14 @@ func (h *Handler) DisableEmailMFA(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "Failed to disable email MFA", err)
 		return
 	}
+
+	// Send MFA disabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err == nil && user != nil {
+			_ = h.emailService.SendMFADisabledEmail(context.Background(), user)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Email MFA disabled successfully"})
 }
@@ -820,6 +845,14 @@ func (h *Handler) EnableSMSMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send MFA enabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err == nil && user != nil {
+			_ = h.emailService.SendMFAEnabledEmail(context.Background(), user)
+		}
+	}()
+
 	writeJSON(w, http.StatusOK, map[string]string{"message": "SMS MFA enabled successfully"})
 }
 
@@ -836,6 +869,14 @@ func (h *Handler) DisableSMSMFA(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "Failed to disable SMS MFA", err)
 		return
 	}
+
+	// Send MFA disabled notification email
+	go func() {
+		user, err := h.storage.GetUserByID(context.Background(), userID)
+		if err == nil && user != nil {
+			_ = h.emailService.SendMFADisabledEmail(context.Background(), user)
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "SMS MFA disabled successfully"})
 }
@@ -938,7 +979,7 @@ func (h *Handler) LoginSMSMFA(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if h.mfaLockout != nil && err == auth.ErrInvalidMFACode {
-			locked, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
+			locked, _, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
 			if lockErr != nil {
 				h.logger.Error("Failed to record MFA attempt", "error", lockErr)
 			}

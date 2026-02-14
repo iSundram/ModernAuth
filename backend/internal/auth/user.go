@@ -47,8 +47,17 @@ func (s *AuthService) UpdateUser(ctx context.Context, req *UpdateUserRequest) (*
 		if existing != nil {
 			return nil, ErrUserExists
 		}
-		user.Email = *req.Email
+		
+		oldEmail := user.Email
+		newEmail := *req.Email
+		
+		user.Email = newEmail
 		user.IsEmailVerified = false // Reset verification on email change
+
+		// Send notification to old email address
+		if err := s.emailService.SendEmailChangedEmail(ctx, user, oldEmail, newEmail); err != nil {
+			s.logger.Error("Failed to send email change notification", "error", err, "user_id", user.ID)
+		}
 	}
 
 	if req.Username != nil {
@@ -81,6 +90,11 @@ func (s *AuthService) DeleteUser(ctx context.Context, userID uuid.UUID, actorID 
 	// Revoke all sessions first
 	if err := s.storage.RevokeUserSessions(ctx, userID); err != nil {
 		s.logger.Error("Failed to revoke sessions during user deletion", "error", err, "user_id", userID)
+	}
+
+	// Send deactivation email before final deletion
+	if err := s.emailService.SendAccountDeactivatedEmail(ctx, user, "Your account has been deleted by an administrator", ""); err != nil {
+		s.logger.Error("Failed to send account deactivation email", "error", err, "user_id", userID)
 	}
 
 	if err := s.storage.DeleteUser(ctx, userID); err != nil {

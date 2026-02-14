@@ -1,0 +1,14 @@
+Account Deactivated
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+Your account on {{.AppName}} has been deactivated.
+
+{{if .Reason}}Reason: {{.Reason}}{{end}}
+
+{{if .ReactivationURL}}To reactivate your account, please visit: {{.ReactivationURL}}{{end}}
+
+If you believe this is a mistake, please contact our support team.
+
+Thanks,
+The {{.AppName}} Team

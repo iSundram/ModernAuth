@@ -79,14 +79,8 @@ func (h *Handler) SendMagicLink(w http.ResponseWriter, r *http.Request) {
 
 	// Send email if we got a token and email service is available
 	if token != "" && h.emailService != nil {
-		// Get base URL for the magic link
-		baseURL := "http://localhost:3000" // Default
-		if setting, err := h.storage.GetSetting(r.Context(), "app_base_url"); err == nil && setting != nil {
-			if v, ok := setting.Value.(string); ok && v != "" {
-				baseURL = v
-			}
-		}
-
+		// Get base URL for the magic link (prioritizing configured base URL)
+		baseURL := h.getBaseURL(r)
 		magicLinkURL := baseURL + "/auth/magic-link?token=" + token
 
 		// Send magic link email

@@ -45,6 +45,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	slog.Info("Starting ModernAuth server", 
+		"app_name", cfg.App.Name,
+		"env", cfg.App.Env,
+		"port", cfg.App.Port,
+		"base_url", cfg.App.BaseURL,
+	)
+
 	// Create database connection pool with proper configuration
 	ctx := context.Background()
 	poolConfig, err := pgxpool.ParseConfig(cfg.Database.URL)
@@ -251,6 +258,7 @@ func main() {
 	authService := auth.NewAuthService(storage, tokenService, emailService, cfg.Auth.SessionTTL)
 	authService.SetSettingsCache(settingsCache)
 	authService.SetTokenBlacklist(tokenBlacklist)
+	authService.SetAccountLockout(accountLockout)
 
 	// Initialize settings service
 	settingsService := auth.NewSettingsService(storage, settingsCache, settingsDefaults)
@@ -315,6 +323,11 @@ func main() {
 
 	// Set database pool for health checks
 	handler.SetDBPool(pool)
+
+	// Set base URL from configuration
+	if cfg.App.BaseURL != "" {
+		handler.SetBaseURL(cfg.App.BaseURL)
+	}
 
 	// Set settings service for dynamic configuration
 	handler.SetSettingsService(settingsService)

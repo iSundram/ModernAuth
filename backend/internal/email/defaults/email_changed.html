@@ -1,0 +1,27 @@
+{{define "title"}}Email Address Changed{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>The email address associated with your <strong>{{.AppName}}</strong> account has been changed.</p>
+    
+    <div style="background: #F3F4F6; padding: 20px; border-radius: 8px; margin: 24px 0;">
+        <table style="width: 100%; font-size: 14px;">
+            <tr>
+                <td style="color: #6B7280; width: 100px;"><strong>Old Email:</strong></td>
+                <td style="color: #111827; text-decoration: line-through;">{{.OldEmail}}</td>
+            </tr>
+            <tr>
+                <td style="color: #6B7280;"><strong>New Email:</strong></td>
+                <td style="color: #111827;">{{.NewEmail}}</td>
+            </tr>
+        </table>
+    </div>
+    
+    <div style="background: #FFFBEB; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 24px 0;">
+        <p style="margin: 0; color: #92400E; font-weight: 600;">Didn't make this change?</p>
+        <p style="margin: 10px 0 0 0; color: #92400E; font-size: 14px;">If you did not authorize this change, please contact our support team immediately to secure your account.</p>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        If you made this change, you can safely ignore this email.
+    </p>
+{{end}}

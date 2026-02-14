@@ -1,0 +1,20 @@
+{{define "title"}}Verify Your Email{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>Thanks for signing up for <strong>{{.AppName}}</strong>! To complete your registration and secure your account, please verify your email address by clicking the button below:</p>
+    
+    <div style="text-align: center;">
+        <a href="{{.VerifyURL}}" class="button">Verify Email Address</a>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
+        Or copy and paste this link into your browser:
+    </p>
+    <p style="background: #F3F4F6; padding: 12px; border-radius: 6px; font-size: 12px; word-break: break-all; color: #374151; font-family: monospace;">
+        {{.VerifyURL}}
+    </p>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        If you didn't create an account, you can safely ignore this email. This link will expire in 24 hours.
+    </p>
+{{end}}

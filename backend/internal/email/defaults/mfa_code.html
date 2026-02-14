@@ -1,0 +1,17 @@
+{{define "title"}}Verification Code{{end}}
+{{define "content"}}
+    <p>Hi,</p>
+    <p>Use the following verification code to complete your login to <strong>{{.AppName}}</strong>:</p>
+    
+    <div style="background: #F3F4F6; padding: 24px; border-radius: 12px; text-align: center; margin: 30px 0; border: 2px dashed {{.PrimaryColor}};">
+        <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: {{.PrimaryColor}};">{{.MFACode}}</span>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px; text-align: center;">
+        This code will expire in 10 minutes.
+    </p>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
+        <strong>Security Note:</strong> If you didn't request this code, please ignore this email or contact support if you're concerned about your account security.
+    </p>
+{{end}}

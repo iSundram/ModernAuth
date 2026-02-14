@@ -1,0 +1,20 @@
+{{define "title"}}Security Action Required{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>You have only <strong>{{.RemainingCodes}} backup codes</strong> remaining for your Two-Factor Authentication (MFA) on <strong>{{.AppName}}</strong>.</p>
+    
+    <div style="background: #FFFBEB; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 24px 0;">
+        <p style="margin: 0; color: #92400E; font-weight: 600;">Why this matters:</p>
+        <p style="margin: 10px 0 0 0; color: #92400E; font-size: 14px;">Backup codes are your safety net. If you lose access to your primary MFA device, these codes are the only way to regain access to your account.</p>
+    </div>
+    
+    <p>We strongly recommend generating a new set of backup codes now.</p>
+    
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.BaseURL}}/settings/security" class="button">Generate New Codes</a>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        <strong>Note:</strong> Generating new backup codes will invalidate all your current remaining codes.
+    </p>
+{{end}}

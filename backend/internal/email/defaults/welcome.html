@@ -1,0 +1,21 @@
+{{define "title"}}Welcome to {{.AppName}}{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>Welcome aboard! We're thrilled to have you with us at <strong>{{.AppName}}</strong>.</p>
+    
+    <p>Your account has been successfully created and is ready to use. Here are a few things you can do to get started:</p>
+    
+    <ul style="color: #4B5563; padding-left: 20px;">
+        <li style="margin-bottom: 10px;">Complete your profile information</li>
+        <li style="margin-bottom: 10px;">Set up Two-Factor Authentication (MFA) for enhanced security</li>
+        <li style="margin-bottom: 10px;">Explore your dashboard</li>
+    </ul>
+    
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="{{.BaseURL}}" class="button">Go to Dashboard</a>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 30px;">
+        If you have any questions, simply reply to this email or contact our support team.
+    </p>
+{{end}}

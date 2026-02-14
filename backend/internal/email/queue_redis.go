@@ -222,6 +222,8 @@ func (q *RedisStreamQueue) processJob(ctx context.Context, jobType, recipient st
 		return q.processInvitationEmail(ctx, payloadMap)
 	case jobTypeMFAEnabled:
 		return q.processMFAEnabledEmail(ctx, payloadMap)
+	case jobTypeMFADisabled:
+		return q.processMFADisabledEmail(ctx, payloadMap)
 	case jobTypeMFACode:
 		return q.processMFACodeEmail(ctx, payloadMap)
 	case jobTypeLowBackupCodes:
@@ -282,6 +284,11 @@ func (q *RedisStreamQueue) processInvitationEmail(ctx context.Context, payload m
 func (q *RedisStreamQueue) processMFAEnabledEmail(ctx context.Context, payload map[string]interface{}) error {
 	user := q.extractUser(payload)
 	return q.inner.SendMFAEnabledEmail(ctx, user)
+}
+
+func (q *RedisStreamQueue) processMFADisabledEmail(ctx context.Context, payload map[string]interface{}) error {
+	user := q.extractUser(payload)
+	return q.inner.SendMFADisabledEmail(ctx, user)
 }
 
 func (q *RedisStreamQueue) processMFACodeEmail(ctx context.Context, payload map[string]interface{}) error {
@@ -635,6 +642,12 @@ func (q *RedisStreamQueue) SendInvitationEmail(ctx context.Context, invitation *
 
 func (q *RedisStreamQueue) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	return q.enqueue(jobTypeMFAEnabled, user.Email, map[string]interface{}{
+		"user": q.buildUserPayload(user),
+	})
+}
+
+func (q *RedisStreamQueue) SendMFADisabledEmail(ctx context.Context, user *storage.User) error {
+	return q.enqueue(jobTypeMFADisabled, user.Email, map[string]interface{}{
 		"user": q.buildUserPayload(user),
 	})
 }

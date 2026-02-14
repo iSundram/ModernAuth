@@ -162,7 +162,7 @@ func (s *Service) RecordDevice(ctx context.Context, req *RecordDeviceRequest) (*
 						OS:         deviceInfo.OS,
 						IPAddress:  req.IPAddress,
 						Location:   location,
-						Time:       now.Format(time.RFC3339),
+						Time:       now.Format("Monday, January 2, 2006 at 3:04 PM"),
 					})
 				}()
 			}

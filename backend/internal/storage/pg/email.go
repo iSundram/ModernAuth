@@ -573,6 +573,14 @@ func (s *PostgresStorage) GetEmailStats(ctx context.Context, tenantID *uuid.UUID
 		return nil, err
 	}
 
+	// Ensure all dates are present in the breakdown (fill zeros)
+	for i := 0; i <= days; i++ {
+		dateStr := since.AddDate(0, 0, i).Format("2006-01-02")
+		if _, ok := stats.DailyBreakdown[dateStr]; !ok {
+			stats.DailyBreakdown[dateStr] = storage.DailyEmailStats{}
+		}
+	}
+
 	// Get counts by template
 	query = `
 		SELECT template_type, COUNT(*) as count
@@ -919,4 +927,75 @@ func (s *PostgresStorage) MarkTrackingPixelOpened(ctx context.Context, id uuid.U
 	query := `UPDATE email_tracking_pixels SET is_opened = true, opened_at = $1 WHERE id = $2 AND is_opened = false`
 	_, err := s.pool.Exec(ctx, query, time.Now(), id)
 	return err
+}
+
+// GetEmailABTestResults retrieves aggregated results for an A/B test.
+func (s *PostgresStorage) GetEmailABTestResults(ctx context.Context, abTestID uuid.UUID) ([]*storage.EmailABTestResult, error) {
+	test, err := s.GetEmailABTest(ctx, abTestID)
+	if err != nil {
+		return nil, err
+	}
+	if test == nil {
+		return nil, nil
+	}
+
+	query := `
+		SELECT 
+			metadata->>'template_id' as variant_id,
+			event_type,
+			COUNT(*) as count
+		FROM email_events
+		WHERE metadata->>'template_id' IN ($1, $2)
+		GROUP BY metadata->>'template_id', event_type
+	`
+	rows, err := s.pool.Query(ctx, query, test.VariantA, test.VariantB)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	resultsMap := make(map[string]*storage.EmailABTestResult)
+	resultsMap[test.VariantA] = &storage.EmailABTestResult{Variant: "a"}
+	resultsMap[test.VariantB] = &storage.EmailABTestResult{Variant: "b"}
+
+	for rows.Next() {
+		var variantID, eventType string
+		var count int
+		if err := rows.Scan(&variantID, &eventType, &count); err != nil {
+			return nil, err
+		}
+
+		res, ok := resultsMap[variantID]
+		if !ok {
+			continue
+		}
+
+		switch eventType {
+		case "sent":
+			res.Sent = count
+		case "delivered":
+			res.Delivered = count
+		case "opened":
+			res.Opened = count
+		case "clicked":
+			res.Clicked = count
+		case "bounced":
+			res.Bounced = count
+		}
+	}
+
+	// Calculate rates
+	for _, res := range resultsMap {
+		if res.Sent > 0 {
+			res.BounceRate = (float64(res.Bounced) / float64(res.Sent)) * 100
+		}
+		if res.Delivered > 0 {
+			res.OpenRate = (float64(res.Opened) / float64(res.Delivered)) * 100
+		}
+		if res.Opened > 0 {
+			res.ClickRate = (float64(res.Clicked) / float64(res.Opened)) * 100
+		}
+	}
+
+	return []*storage.EmailABTestResult{resultsMap[test.VariantA], resultsMap[test.VariantB]}, nil
 }

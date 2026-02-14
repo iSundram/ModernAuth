@@ -66,7 +66,7 @@ type sendGridContent struct {
 }
 
 // SendEmail sends an email using SendGrid API v3.
-func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) error {
+func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) (string, error) {
 	req := sendGridRequest{
 		Personalizations: []sendGridPersonalization{
 			{
@@ -97,12 +97,12 @@ func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) erro
 
 	body, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("failed to marshal SendGrid request: %w", err)
+		return "", fmt.Errorf("failed to marshal SendGrid request: %w", err)
 	}
 
 	httpReq, err := http.NewRequest("POST", "https://api.sendgrid.com/v3/mail/send", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
@@ -113,9 +113,12 @@ func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) erro
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
 		s.logger.Error("SendGrid request failed", "error", err)
-		return fmt.Errorf("SendGrid request failed: %w", err)
+		return "", fmt.Errorf("SendGrid request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Get message ID from header
+	msgID := resp.Header.Get("X-Message-Id")
 
 	// SendGrid returns 202 Accepted on success
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
@@ -124,11 +127,11 @@ func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) erro
 			"status", resp.StatusCode,
 			"response", string(respBody),
 		)
-		return fmt.Errorf("SendGrid API error: status %d", resp.StatusCode)
+		return msgID, fmt.Errorf("SendGrid API error: status %d", resp.StatusCode)
 	}
 
-	s.logger.Info("Email sent successfully via SendGrid", "to", to)
-	return nil
+	s.logger.Info("Email sent successfully via SendGrid", "to", to, "msg_id", msgID)
+	return msgID, nil
 }
 
 // Verify SendGridService implements EmailSender interface

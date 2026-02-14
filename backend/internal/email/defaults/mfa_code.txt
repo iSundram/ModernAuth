@@ -1,0 +1,14 @@
+Your Verification Code
+
+Hi,
+
+Use the following verification code to complete your login to {{.AppName}}:
+
+{{.MFACode}}
+
+This code will expire in 10 minutes.
+
+Security Note: If you didn't request this code, please ignore this email or contact support if you're concerned about your account security.
+
+Thanks,
+The {{.AppName}} Team

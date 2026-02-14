@@ -1,0 +1,26 @@
+{{define "title"}}You're Invited{{end}}
+{{define "content"}}
+    <p>Hi there,</p>
+    <p><strong>{{.InviterName}}</strong> has invited you to join <strong>{{.TenantName}}</strong> on <strong>{{.AppName}}</strong>.</p>
+    
+    {{if .Message}}
+    <div style="background: #F3F4F6; padding: 20px; border-left: 4px solid {{.PrimaryColor}}; margin: 24px 0; font-style: italic; color: #4B5563;">
+        "{{.Message}}"
+    </div>
+    {{end}}
+    
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.InviteURL}}" class="button">Accept Invitation</a>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        Or copy and paste this link into your browser:
+    </p>
+    <p style="background: #F3F4F6; padding: 12px; border-radius: 6px; font-size: 12px; word-break: break-all; color: #374151; font-family: monospace;">
+        {{.InviteURL}}
+    </p>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 24px;">
+        <strong>Note:</strong> This invitation will expire on {{.ExpiresAt}}.
+    </p>
+{{end}}

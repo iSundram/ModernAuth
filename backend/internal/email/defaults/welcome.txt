@@ -1,0 +1,15 @@
+Welcome to {{.AppName}}
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+Welcome aboard! We're thrilled to have you with us at {{.AppName}}.
+
+Your account has been successfully created. Here are a few things you can do to get started:
+- Complete your profile information
+- Set up Two-Factor Authentication (MFA)
+- Explore your dashboard: {{.BaseURL}}
+
+If you have any questions, simply reply to this email or contact our support team.
+
+Thanks,
+The {{.AppName}} Team

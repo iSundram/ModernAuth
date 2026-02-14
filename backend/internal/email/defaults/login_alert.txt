@@ -1,0 +1,18 @@
+New Login Detected
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+We noticed a new login to your {{.AppName}} account from a device or location we don't recognize:
+
+Device: {{.DeviceName}}
+Browser: {{.Browser}}
+Location: {{.Location}}
+IP Address: {{.IPAddress}}
+Time: {{.Time}}
+
+Was this you? If so, you can safely ignore this email.
+
+If this wasn't you, please change your password immediately and review your account security settings at: {{.BaseURL}}/settings/security
+
+Thanks,
+The {{.AppName}} Team

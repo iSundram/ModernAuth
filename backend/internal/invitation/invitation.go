@@ -53,7 +53,7 @@ func NewService(
 	emailSvc email.Service,
 	cfg *Config,
 ) *Service {
-	baseURL := "http://localhost:3000"
+	baseURL := ""
 	if cfg != nil && cfg.BaseURL != "" {
 		baseURL = cfg.BaseURL
 	}

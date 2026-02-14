@@ -1,0 +1,15 @@
+Usage Alert
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+You've reached 90% of your {{.ActionType}} rate limit on {{.AppName}}.
+
+Current Usage: {{.CurrentCount}} / {{.MaxCount}}
+Window: {{.TimeWindow}}
+
+To ensure uninterrupted service, we recommend reducing frequency or upgrading your plan.
+
+{{if .UpgradeURL}}Upgrade: {{.UpgradeURL}}{{end}}
+
+Thanks,
+The {{.AppName}} Team

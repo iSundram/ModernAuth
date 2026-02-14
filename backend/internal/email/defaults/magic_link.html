@@ -1,0 +1,17 @@
+{{define "title"}}Sign In to {{.AppName}}{{end}}
+{{define "content"}}
+    <p>Hi,</p>
+    <p>We received a request to sign in to your <strong>{{.AppName}}</strong> account using this email address.</p>
+    
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.MagicLinkURL}}" class="button">Sign In to {{.AppName}}</a>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px; text-align: center;">
+        This link will expire in 15 minutes and can only be used once.
+    </p>
+    
+    <p style="color: #6B7280; font-size: 14px; margin-top: 32px;">
+        If you didn't request this sign-in link, you can safely ignore this email. No changes have been made to your account.
+    </p>
+{{end}}

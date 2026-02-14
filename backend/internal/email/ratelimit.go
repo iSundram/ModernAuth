@@ -218,6 +218,11 @@ func (r *RateLimitedService) SendMFAEnabledEmail(ctx context.Context, user *stor
 	return r.inner.SendMFAEnabledEmail(ctx, user)
 }
 
+// SendMFADisabledEmail sends MFA disabled notification (no rate limiting - system triggered).
+func (r *RateLimitedService) SendMFADisabledEmail(ctx context.Context, user *storage.User) error {
+	return r.inner.SendMFADisabledEmail(ctx, user)
+}
+
 // SendMFACodeEmail sends MFA code with rate limiting.
 func (r *RateLimitedService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
 	if err := r.checkRateLimit(r.mfaCodeLimits, email, r.config.MFACodeLimit); err != nil {

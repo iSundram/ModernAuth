@@ -156,7 +156,9 @@ func (h *EmailTemplateHandler) GetTemplate(w http.ResponseWriter, r *http.Reques
 
 	// If no custom template, return default
 	if template == nil {
-		defaultSubject, defaultHTML, defaultText := getDefaultTemplate(email.TemplateType(templateType))
+		defaultHTML, defaultText, _ := h.templateService.GetDefaultTemplateContent(email.TemplateType(templateType))
+		defaultSubject := email.GetTemplateDefaultSubject(email.TemplateType(templateType), nil)
+		
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"type":       templateType,
 			"subject":    defaultSubject,
@@ -294,6 +296,7 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 
 	// Get branding
 	branding, _ := h.storage.GetEmailBranding(r.Context(), tenantID)
+	advanced, _ := h.storage.GetEmailBrandingAdvanced(r.Context(), tenantID)
 
 	// Create sample user
 	firstName := req.FirstName
@@ -316,7 +319,7 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 	}
 
 	// Create template variables
-	vars := email.NewTemplateVars(sampleUser, branding)
+	vars := email.NewTemplateVars(sampleUser, branding, advanced)
 
 	// Add sample context variables based on type
 	switch email.TemplateType(templateType) {
@@ -343,6 +346,10 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 			Message:     "Welcome to the team!",
 			ExpiresAt:   "January 31, 2026",
 		})
+	case email.TemplateMFAEnabled:
+		// No special vars
+	case email.TemplateMFADisabled:
+		// No special vars
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Logged out from all devices")
 	case email.TemplateAccountDeactivated:
@@ -364,7 +371,7 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 	}
 
 	// Render template
-	subject, htmlBody, textBody, err := h.templateService.RenderTemplate(r.Context(), tenantID, email.TemplateType(templateType), vars)
+	subject, htmlBody, textBody, _, err := h.templateService.RenderTemplate(r.Context(), tenantID, email.TemplateType(templateType), vars)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to render template: " + err.Error()})
 		return
@@ -488,49 +495,11 @@ func getTemplateDescription(t email.TemplateType) string {
 		email.TemplateLoginAlert:      "New device login notification",
 		email.TemplateInvitation:      "Tenant/organization invitation",
 		email.TemplateMFAEnabled:      "MFA enabled confirmation",
+		email.TemplateMFADisabled:     "MFA disabled confirmation",
 		email.TemplatePasswordChanged: "Password change notification",
 		email.TemplateSessionRevoked:  "Session revocation notice",
 	}
 	return descriptions[t]
-}
-
-func getDefaultTemplate(t email.TemplateType) (subject, html, text string) {
-	switch t {
-	case email.TemplateVerification:
-		return "Verify your email address", email.VerificationEmailHTML, "Hi {{.FullName}}, Please verify your email address..."
-	case email.TemplatePasswordReset:
-		return "Reset your password", email.PasswordResetEmailHTML, "Hi {{.FullName}}, You requested to reset your password..."
-	case email.TemplateWelcome:
-		return "Welcome to {{.AppName}}", email.WelcomeEmailHTML, "Hi {{.FullName}}, Welcome to {{.AppName}}!"
-	case email.TemplateLoginAlert:
-		return "New login to your account", email.LoginAlertEmailHTML, "Hi {{.FullName}}, New login detected..."
-	case email.TemplateInvitation:
-		return "You've been invited to join {{.TenantName}}", email.InvitationEmailHTML, "You've been invited..."
-	case email.TemplateMFAEnabled:
-		return "Two-factor authentication enabled", email.MFAEnabledEmailHTML, "Hi {{.FullName}}, 2FA has been enabled..."
-	case email.TemplatePasswordChanged:
-		return "Your password was changed", email.PasswordChangedEmailHTML, "Hi {{.FullName}}, Your password was changed..."
-	case email.TemplateSessionRevoked:
-		return "Your session was terminated", email.SessionRevokedEmailHTML, "Hi {{.FullName}}, Your session was terminated..."
-	case email.TemplateMagicLink:
-		return "Sign in to your account", email.MagicLinkEmailHTML, "Click the link below to sign in..."
-	case email.TemplateAccountDeactivated:
-		return "Account Deactivated", email.AccountDeactivatedEmailHTML, "Hi {{.FullName}}, Your account has been deactivated..."
-	case email.TemplateEmailChanged:
-		return "Email Address Changed", email.EmailChangedEmailHTML, "Hi {{.FullName}}, Your email address has been changed..."
-	case email.TemplatePasswordExpiry:
-		return "Password Expiring Soon", email.PasswordExpiryEmailHTML, "Hi {{.FullName}}, Your password will expire soon..."
-	case email.TemplateSecurityAlert:
-		return "{{.AlertTitle}}", email.SecurityAlertEmailHTML, "Hi {{.FullName}}, {{.AlertTitle}}..."
-	case email.TemplateRateLimitWarning:
-		return "Rate Limit Approaching", email.RateLimitWarningEmailHTML, "Hi {{.FullName}}, Rate limit approaching..."
-	case email.TemplateMFACode:
-		return "Your Verification Code", email.MFACodeEmailHTML, "Your code is {{.MFACode}}"
-	case email.TemplateLowBackupCodes:
-		return "Action Required: Low backup codes remaining", email.LowBackupCodesEmailHTML, "Hi {{.FullName}}, Low backup codes..."
-	default:
-		return "", "", ""
-	}
 }
 
 func templateToResponse(t *storage.EmailTemplate) EmailTemplateResponse {
@@ -606,6 +575,7 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 
 	// Get branding
 	branding, _ := h.storage.GetEmailBranding(r.Context(), tenantID)
+	advanced, _ := h.storage.GetEmailBrandingAdvanced(r.Context(), tenantID)
 
 	// Create sample user with recipient email
 	firstName := "Test"
@@ -617,7 +587,7 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create template variables
-	vars := email.NewTemplateVars(sampleUser, branding)
+	vars := email.NewTemplateVars(sampleUser, branding, advanced)
 
 	// Add sample context variables based on type
 	switch email.TemplateType(templateType) {
@@ -644,6 +614,10 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 			Message:     "This is a test invitation email.",
 			ExpiresAt:   time.Now().AddDate(0, 0, 7).Format("January 2, 2006"),
 		})
+	case email.TemplateMFAEnabled:
+		// No special vars
+	case email.TemplateMFADisabled:
+		// No special vars
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Test session revocation")
 	case email.TemplateAccountDeactivated:
@@ -665,7 +639,7 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Render template
-	subject, htmlBody, textBody, err := h.templateService.RenderTemplate(r.Context(), tenantID, email.TemplateType(templateType), vars)
+	subject, htmlBody, textBody, _, err := h.templateService.RenderTemplate(r.Context(), tenantID, email.TemplateType(templateType), vars)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to render template: " + err.Error()})
 		return
@@ -673,10 +647,30 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 
 	// Send the email via the email service (if available)
 	if h.emailSender != nil {
-		if err := h.emailSender.SendEmail(req.RecipientEmail, subject, htmlBody, textBody); err != nil {
+		jobID, err := h.emailSender.SendEmail(req.RecipientEmail, subject, htmlBody, textBody)
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to send test email: " + err.Error()})
 			return
 		}
+
+		// Record analytics for test email
+		event := &storage.EmailEvent{
+			ID:           uuid.New(),
+			TenantID:     tenantID,
+			TemplateType: templateType,
+			EventType:    "sent",
+			Recipient:    req.RecipientEmail,
+			JobID:        &jobID,
+			CreatedAt:    time.Now(),
+			Metadata:     map[string]interface{}{"is_test": true},
+		}
+		_ = h.storage.CreateEmailEvent(r.Context(), event)
+
+		// Record delivery immediately for test emails
+		deliveryEvent := *event
+		deliveryEvent.ID = uuid.New()
+		deliveryEvent.EventType = "delivered"
+		_ = h.storage.CreateEmailEvent(r.Context(), &deliveryEvent)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -1187,6 +1181,24 @@ func (h *EmailTemplateHandler) GetABTest(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// GetABTestResults gets aggregated results for an A/B test.
+func (h *EmailTemplateHandler) GetABTestResults(w http.ResponseWriter, r *http.Request) {
+	testID := chi.URLParam(r, "testId")
+	testUUID, err := uuid.Parse(testID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid test ID"})
+		return
+	}
+
+	results, err := h.storage.GetEmailABTestResults(r.Context(), testUUID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get A/B test results"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+}
+
 // DeclareWinnerRequest represents a request to declare a winner.
 type DeclareWinnerRequest struct {
 	Variant string `json:"variant" validate:"required,oneof=a b"`
@@ -1508,6 +1520,7 @@ func (h *EmailTemplateHandler) PreviewAllTemplates(w http.ResponseWriter, r *htt
 	tenantID := getTenantIDFromContext(r.Context())
 
 	branding, _ := h.storage.GetEmailBranding(r.Context(), tenantID)
+	advanced, _ := h.storage.GetEmailBrandingAdvanced(r.Context(), tenantID)
 
 	sampleUser := &storage.User{
 		Email:     "preview@example.com",
@@ -1518,8 +1531,8 @@ func (h *EmailTemplateHandler) PreviewAllTemplates(w http.ResponseWriter, r *htt
 	previews := make(map[string]map[string]string)
 
 	for _, tt := range email.AllTemplateTypes() {
-		vars := email.NewTemplateVars(sampleUser, branding)
-		subject, htmlBody, textBody, err := h.templateService.RenderTemplate(r.Context(), tenantID, tt, vars)
+		vars := email.NewTemplateVars(sampleUser, branding, advanced)
+		subject, htmlBody, textBody, _, err := h.templateService.RenderTemplate(r.Context(), tenantID, tt, vars)
 		if err != nil {
 			continue
 		}
@@ -1599,6 +1612,9 @@ func (h *EmailTemplateHandler) TrackEmailOpen(w http.ResponseWriter, r *http.Req
 func (h *EmailTemplateHandler) TrackEmailClick(w http.ResponseWriter, r *http.Request) {
 	trackingID := chi.URLParam(r, "trackingID")
 	originalURL := r.URL.Query().Get("url")
+	recipient := r.URL.Query().Get("recipient")
+	tenantIDStr := r.URL.Query().Get("tenant_id")
+	eventID := r.URL.Query().Get("event_id")
 
 	if originalURL == "" {
 		http.Error(w, "Missing URL parameter", http.StatusBadRequest)
@@ -1611,11 +1627,24 @@ func (h *EmailTemplateHandler) TrackEmailClick(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	var tenantID *uuid.UUID
+	if tenantIDStr != "" && tenantIDStr != "global" {
+		if uid, err := uuid.Parse(tenantIDStr); err == nil {
+			tenantID = &uid
+		}
+	}
+
+	var eid *string
+	if eventID != "" {
+		eid = &eventID
+	}
+
 	event := &storage.EmailEvent{
-		TenantID:     nil,
+		TenantID:     tenantID,
 		TemplateType: trackingID,
 		EventType:    "clicked",
-		Recipient:    "",
+		Recipient:    recipient,
+		EventID:      eid,
 		CreatedAt:    time.Now(),
 	}
 	h.storage.CreateEmailEvent(r.Context(), event)

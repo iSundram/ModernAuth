@@ -1,0 +1,14 @@
+Session Terminated
+
+Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},
+
+One of your active sessions on {{.AppName}} has been terminated.
+
+Reason: {{.Reason}}
+
+If you did this intentionally, no further action is needed.
+
+If you didn't do this, please change your password immediately and review your active sessions at: {{.BaseURL}}/settings/security
+
+Thanks,
+The {{.AppName}} Team

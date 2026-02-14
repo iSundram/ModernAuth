@@ -1,0 +1,18 @@
+{{define "title"}}MFA Disabled{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>Two-factor authentication (MFA) has been <strong>disabled</strong> on your <strong>{{.AppName}}</strong> account.</p>
+    
+    <div style="background: #FFFBEB; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 24px 0;">
+        <p style="margin: 0; color: #92400E; font-weight: 600;">Security Warning</p>
+        <p style="margin: 10px 0 0 0; color: #92400E; font-size: 14px;">Your account is now less secure. We strongly recommend keeping MFA enabled to protect your personal information.</p>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        If you didn't disable MFA yourself, please contact our support team immediately and change your password.
+    </p>
+    
+    <div style="text-align: center; margin-top: 32px;">
+        <a href="{{.BaseURL}}/settings/security" class="button">Review Account Security</a>
+    </div>
+{{end}}

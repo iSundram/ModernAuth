@@ -1,0 +1,21 @@
+{{define "title"}}Usage Alert{{end}}
+{{define "content"}}
+    <p>Hi {{if .FirstName}}{{.FirstName}}{{else}}there{{end}},</p>
+    <p>We're sending you this notification because you've reached <strong>90%</strong> of your <strong>{{.ActionType}}</strong> rate limit on <strong>{{.AppName}}</strong>.</p>
+    
+    <div style="background: #F3F4F6; padding: 24px; border-radius: 12px; margin: 24px 0;">
+        <p style="margin: 0; color: #4B5563; font-size: 14px;"><strong>Current Usage:</strong></p>
+        <p style="margin: 8px 0 0 0; color: #111827; font-size: 20px; font-weight: 700;">{{.CurrentCount}} / {{.MaxCount}}</p>
+        <p style="margin: 4px 0 0 0; color: #6B7280; font-size: 12px;">Window: {{.TimeWindow}}</p>
+    </div>
+    
+    <p style="color: #6B7280; font-size: 14px;">
+        To ensure uninterrupted service, we recommend reducing the frequency of these actions or upgrading your plan.
+    </p>
+    
+    {{if .UpgradeURL}}
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{.UpgradeURL}}" class="button">Upgrade Plan</a>
+    </div>
+    {{end}}
+{{end}}

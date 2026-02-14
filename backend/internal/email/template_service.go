@@ -4,10 +4,11 @@ package email
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"html/template"
 	"log/slog"
+	"strings"
 	"sync"
-        "strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ const (
 	TemplateLoginAlert         TemplateType = "login_alert"
 	TemplateInvitation         TemplateType = "invitation"
 	TemplateMFAEnabled         TemplateType = "mfa_enabled"
+	TemplateMFADisabled        TemplateType = "mfa_disabled"
 	TemplateMFACode            TemplateType = "mfa_code"
 	TemplateLowBackupCodes     TemplateType = "low_backup_codes"
 	TemplatePasswordChanged    TemplateType = "password_changed"
@@ -45,6 +47,7 @@ func AllTemplateTypes() []TemplateType {
 		TemplateLoginAlert,
 		TemplateInvitation,
 		TemplateMFAEnabled,
+		TemplateMFADisabled,
 		TemplateMFACode,
 		TemplateLowBackupCodes,
 		TemplatePasswordChanged,
@@ -164,12 +167,32 @@ func (s *TemplateService) GetBranding(ctx context.Context, tenantID *uuid.UUID) 
 }
 
 // RenderTemplate renders a template with the given variables.
-func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUID, templateType TemplateType, vars *TemplateVars) (subject, htmlBody, textBody string, err error) {
+func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUID, templateType TemplateType, vars *TemplateVars) (subject, htmlBody, textBody string, templateID string, err error) {
 	// Pre-render footer if it contains variables
 	if strings.Contains(vars.FooterText, "{{") {
 		renderedFooter, err := s.renderString(vars.FooterText, vars)
 		if err == nil {
 			vars.FooterText = renderedFooter
+		}
+	}
+
+	// Load advanced branding
+	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if advanced != nil {
+		if vars.HeaderImageURL == "" && advanced.HeaderImageURL != nil {
+			vars.HeaderImageURL = *advanced.HeaderImageURL
+		}
+		if vars.CustomCSS == "" && advanced.CustomCSS != nil {
+			vars.CustomCSS = *advanced.CustomCSS
+		}
+		if vars.FontFamily == "" && advanced.FontFamily != nil {
+			vars.FontFamily = *advanced.FontFamily
+		}
+		if vars.FontFamilyURL == "" && advanced.FontFamilyURL != nil {
+			vars.FontFamilyURL = *advanced.FontFamilyURL
+		}
+		if vars.FacebookURL == "" && advanced.SocialLinks != nil && advanced.SocialLinks.Facebook != nil {
+			vars.FacebookURL = *advanced.SocialLinks.Facebook
 		}
 	}
 
@@ -179,9 +202,7 @@ func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUI
 	if err == nil {
 		for _, test := range abTests {
 			if test.TemplateType == string(templateType) && test.IsActive {
-				// Simple random selection based on weights
-				// In production, this could be deterministic based on Recipient email hash
-				if s.selectVariant(test.WeightA) {
+				if s.selectDeterministicVariant(vars.Email, test.WeightA) {
 					variantID = test.VariantA
 				} else {
 					variantID = test.VariantB
@@ -194,9 +215,6 @@ func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUI
 	// Get custom template from DB
 	var customTemplate *storage.EmailTemplate
 	if variantID != "" {
-		// Use A/B test variant (stored as a specific template type override or via a different mechanism)
-		// For simplicity, we'll assume variants are just another template type name for now
-		// or we can just use the variant ID as the type.
 		customTemplate, err = s.storage.GetEmailTemplate(ctx, tenantID, variantID)
 	}
 
@@ -205,31 +223,144 @@ func (s *TemplateService) RenderTemplate(ctx context.Context, tenantID *uuid.UUI
 	}
 
 	if customTemplate != nil && customTemplate.IsActive {
-		// Render custom template
 		subject, err = s.renderString(customTemplate.Subject, vars)
 		if err != nil {
-			return "", "", "", err
+			return "", "", "", "", err
 		}
-		htmlBody, err = s.renderString(customTemplate.HTMLBody, vars)
+
+		htmlBody = customTemplate.HTMLBody
+		if !strings.Contains(strings.ToLower(htmlBody), "<html") {
+			htmlBody, err = s.renderWithLayout(customTemplate.Subject, customTemplate.HTMLBody, vars)
+		} else {
+			htmlBody, err = s.renderString(htmlBody, vars)
+		}
+
 		if err != nil {
-			return "", "", "", err
+			return "", "", "", "", err
 		}
+
 		if customTemplate.TextBody != nil {
 			textBody, err = s.renderString(*customTemplate.TextBody, vars)
 			if err != nil {
-				return "", "", "", err
+				return "", "", "", "", err
 			}
 		}
-		return subject, htmlBody, textBody, nil
+		return subject, htmlBody, textBody, customTemplate.ID.String(), nil
 	}
 
 	// Use built-in default template
-	return s.renderDefaultTemplate(templateType, vars)
+	subject, htmlBody, textBody, err = s.renderDefaultTemplate(templateType, vars)
+	return subject, htmlBody, textBody, "default:" + string(templateType), err
 }
 
+// GetDefaultTemplateContent returns the raw HTML and Text content of a default template.
+
+func (s *TemplateService) GetDefaultTemplateContent(templateType TemplateType) (html, text string, err error) {
+
+	templateName := string(templateType)
+
+	
+
+	htmlPath := fmt.Sprintf("defaults/%s.html", templateName)
+
+	htmlBytes, err := DefaultTemplatesFS.ReadFile(htmlPath)
+
+	if err != nil {
+
+		return "", "", fmt.Errorf("default template not found: %s", htmlPath)
+
+	}
+
+
+
+	textPath := fmt.Sprintf("defaults/%s.txt", templateName)
+
+	textBytes, _ := DefaultTemplatesFS.ReadFile(textPath)
+
+
+
+	return string(htmlBytes), string(textBytes), nil
+
+}
+
+
+
 // renderString renders a template string with variables.
+
+
+
 func (s *TemplateService) renderString(templateStr string, vars *TemplateVars) (string, error) {
+
+
+
+
+
 	tmpl, err := template.New("email").Parse(templateStr)
+
+	if err != nil {
+
+		return "", err
+
+	}
+
+
+
+	var buf bytes.Buffer
+
+	if err := tmpl.Execute(&buf, vars); err != nil {
+
+		return "", err
+
+	}
+
+
+
+	return buf.String(), nil
+
+}
+
+
+
+// selectDeterministicVariant returns true if variant A should be selected based on email hash.
+
+
+
+func (s *TemplateService) selectDeterministicVariant(email string, weightA float64) bool {
+
+
+
+
+	if email == "" {
+		return (float64(time.Now().UnixNano()%100) / 100.0) < weightA
+	}
+	// Simple hash-based selection
+	var hash uint32 = 0
+	for i := 0; i < len(email); i++ {
+		hash = uint32(email[i]) + (hash << 6) + (hash << 16) - hash
+	}
+	return float64(hash%100) < (weightA * 100)
+}
+
+// renderWithLayout wraps content in the master layout.
+func (s *TemplateService) renderWithLayout(title, content string, vars *TemplateVars) (string, error) {
+	layoutContent, err := DefaultTemplatesFS.ReadFile("defaults/layout.html")
+	if err != nil {
+		return "", err
+	}
+
+	tmpl, err := template.New("layout").Parse(string(layoutContent))
+	if err != nil {
+		return "", err
+	}
+
+	// Add the content block
+	_, err = tmpl.New("content").Parse(content)
+	if err != nil {
+		return "", err
+	}
+
+	// Add the title block
+	_, err = tmpl.New("title").Parse(title)
 	if err != nil {
 		return "", err
 	}
@@ -244,146 +375,136 @@ func (s *TemplateService) renderString(templateStr string, vars *TemplateVars) (
 
 // renderDefaultTemplate renders the built-in default template.
 func (s *TemplateService) renderDefaultTemplate(templateType TemplateType, vars *TemplateVars) (subject, htmlBody, textBody string, err error) {
-	switch templateType {
-	case TemplateVerification:
-		subject = "Verify your email address"
-		htmlBody, err = s.renderString(VerificationEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nPlease verify your email address by clicking the link below:\n\n" + vars.VerifyURL + "\n\nIf you didn't create an account, you can safely ignore this email.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplatePasswordReset:
-		subject = "Reset your password"
-		htmlBody, err = s.renderString(PasswordResetEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYou requested to reset your password. Click the link below:\n\n" + vars.ResetURL + "\n\nThis link will expire in 1 hour.\n\nIf you didn't request this, you can safely ignore this email.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateWelcome:
-		subject = "Welcome to " + vars.AppName
-		htmlBody, err = s.renderString(WelcomeEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nWelcome to " + vars.AppName + "! Your account has been created successfully.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateLoginAlert:
-		subject = "New login to your account"
-		htmlBody, err = s.renderString(LoginAlertEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nWe noticed a new login to your account:\n\nDevice: " + vars.DeviceName + "\nBrowser: " + vars.Browser + "\nOS: " + vars.OS + "\nIP Address: " + vars.IPAddress + "\nLocation: " + vars.Location + "\nTime: " + vars.Time + "\n\nIf this wasn't you, please change your password immediately.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateInvitation:
-		subject = "You've been invited to join " + vars.TenantName
-		htmlBody, err = s.renderString(InvitationEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi,\n\n" + vars.InviterName + " has invited you to join " + vars.TenantName + ".\n\n" + vars.Message + "\n\nClick the link below to accept:\n" + vars.InviteURL + "\n\nThis invitation expires on " + vars.ExpiresAt + ".\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateMFAEnabled:
-		subject = "Two-factor authentication enabled"
-		htmlBody, err = s.renderString(MFAEnabledEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nTwo-factor authentication has been enabled on your account. Your account is now more secure.\n\nIf you didn't do this, please contact support immediately.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateMFACode:
-		subject = "Your Verification Code"
-		htmlBody, err = s.renderString(MFACodeEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nUse the following verification code to complete your login:\n\n" + vars.MFACode + "\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email or contact support if you're concerned.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateLowBackupCodes:
-		subject = "Action Required: Low backup codes remaining"
-		htmlBody, err = s.renderString(LowBackupCodesEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYou have only " + vars.RemainingCodes + " backup codes remaining for two-factor authentication.\n\nWe recommend generating new backup codes as soon as possible to avoid being locked out of your account.\n\nTo generate new backup codes, go to your account security settings.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplatePasswordChanged:
-		subject = "Your password was changed"
-		htmlBody, err = s.renderString(PasswordChangedEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYour password has been changed. If you didn't do this, please reset your password immediately and contact support.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateSessionRevoked:
-		subject = "Your session was terminated"
-		htmlBody, err = s.renderString(SessionRevokedEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYour session has been terminated.\n\nReason: " + vars.Reason + "\n\nIf you didn't do this, please check your account security.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateAccountDeactivated:
-		subject = "Account Deactivated"
-		htmlBody, err = s.renderString(AccountDeactivatedEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYour account has been deactivated.\n\nReason: " + vars.Reason + "\n\nIf you believe this was a mistake, please contact our support team.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateEmailChanged:
-		subject = "Email Address Changed"
-		htmlBody, err = s.renderString(EmailChangedEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYour email address has been changed from " + vars.OldEmail + " to " + vars.NewEmail + ".\n\nIf you didn't make this change, please contact our support team immediately.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplatePasswordExpiry:
-		subject = "Password Expiring Soon"
-		htmlBody, err = s.renderString(PasswordExpiryEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYour password will expire in " + vars.DaysUntilExpiry + " days on " + vars.ExpiryDate + ".\n\nPlease change your password before it expires.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateSecurityAlert:
-		subject = vars.AlertTitle
-		htmlBody, err = s.renderString(SecurityAlertEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\n" + vars.AlertTitle + "\n\n" + vars.AlertMessage + "\n\n" + vars.AlertDetails + "\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateRateLimitWarning:
-		subject = "Rate Limit Approaching"
-		htmlBody, err = s.renderString(RateLimitWarningEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi " + vars.FullName + ",\n\nYou're approaching the rate limit for " + vars.ActionType + " actions.\n\nCurrent Usage: " + vars.CurrentCount + " / " + vars.MaxCount + "\n\n" + vars.TimeWindow + "\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	case TemplateMagicLink:
-		subject = "Sign in to your account"
-		htmlBody, err = s.renderString(MagicLinkEmailHTML, vars)
-		if err != nil {
-			return "", "", "", err
-		}
-		textBody = "Hi,\n\nClick the link below to sign in:\n\n" + vars.MagicLinkURL + "\n\nThis link will expire in 15 minutes.\n\nThanks,\nThe " + vars.AppName + " Team"
-
-	default:
-		s.logger.Warn("Unknown template type", "type", templateType)
-		return "", "", "", nil
+	templateName := string(templateType)
+	lang := vars.LanguageCode
+	if lang == "" {
+		lang = "en"
 	}
+
+	// Try localized HTML template first
+	var htmlContent []byte
+	if lang != "en" {
+		htmlPath := fmt.Sprintf("defaults/%s_%s.html", templateName, lang)
+		htmlContent, _ = DefaultTemplatesFS.ReadFile(htmlPath)
+	}
+
+	// Fallback to default HTML
+	if len(htmlContent) == 0 {
+		htmlPath := fmt.Sprintf("defaults/%s.html", templateName)
+		htmlContent, err = DefaultTemplatesFS.ReadFile(htmlPath)
+		if err != nil {
+			return "", "", "", fmt.Errorf("default template not found: %s", htmlPath)
+		}
+	}
+
+	// Try localized Text template first
+	var textContent []byte
+	if lang != "en" {
+		textPath := fmt.Sprintf("defaults/%s_%s.txt", templateName, lang)
+		textContent, _ = DefaultTemplatesFS.ReadFile(textPath)
+	}
+
+	// Fallback to default Text
+	if len(textContent) == 0 {
+		textPath := fmt.Sprintf("defaults/%s.txt", templateName)
+		textContent, _ = DefaultTemplatesFS.ReadFile(textPath)
+	}
+
+	// Parse layout and template
+	layoutContent, err := DefaultTemplatesFS.ReadFile("defaults/layout.html")
+	if err != nil {
+		return "", "", "", err
+	}
+
+	tmpl, err := template.New("layout").Parse(string(layoutContent))
+	if err != nil {
+		return "", "", "", err
+	}
+
+	_, err = tmpl.Parse(string(htmlContent))
+	if err != nil {
+		return "", "", "", err
+	}
+
+	// Execute HTML
+	var htmlBuf bytes.Buffer
+	if err := tmpl.Execute(&htmlBuf, vars); err != nil {
+		return "", "", "", err
+	}
+	htmlBody = htmlBuf.String()
+
+	// Execute Text
+	textTmpl, err := template.New("text").Parse(string(textContent))
+	if err != nil {
+		textBody = string(textContent) // Fallback to raw if parse fails
+	} else {
+		var textBuf bytes.Buffer
+		if err := textTmpl.Execute(&textBuf, vars); err != nil {
+			textBody = string(textContent)
+		} else {
+			textBody = textBuf.String()
+		}
+	}
+
+	// Subject extraction - we need a way to get the default subject
+	// For now, we'll keep a map or just use the title block from the template
+	subject = GetTemplateDefaultSubject(templateType, vars)
 
 	return subject, htmlBody, textBody, nil
 }
 
-// selectVariant returns true if variant A should be selected based on weight.
-func (s *TemplateService) selectVariant(weightA float64) bool {
-	return (float64(time.Now().UnixNano()%100) / 100.0) < weightA
+// GetTemplateDefaultSubject returns the default subject for a template type.
+func GetTemplateDefaultSubject(t TemplateType, vars *TemplateVars) string {
+	appName := "ModernAuth"
+	if vars != nil && vars.AppName != "" {
+		appName = vars.AppName
+	}
+
+	switch t {
+	case TemplateVerification:
+		return "Verify your email address"
+	case TemplatePasswordReset:
+		return "Reset your password"
+	case TemplateWelcome:
+		return "Welcome to " + appName
+	case TemplateLoginAlert:
+		return "New login to your account"
+	case TemplateInvitation:
+		tenantName := "Organization"
+		if vars != nil && vars.TenantName != "" {
+			tenantName = vars.TenantName
+		}
+		return "You've been invited to join " + tenantName
+	case TemplateMFAEnabled:
+		return "Two-factor authentication enabled"
+	case TemplateMFADisabled:
+		return "Two-factor authentication disabled"
+	case TemplateMFACode:
+		return "Your Verification Code"
+	case TemplateLowBackupCodes:
+		return "Action Required: Low backup codes remaining"
+	case TemplatePasswordChanged:
+		return "Your password was changed"
+	case TemplateSessionRevoked:
+		return "Your session was terminated"
+	case TemplateAccountDeactivated:
+		return "Account Deactivated"
+	case TemplateEmailChanged:
+		return "Email Address Changed"
+	case TemplatePasswordExpiry:
+		return "Password Expiring Soon"
+	case TemplateSecurityAlert:
+		if vars != nil && vars.AlertTitle != "" {
+			return vars.AlertTitle
+		}
+		return "Security Alert"
+	case TemplateRateLimitWarning:
+		return "Rate Limit Approaching"
+	case TemplateMagicLink:
+		return "Sign in to your account"
+	default:
+		return "Notification from " + appName
+	}
 }
 
 // InvalidateCache clears the cache for a specific tenant and template type.

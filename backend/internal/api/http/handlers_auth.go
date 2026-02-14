@@ -166,7 +166,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Record failed attempt for lockout
 		if h.accountLockout != nil && (err == auth.ErrInvalidCredentials || err == auth.ErrUserNotFound) {
-			locked, lockErr := h.accountLockout.RecordFailedAttempt(r.Context(), req.Email)
+			locked, _, lockErr := h.accountLockout.RecordFailedAttempt(r.Context(), req.Email)
 			if lockErr != nil {
 				h.logger.Error("Failed to record failed attempt", "error", lockErr)
 			}
@@ -297,7 +297,7 @@ func (h *Handler) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Record failed MFA attempt
 		if h.mfaLockout != nil && err == auth.ErrInvalidMFACode {
-			locked, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
+			locked, _, lockErr := h.mfaLockout.RecordFailedAttempt(r.Context(), "mfa:"+req.UserID)
 			if lockErr != nil {
 				h.logger.Error("Failed to record MFA attempt", "error", lockErr)
 			}
