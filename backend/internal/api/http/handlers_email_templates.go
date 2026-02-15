@@ -158,7 +158,7 @@ func (h *EmailTemplateHandler) GetTemplate(w http.ResponseWriter, r *http.Reques
 	if template == nil {
 		defaultHTML, defaultText, _ := h.templateService.GetDefaultTemplateContent(email.TemplateType(templateType))
 		defaultSubject := email.GetTemplateDefaultSubject(email.TemplateType(templateType), nil)
-		
+
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"type":       templateType,
 			"subject":    defaultSubject,
@@ -653,12 +653,12 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		// Record analytics for test email
+		// Record analytics for test email (marked as test to avoid inflating real metrics)
 		event := &storage.EmailEvent{
 			ID:           uuid.New(),
 			TenantID:     tenantID,
 			TemplateType: templateType,
-			EventType:    "sent",
+			EventType:    "test",
 			Recipient:    req.RecipientEmail,
 			JobID:        &jobID,
 			CreatedAt:    time.Now(),
@@ -666,11 +666,8 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 		}
 		_ = h.storage.CreateEmailEvent(r.Context(), event)
 
-		// Record delivery immediately for test emails
-		deliveryEvent := *event
-		deliveryEvent.ID = uuid.New()
-		deliveryEvent.EventType = "delivered"
-		_ = h.storage.CreateEmailEvent(r.Context(), &deliveryEvent)
+		// Note: We do NOT record "sent" or "delivered" events for test emails
+		// to avoid inflating real email analytics
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{

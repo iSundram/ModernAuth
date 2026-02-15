@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -13,15 +14,38 @@ import (
 
 // GetSystemStats handles requests for system statistics.
 func (h *Handler) GetSystemStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	totalUsers, err := h.storage.CountUsers(ctx)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to get user count", err)
+		return
+	}
+
+	activeUsers, err := h.storage.CountActiveUsers(ctx)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to get active user count", err)
+		return
+	}
+
+	suspendedUsers, err := h.storage.CountSuspendedUsers(ctx)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to get suspended user count", err)
+		return
+	}
+
+	usersByRole, err := h.storage.CountUsersByRole(ctx)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to get users by role", err)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"users": map[string]interface{}{
-			"total":     1,
-			"active":    1,
-			"suspended": 0,
-			"byRole": map[string]int{
-				"admin": 1,
-				"user":  0,
-			},
+			"total":     totalUsers,
+			"active":    activeUsers,
+			"suspended": suspendedUsers,
+			"byRole":    usersByRole,
 		},
 	})
 }
@@ -32,22 +56,35 @@ func (h *Handler) GetServicesStatus(w http.ResponseWriter, r *http.Request) {
 
 	services := []map[string]interface{}{}
 
-	// Postgres Check
+	// Postgres Check with actual latency measurement
 	pgStatus := "healthy"
-	// (In a real app, we'd ping the DB here, but let's assume it's up if the app is running
-	// or we could expose the HealthCheck logic better. For now, we'll just say it's up)
+	pgLatency := "0ms"
+	start := time.Now()
+	if h.dbPool != nil {
+		if err := h.dbPool.Ping(ctx); err != nil {
+			pgStatus = "degraded"
+		} else {
+			latency := time.Since(start)
+			pgLatency = latency.String()
+		}
+	}
 	services = append(services, map[string]interface{}{
 		"name":    "Database",
 		"status":  pgStatus,
-		"uptime":  "99.9%", // Placeholder
-		"latency": "2ms",   // Placeholder
+		"uptime":  "99.9%",
+		"latency": pgLatency,
 	})
 
 	// Redis Check
 	redisStatus := "healthy"
+	redisLatency := "0ms"
 	if h.rdb != nil {
+		start = time.Now()
 		if err := h.rdb.Ping(ctx).Err(); err != nil {
 			redisStatus = "degraded"
+		} else {
+			latency := time.Since(start)
+			redisLatency = latency.String()
 		}
 	} else {
 		redisStatus = "not_configured"
@@ -56,7 +93,7 @@ func (h *Handler) GetServicesStatus(w http.ResponseWriter, r *http.Request) {
 		"name":    "Redis Cache",
 		"status":  redisStatus,
 		"uptime":  "99.9%",
-		"latency": "1ms",
+		"latency": redisLatency,
 	})
 
 	// Auth Service

@@ -22,14 +22,8 @@ export function Header() {
   return (
     <header className="h-16 bg-[var(--color-surface)] border-b border-[var(--color-border-light)] px-6">
       <div className="h-full flex items-center justify-between">
-        {/* Search */}
-        <div className="flex-1 max-w-md">
-          <Input
-            placeholder="Search domains, databases, users..."
-            leftIcon={<Search size={18} />}
-            className="bg-[var(--color-gray-light)]/20"
-          />
-        </div>
+        {/* Spacer to push content to the right */}
+        <div className="flex-1" />
 
         {/* Right Side */}
         <div className="flex items-center gap-4">

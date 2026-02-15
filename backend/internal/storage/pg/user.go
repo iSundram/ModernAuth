@@ -212,6 +212,85 @@ func (s *PostgresStorage) ListUsers(ctx context.Context, limit, offset int) ([]*
 	return users, rows.Err()
 }
 
+// ListUsersCursor retrieves users with cursor-based pagination.
+// cursorID is the ID of the user to start after (for "after") or before (for "before").
+// after=true means pagination forward, after=false means pagination backward.
+func (s *PostgresStorage) ListUsersCursor(ctx context.Context, limit int, cursorID *uuid.UUID, after bool) ([]*storage.User, error) {
+	var query string
+	var args []interface{}
+
+	if cursorID == nil {
+		return s.ListUsers(ctx, limit, 0)
+	}
+
+	if after {
+		query = `
+			SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+			       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+			       password_changed_at, created_at, updated_at, tenant_id
+			FROM users
+			WHERE id > $1
+			ORDER BY id ASC
+			LIMIT $2
+		`
+		args = []interface{}{*cursorID, limit}
+	} else {
+		query = `
+			SELECT id, email, phone, username, first_name, last_name, avatar_url, hashed_password, 
+			       is_email_verified, is_active, timezone, locale, metadata, last_login_at, 
+			       password_changed_at, created_at, updated_at, tenant_id
+			FROM users
+			WHERE id < $1
+			ORDER BY id DESC
+			LIMIT $2
+		`
+		args = []interface{}{*cursorID, limit}
+	}
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*storage.User
+	for rows.Next() {
+		user := &storage.User{}
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Phone,
+			&user.Username,
+			&user.FirstName,
+			&user.LastName,
+			&user.AvatarURL,
+			&user.HashedPassword,
+			&user.IsEmailVerified,
+			&user.IsActive,
+			&user.Timezone,
+			&user.Locale,
+			&user.Metadata,
+			&user.LastLoginAt,
+			&user.PasswordChangedAt,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&user.TenantID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	if !after && len(users) > 0 {
+		for i, j := 0, len(users)-1; i < j; i, j = i+1, j-1 {
+			users[i], users[j] = users[j], users[i]
+		}
+	}
+
+	return users, rows.Err()
+}
+
 // ListUsersByTenant retrieves users for a specific tenant with pagination.
 // This ensures proper tenant isolation when listing users.
 func (s *PostgresStorage) ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*storage.User, error) {
@@ -276,6 +355,51 @@ func (s *PostgresStorage) CountUsers(ctx context.Context) (int, error) {
 	var count int
 	err := s.pool.QueryRow(ctx, query).Scan(&count)
 	return count, err
+}
+
+// CountActiveUsers returns the count of active (non-suspended) users.
+func (s *PostgresStorage) CountActiveUsers(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE is_active = true`
+	var count int
+	err := s.pool.QueryRow(ctx, query).Scan(&count)
+	return count, err
+}
+
+// CountSuspendedUsers returns the count of suspended users.
+func (s *PostgresStorage) CountSuspendedUsers(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE is_active = false`
+	var count int
+	err := s.pool.QueryRow(ctx, query).Scan(&count)
+	return count, err
+}
+
+// CountUsersByRole returns the count of users grouped by their primary role.
+func (s *PostgresStorage) CountUsersByRole(ctx context.Context) (map[string]int, error) {
+	query := `
+		SELECT COALESCE(r.name, 'user'), COUNT(ur.user_id)
+		FROM user_roles ur
+		LEFT JOIN roles r ON ur.role_id = r.id
+		GROUP BY r.name
+	`
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var roleName string
+		var count int
+		if err := rows.Scan(&roleName, &count); err != nil {
+			return nil, err
+		}
+		if roleName == "" {
+			roleName = "user"
+		}
+		result[roleName] = count
+	}
+	return result, nil
 }
 
 // UpdateUser updates an existing user.

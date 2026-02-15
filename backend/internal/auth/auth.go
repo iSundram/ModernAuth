@@ -122,14 +122,32 @@ func (s *AuthService) SetAccountLockout(lockout *AccountLockout) {
 func (s *AuthService) logAuditEvent(ctx context.Context, userID, actorID *uuid.UUID, eventType string, ip, userAgent *string, data map[string]interface{}) error {
 	log := &storage.AuditLog{
 		ID:        uuid.New(),
-		UserID:    userID,
-		ActorID:   actorID,
 		EventType: eventType,
 		IP:        ip,
 		UserAgent: userAgent,
 		Data:      data,
 		CreatedAt: time.Now(),
 	}
+
+	// Get tenant ID from user if userID is provided
+	if userID != nil {
+		if user, err := s.storage.GetUserByID(ctx, *userID); err == nil && user != nil {
+			log.TenantID = user.TenantID
+		}
+	}
+
+	// If actorID is provided and different from userID, also get tenant from actor
+	if actorID != nil {
+		if userID == nil || *actorID != *userID {
+			if actor, err := s.storage.GetUserByID(ctx, *actorID); err == nil && actor != nil && actor.TenantID != nil {
+				log.TenantID = actor.TenantID
+			}
+		}
+	}
+
+	log.UserID = userID
+	log.ActorID = actorID
+
 	return s.storage.CreateAuditLog(ctx, log)
 }
 
@@ -189,6 +207,88 @@ func (s *AuthService) ListUsers(ctx context.Context, limit, offset int) (*ListUs
 		Offset:  offset,
 		HasMore: offset+len(users) < total,
 	}, nil
+}
+
+// ListUsersResultWithCursor includes cursor pagination info
+type ListUsersResultWithCursor struct {
+	Users      []*storage.User `json:"users"`
+	Total      int             `json:"total"`
+	Limit      int             `json:"limit"`
+	Offset     int             `json:"offset"`
+	HasMore    bool            `json:"has_more"`
+	NextCursor string          `json:"next_cursor,omitempty"`
+	PrevCursor string          `json:"prev_cursor,omitempty"`
+}
+
+// ListUsersCursor retrieves users with cursor-based pagination.
+// "after" and "before" are user IDs that define the cursor position.
+func (s *AuthService) ListUsersCursor(ctx context.Context, limit, offset int, after, before string) (*ListUsersResultWithCursor, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var users []*storage.User
+	var err error
+
+	// If cursor provided, use cursor-based query
+	if after != "" || before != "" {
+		var cursorID *uuid.UUID
+		if after != "" {
+			if id, err := uuid.Parse(after); err == nil {
+				cursorID = &id
+			}
+		} else if before != "" {
+			if id, err := uuid.Parse(before); err == nil {
+				cursorID = &id
+			}
+		}
+
+		if cursorID != nil {
+			users, err = s.storage.ListUsersCursor(ctx, limit, cursorID, after != "")
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		users, err = s.storage.ListUsers(ctx, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	total, err := s.storage.CountUsers(ctx)
+	if err != nil {
+		s.logger.Error("Failed to count users", "error", err)
+		total = 0
+	}
+
+	result := &ListUsersResultWithCursor{
+		Users:   users,
+		Total:   total,
+		Limit:   limit,
+		Offset:  offset,
+		HasMore: offset+len(users) < total,
+	}
+
+	// Set next cursor if there are more results
+	if result.HasMore && len(users) > 0 {
+		lastUser := users[len(users)-1]
+		result.NextCursor = lastUser.ID.String()
+	}
+
+	// Set prev cursor if we're not at the beginning
+	if offset > 0 && len(users) > 0 {
+		firstUser := users[0]
+		result.PrevCursor = firstUser.ID.String()
+	}
+
+	return result, nil
 }
 
 // DeleteOwnAccountRequest represents a request to self-delete a user account.

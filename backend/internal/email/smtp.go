@@ -15,15 +15,26 @@ import (
 
 // SMTPService is an email service that sends emails via SMTP.
 type SMTPService struct {
-	config *Config
-	logger *slog.Logger
+	config  *Config
+	logger  *slog.Logger
+	replyTo string
 }
 
 // NewSMTPService creates a new SMTP email service.
 func NewSMTPService(config *Config) *SMTPService {
+	replyTo := ""
+	if config.ReplyToEmail != "" {
+		if config.ReplyToName != "" {
+			replyTo = fmt.Sprintf("%s <%s>", config.ReplyToName, config.ReplyToEmail)
+		} else {
+			replyTo = config.ReplyToEmail
+		}
+	}
+
 	return &SMTPService{
-		config: config,
-		logger: slog.Default().With("component", "smtp_email_service"),
+		config:  config,
+		logger:  slog.Default().With("component", "smtp_email_service"),
+		replyTo: replyTo,
 	}
 }
 
@@ -47,6 +58,9 @@ func (s *SMTPService) SendEmail(to, subject, htmlBody, textBody string) (string,
 	var msg bytes.Buffer
 	msg.WriteString(fmt.Sprintf("Message-ID: <%s@modernauth.internal>\r\n", msgID))
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	if s.replyTo != "" {
+		msg.WriteString(fmt.Sprintf("Reply-To: %s\r\n", s.replyTo))
+	}
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
 	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")

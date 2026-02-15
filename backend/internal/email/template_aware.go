@@ -32,7 +32,7 @@ func (s *TemplateAwareService) injectTrackingPixel(ctx context.Context, htmlBody
 		IsOpened:   false,
 		CreatedAt:  time.Now(),
 	}
-	
+
 	if err := s.storage.CreateEmailTrackingPixel(ctx, pixel); err != nil {
 		s.logger.Error("Failed to create tracking pixel record", "error", err)
 		return htmlBody, eventID
@@ -102,6 +102,7 @@ type TemplateAwareService struct {
 	sender          EmailSender
 	templateService *TemplateService
 	storage         storage.EmailTemplateStorage
+	userStorage     storage.UserStorage
 	baseURL         string
 	logger          *slog.Logger
 }
@@ -111,6 +112,7 @@ type TemplateAwareConfig struct {
 	Sender          EmailSender
 	TemplateService *TemplateService
 	Storage         storage.EmailTemplateStorage
+	UserStorage     storage.UserStorage
 	BaseURL         string
 }
 
@@ -121,6 +123,7 @@ func NewTemplateAwareService(cfg *TemplateAwareConfig) *TemplateAwareService {
 		sender:          cfg.Sender,
 		templateService: cfg.TemplateService,
 		storage:         cfg.Storage,
+		userStorage:     cfg.UserStorage,
 		baseURL:         baseURL,
 		logger:          slog.Default().With("component", "template_aware_email"),
 	}
@@ -153,20 +156,26 @@ func getTenantID(user *storage.User) *uuid.UUID {
 func (s *TemplateAwareService) sendTemplateEmail(ctx context.Context, user *storage.User, recipient string, tt TemplateType, vars *TemplateVars) error {
 	tenantID := getTenantID(user)
 
+	// Check suppression list before sending
+	if sup, err := s.storage.GetEmailSuppression(ctx, tenantID, recipient); err == nil && sup != nil {
+		s.logger.Info("Skipping email to suppressed address", "email", recipient, "reason", sup.Reason)
+		return fmt.Errorf("email address is suppressed: %s", sup.Reason)
+	}
+
 	subject, html, text, templateID, err := s.templateService.RenderTemplate(ctx, tenantID, tt, vars)
 	if err != nil {
 		return err
 	}
 
 	htmlWithTracking, eventID := s.injectTrackingPixel(ctx, html, vars, tt, recipient, tenantID)
-	
+
 	// Add click tracking to links
 	htmlWithTracking = s.wrapLinksWithTracking(htmlWithTracking, eventID, string(tt), recipient, tenantID)
 
 	jobID, err := s.sender.SendEmail(recipient, subject, htmlWithTracking, text)
 	if err == nil {
 		s.recordSentEvent(ctx, user, recipient, string(tt), eventID, templateID, jobID)
-		
+
 		// For synchronous senders (console, smtp), record delivery immediately
 		// Check if it's NOT sendgrid. SendGrid URLs usually contain "sendgrid.com"
 		if !strings.Contains(s.baseURL, "sendgrid.com") {
@@ -179,8 +188,14 @@ func (s *TemplateAwareService) sendTemplateEmail(ctx context.Context, user *stor
 // SendVerificationEmail sends an email verification email using templates.
 func (s *TemplateAwareService) SendVerificationEmail(ctx context.Context, user *storage.User, token string, verifyURL string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithVerification(token, verifyURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateVerification, vars)
@@ -189,8 +204,14 @@ func (s *TemplateAwareService) SendVerificationEmail(ctx context.Context, user *
 // SendPasswordResetEmail sends a password reset email using templates.
 func (s *TemplateAwareService) SendPasswordResetEmail(ctx context.Context, user *storage.User, token string, resetURL string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithPasswordReset(token, resetURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordReset, vars)
@@ -199,8 +220,14 @@ func (s *TemplateAwareService) SendPasswordResetEmail(ctx context.Context, user 
 // SendWelcomeEmail sends a welcome email using templates.
 func (s *TemplateAwareService) SendWelcomeEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateWelcome, vars)
@@ -209,8 +236,14 @@ func (s *TemplateAwareService) SendWelcomeEmail(ctx context.Context, user *stora
 // SendLoginAlertEmail sends a login alert email using templates.
 func (s *TemplateAwareService) SendLoginAlertEmail(ctx context.Context, user *storage.User, device *DeviceInfo) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithDevice(device)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateLoginAlert, vars)
@@ -218,8 +251,14 @@ func (s *TemplateAwareService) SendLoginAlertEmail(ctx context.Context, user *st
 
 // SendInvitationEmail sends an invitation email using templates.
 func (s *TemplateAwareService) SendInvitationEmail(ctx context.Context, invitation *InvitationEmail) error {
-	branding, _ := s.storage.GetEmailBranding(ctx, nil)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
+	branding, err := s.storage.GetEmailBranding(ctx, nil)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, nil)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err)
+	}
 
 	vars := NewTemplateVars(nil, branding, advanced).WithBaseURL(s.baseURL).WithInvitation(invitation)
 	return s.sendTemplateEmail(ctx, nil, invitation.Email, TemplateInvitation, vars)
@@ -228,8 +267,14 @@ func (s *TemplateAwareService) SendInvitationEmail(ctx context.Context, invitati
 // SendMFAEnabledEmail sends MFA enabled notification using templates.
 func (s *TemplateAwareService) SendMFAEnabledEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateMFAEnabled, vars)
@@ -238,8 +283,14 @@ func (s *TemplateAwareService) SendMFAEnabledEmail(ctx context.Context, user *st
 // SendMFADisabledEmail sends MFA disabled notification using templates.
 func (s *TemplateAwareService) SendMFADisabledEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateMFADisabled, vars)
@@ -247,8 +298,23 @@ func (s *TemplateAwareService) SendMFADisabledEmail(ctx context.Context, user *s
 
 // SendMFACodeEmail sends MFA verification code.
 func (s *TemplateAwareService) SendMFACodeEmail(ctx context.Context, email string, code string) error {
-	branding, _ := s.storage.GetEmailBranding(ctx, nil)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
+	var tenantID *uuid.UUID
+
+	// Try to look up user to get tenant ID for branding
+	if s.userStorage != nil {
+		if user, err := s.userStorage.GetUserByEmail(ctx, email); err == nil && user != nil {
+			tenantID = user.TenantID
+		}
+	}
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(nil, branding, advanced).WithBaseURL(s.baseURL).WithMFACode(code)
 	return s.sendTemplateEmail(ctx, nil, email, TemplateMFACode, vars)
@@ -257,8 +323,14 @@ func (s *TemplateAwareService) SendMFACodeEmail(ctx context.Context, email strin
 // SendLowBackupCodesEmail sends notification when backup codes are running low.
 func (s *TemplateAwareService) SendLowBackupCodesEmail(ctx context.Context, user *storage.User, remaining int) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithRemainingCodes(remaining)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateLowBackupCodes, vars)
@@ -267,8 +339,14 @@ func (s *TemplateAwareService) SendLowBackupCodesEmail(ctx context.Context, user
 // SendPasswordChangedEmail sends password changed notification using templates.
 func (s *TemplateAwareService) SendPasswordChangedEmail(ctx context.Context, user *storage.User) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordChanged, vars)
@@ -277,8 +355,14 @@ func (s *TemplateAwareService) SendPasswordChangedEmail(ctx context.Context, use
 // SendSessionRevokedEmail sends session revoked notification using templates.
 func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user *storage.User, reason string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithReason(reason)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateSessionRevoked, vars)
@@ -287,8 +371,14 @@ func (s *TemplateAwareService) SendSessionRevokedEmail(ctx context.Context, user
 // SendAccountDeactivatedEmail sends account deactivation notification.
 func (s *TemplateAwareService) SendAccountDeactivatedEmail(ctx context.Context, user *storage.User, reason, reactivationURL string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithAccountDeactivation(reason, reactivationURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateAccountDeactivated, vars)
@@ -297,8 +387,14 @@ func (s *TemplateAwareService) SendAccountDeactivatedEmail(ctx context.Context, 
 // SendEmailChangedEmail sends email change notification.
 func (s *TemplateAwareService) SendEmailChangedEmail(ctx context.Context, user *storage.User, oldEmail, newEmail string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithEmailChange(oldEmail, newEmail)
 	return s.sendTemplateEmail(ctx, user, oldEmail, TemplateEmailChanged, vars)
@@ -307,8 +403,14 @@ func (s *TemplateAwareService) SendEmailChangedEmail(ctx context.Context, user *
 // SendPasswordExpiryEmail sends password expiry warning.
 func (s *TemplateAwareService) SendPasswordExpiryEmail(ctx context.Context, user *storage.User, daysUntilExpiry, expiryDate, changePasswordURL string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithPasswordExpiry(daysUntilExpiry, expiryDate, changePasswordURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplatePasswordExpiry, vars)
@@ -317,8 +419,14 @@ func (s *TemplateAwareService) SendPasswordExpiryEmail(ctx context.Context, user
 // SendSecurityAlertEmail sends security alert notification.
 func (s *TemplateAwareService) SendSecurityAlertEmail(ctx context.Context, user *storage.User, title, message, details, actionURL, actionText string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithSecurityAlert(title, message, details, actionURL, actionText)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateSecurityAlert, vars)
@@ -327,8 +435,14 @@ func (s *TemplateAwareService) SendSecurityAlertEmail(ctx context.Context, user 
 // SendRateLimitWarningEmail sends rate limit warning notification.
 func (s *TemplateAwareService) SendRateLimitWarningEmail(ctx context.Context, user *storage.User, actionType, currentCount, maxCount, timeWindow, upgradeURL string) error {
 	tenantID := getTenantID(user)
-	branding, _ := s.storage.GetEmailBranding(ctx, tenantID)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
 
 	vars := NewTemplateVars(user, branding, advanced).WithBaseURL(s.baseURL).WithRateLimitWarning(actionType, currentCount, maxCount, timeWindow, upgradeURL)
 	return s.sendTemplateEmail(ctx, user, user.Email, TemplateRateLimitWarning, vars)
@@ -336,12 +450,27 @@ func (s *TemplateAwareService) SendRateLimitWarningEmail(ctx context.Context, us
 
 // SendMagicLink sends a magic link email for passwordless authentication.
 func (s *TemplateAwareService) SendMagicLink(ctx context.Context, email string, magicLinkURL string) error {
-	branding, _ := s.storage.GetEmailBranding(ctx, nil)
-	advanced, _ := s.storage.GetEmailBrandingAdvanced(ctx, nil)
+	var tenantID *uuid.UUID
 
-	sampleUser := &storage.User{Email: email}
+	// Try to look up user to get tenant ID for branding
+	if s.userStorage != nil {
+		if user, err := s.userStorage.GetUserByEmail(ctx, email); err == nil && user != nil {
+			tenantID = user.TenantID
+		}
+	}
+
+	branding, err := s.storage.GetEmailBranding(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get email branding", "error", err, "tenant_id", tenantID)
+	}
+	advanced, err := s.storage.GetEmailBrandingAdvanced(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("Failed to get advanced email branding", "error", err, "tenant_id", tenantID)
+	}
+
+	sampleUser := &storage.User{Email: email, TenantID: tenantID}
 	vars := NewTemplateVars(sampleUser, branding, advanced).WithMagicLink(magicLinkURL)
-	return s.sendTemplateEmail(ctx, nil, email, TemplateMagicLink, vars)
+	return s.sendTemplateEmail(ctx, sampleUser, email, TemplateMagicLink, vars)
 }
 
 var hrefRegexp = regexp.MustCompile(`href="([^"]+)"`)
@@ -362,7 +491,7 @@ func (s *TemplateAwareService) wrapLinksWithTracking(htmlBody, eventID, template
 		if len(submatch) < 2 {
 			return match
 		}
-		
+
 		originalURL := submatch[1]
 		// Don't track relative URLs or mailto/tel
 		if strings.HasPrefix(originalURL, "#") || strings.HasPrefix(originalURL, "mailto:") || strings.HasPrefix(originalURL, "tel:") {
@@ -374,7 +503,7 @@ func (s *TemplateAwareService) wrapLinksWithTracking(htmlBody, eventID, template
 			return match
 		}
 
-		trackingURL := fmt.Sprintf("%s/v1/email/track/click/%s?url=%s&recipient=%s&tenant_id=%s&event_id=%s", 
+		trackingURL := fmt.Sprintf("%s/v1/email/track/click/%s?url=%s&recipient=%s&tenant_id=%s&event_id=%s",
 			s.baseURL, templateType, url.QueryEscape(originalURL), url.QueryEscape(recipient), tid, eventID)
 		return fmt.Sprintf(`href="%s"`, trackingURL)
 	})

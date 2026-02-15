@@ -42,8 +42,9 @@ type rateLimitEntry struct {
 // RateLimitedService wraps an email service with rate limiting.
 // NOTE: This implementation uses in-memory rate limit tracking which is NOT
 // distributed. In a multi-server environment, rate limits are per-server and
-// not shared. For production deployments with multiple instances, replace
-// with Redis-based tracking (see queue_redis.go for Redis integration patterns).
+// not shared. For production deployments with multiple instances, use the
+// Redis-based rate limiter (see NewRedisRateLimitedService) or implement
+// distributed rate limiting using Redis.
 type RateLimitedService struct {
 	inner  Service
 	config *RateLimitConfig

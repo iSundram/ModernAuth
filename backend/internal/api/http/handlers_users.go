@@ -28,7 +28,12 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.authService.ListUsers(r.Context(), limit, offset)
+	// Cursor-based pagination: "after" takes a user ID and returns users after that ID
+	// "before" takes a user ID and returns users before that ID
+	after := r.URL.Query().Get("after")
+	before := r.URL.Query().Get("before")
+
+	result, err := h.authService.ListUsersCursor(r.Context(), limit, offset, after, before)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to list users", err)
 		return
@@ -45,6 +50,14 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		"limit":    result.Limit,
 		"offset":   result.Offset,
 		"has_more": result.HasMore,
+	}
+
+	// Add cursor information if available
+	if result.NextCursor != "" {
+		response["next_cursor"] = result.NextCursor
+	}
+	if result.PrevCursor != "" {
+		response["prev_cursor"] = result.PrevCursor
 	}
 
 	writeJSON(w, http.StatusOK, response)

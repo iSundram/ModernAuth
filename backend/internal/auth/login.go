@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -123,7 +124,7 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 			if locked {
 				s.logger.Warn("Account locked due to multiple failed attempts", "user_id", user.ID, "ip", req.IP)
 				// Send security alert email
-				_ = s.emailService.SendSecurityAlertEmail(ctx, user, "Account Locked", 
+				_ = s.emailService.SendSecurityAlertEmail(ctx, user, "Account Locked",
 					fmt.Sprintf("Your account has been locked after %d failed login attempts.", count),
 					fmt.Sprintf("Locked from IP: %s. Your account will be unlocked automatically in 30 minutes.", req.IP),
 					"", "")
@@ -141,6 +142,63 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginResul
 	// Clear failed attempts on success
 	if s.accountLockout != nil {
 		_ = s.accountLockout.ClearFailedAttempts(ctx, req.Email)
+	}
+
+	// Perform risk assessment
+	riskAssessmentEnabled := true
+	highRiskThreshold := 70
+	mediumRiskThreshold := 40
+
+	// Try to get risk thresholds from settings
+	if setting, err := s.GetSetting(ctx, "risk_high_threshold"); err == nil && setting != nil {
+		if v, ok := setting.Value.(string); ok {
+			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+				highRiskThreshold = parsed
+			}
+		}
+	}
+	if setting, err := s.GetSetting(ctx, "risk_medium_threshold"); err == nil && setting != nil {
+		if v, ok := setting.Value.(string); ok {
+			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+				mediumRiskThreshold = parsed
+			}
+		}
+	}
+	if setting, err := s.GetSetting(ctx, "risk_assessment_enabled"); err == nil && setting != nil {
+		if v, ok := setting.Value.(string); ok && v == "false" {
+			riskAssessmentEnabled = false
+		}
+	}
+
+	var deviceID *uuid.UUID
+	if req.Fingerprint != "" {
+		if id, err := uuid.Parse(req.Fingerprint); err == nil {
+			deviceID = &id
+		}
+	}
+
+	// Run risk assessment if enabled
+	var riskResult *RiskAssessmentResult
+	if riskAssessmentEnabled {
+		riskReq := &RiskAssessmentRequest{
+			UserID:    user.ID,
+			IPAddress: req.IP,
+			UserAgent: req.UserAgent,
+			DeviceID:  deviceID,
+		}
+		riskResult, err = s.AssessLoginRisk(ctx, riskReq, highRiskThreshold, mediumRiskThreshold)
+		if err != nil {
+			s.logger.Warn("Risk assessment failed, allowing login", "error", err)
+		}
+
+		// Log risk assessment
+		if riskResult != nil {
+			s.logger.Info("Risk assessment result",
+				"user_id", user.ID,
+				"score", riskResult.RiskScore,
+				"level", riskResult.RiskLevel,
+				"action", riskResult.Action)
+		}
 	}
 
 	// Check MFA policy (system-wide and tenant-specific) including trusted device logic.

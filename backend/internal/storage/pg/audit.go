@@ -15,11 +15,12 @@ import (
 // CreateAuditLog creates a new audit log entry.
 func (s *PostgresStorage) CreateAuditLog(ctx context.Context, log *storage.AuditLog) error {
 	query := `
-		INSERT INTO audit_logs (id, user_id, actor_id, event_type, ip, user_agent, data, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO audit_logs (id, tenant_id, user_id, actor_id, event_type, ip, user_agent, data, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := s.pool.Exec(ctx, query,
 		log.ID,
+		log.TenantID,
 		log.UserID,
 		log.ActorID,
 		log.EventType,

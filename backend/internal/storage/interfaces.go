@@ -48,9 +48,13 @@ type UserStorage interface {
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetUserByEmailAndTenant(ctx context.Context, email string, tenantID *uuid.UUID) (*User, error)
 	ListUsers(ctx context.Context, limit, offset int) ([]*User, error)
+	ListUsersCursor(ctx context.Context, limit int, cursorID *uuid.UUID, after bool) ([]*User, error)
 	ListUsersByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*User, error)
 	CountUsers(ctx context.Context) (int, error)
 	CountUsersByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	CountActiveUsers(ctx context.Context) (int, error)
+	CountSuspendedUsers(ctx context.Context) (int, error)
+	CountUsersByRole(ctx context.Context) (map[string]int, error)
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 }

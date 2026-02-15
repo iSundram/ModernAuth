@@ -170,7 +170,7 @@ export function AdminUsersPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="flex items-center gap-4 py-4">
             <div className="p-3 rounded-xl bg-gradient-to-br from-[#B3B3B3]/30 to-[#D4D4D4]/20">
@@ -220,7 +220,7 @@ export function AdminUsersPage() {
       {/* Search and Filter */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
             <div className="flex-1">
               <Input
                 placeholder="Search users by name or email..."
@@ -229,7 +229,7 @@ export function AdminUsersPage() {
                 leftIcon={<Search size={18} />}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant={roleFilter === 'all' ? 'primary' : 'ghost'}
                 size="sm"
@@ -257,7 +257,7 @@ export function AdminUsersPage() {
         <CardContent className="p-0">
           {/* Users Table */}
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[800px]">
               <thead>
                 <tr className="border-b border-[var(--color-border-light)]">
                   <th className="text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider px-6 py-3">
@@ -283,7 +283,7 @@ export function AdminUsersPage() {
                   <tbody className="divide-y divide-[var(--color-border-light)]">
                 {usersLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center">
+                    <td colSpan={6} className="px-6 py-12 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-8 h-8 border-2 border-[#D4D4D4] border-t-transparent rounded-full animate-spin" />
                         <p className="text-[var(--color-text-secondary)]">Loading users...</p>
@@ -292,7 +292,7 @@ export function AdminUsersPage() {
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center">
+                    <td colSpan={6} className="px-6 py-12 text-center">
                       <Users size={48} className="mx-auto text-[var(--color-text-muted)] mb-4" />
                       <p className="text-[var(--color-text-secondary)]">No users found</p>
                       <p className="text-sm text-[var(--color-text-muted)] mt-1">
@@ -324,14 +324,14 @@ export function AdminUsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <RoleBadge role={user.role} />
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <StatusBadge isActive={user.is_active} isEmailVerified={user.is_email_verified} />
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-[var(--color-text-secondary)] text-xs">
+                        <span className="text-[var(--color-text-secondary)] text-xs font-mono truncate max-w-[100px] block" title={user.tenant_id}>
                           {user.tenant_id ? user.tenant_id : '—'}
                         </span>
                       </td>

@@ -101,13 +101,14 @@ func cacheKey(tenantID *uuid.UUID, templateType TemplateType) string {
 func (s *TemplateService) GetTemplate(ctx context.Context, tenantID *uuid.UUID, templateType TemplateType) (*storage.EmailTemplate, error) {
 	key := cacheKey(tenantID, templateType)
 
-	// Check cache
+	// Check cache with proper locking to avoid race conditions
 	s.cacheMu.RLock()
 	if cached, ok := s.cache[key]; ok && time.Now().Before(cached.expiresAt) {
-		s.cacheMu.RUnlock()
 		if cached.template != nil {
+			s.cacheMu.RUnlock()
 			return cached.template, nil
 		}
+		s.cacheMu.RUnlock()
 	} else {
 		s.cacheMu.RUnlock()
 	}
@@ -141,7 +142,7 @@ func (s *TemplateService) GetTemplate(ctx context.Context, tenantID *uuid.UUID, 
 func (s *TemplateService) GetBranding(ctx context.Context, tenantID *uuid.UUID) (*storage.EmailBranding, error) {
 	key := "branding:" + cacheKey(tenantID, "")
 
-	// Check cache
+	// Check cache with proper locking
 	s.cacheMu.RLock()
 	if cached, ok := s.cache[key]; ok && time.Now().Before(cached.expiresAt) {
 		s.cacheMu.RUnlock()
@@ -259,8 +260,6 @@ func (s *TemplateService) GetDefaultTemplateContent(templateType TemplateType) (
 
 	templateName := string(templateType)
 
-	
-
 	htmlPath := fmt.Sprintf("defaults/%s.html", templateName)
 
 	htmlBytes, err := DefaultTemplatesFS.ReadFile(htmlPath)
@@ -271,29 +270,17 @@ func (s *TemplateService) GetDefaultTemplateContent(templateType TemplateType) (
 
 	}
 
-
-
 	textPath := fmt.Sprintf("defaults/%s.txt", templateName)
 
 	textBytes, _ := DefaultTemplatesFS.ReadFile(textPath)
-
-
 
 	return string(htmlBytes), string(textBytes), nil
 
 }
 
-
-
 // renderString renders a template string with variables.
 
-
-
 func (s *TemplateService) renderString(templateStr string, vars *TemplateVars) (string, error) {
-
-
-
-
 
 	tmpl, err := template.New("email").Parse(templateStr)
 
@@ -303,8 +290,6 @@ func (s *TemplateService) renderString(templateStr string, vars *TemplateVars) (
 
 	}
 
-
-
 	var buf bytes.Buffer
 
 	if err := tmpl.Execute(&buf, vars); err != nil {
@@ -313,22 +298,13 @@ func (s *TemplateService) renderString(templateStr string, vars *TemplateVars) (
 
 	}
 
-
-
 	return buf.String(), nil
 
 }
 
-
-
 // selectDeterministicVariant returns true if variant A should be selected based on email hash.
 
-
-
 func (s *TemplateService) selectDeterministicVariant(email string, weightA float64) bool {
-
-
-
 
 	if email == "" {
 		return (float64(time.Now().UnixNano()%100) / 100.0) < weightA
@@ -508,9 +484,33 @@ func GetTemplateDefaultSubject(t TemplateType, vars *TemplateVars) string {
 }
 
 // InvalidateCache clears the cache for a specific tenant and template type.
+// If templateType is empty, invalidates all template types for the tenant.
 func (s *TemplateService) InvalidateCache(tenantID *uuid.UUID, templateType TemplateType) {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
+
+	// If template type is empty, invalidate all templates for this tenant
+	if string(templateType) == "" {
+		// Invalidate all templates for this tenant
+		prefix := ""
+		if tenantID != nil {
+			prefix = tenantID.String()
+		} else {
+			prefix = "global"
+		}
+		prefix += ":"
+
+		for key := range s.cache {
+			if strings.HasPrefix(key, prefix) {
+				delete(s.cache, key)
+			}
+		}
+
+		// Also invalidate branding cache
+		brandingKey := "branding:" + prefix
+		delete(s.cache, brandingKey)
+		return
+	}
 
 	key := cacheKey(tenantID, templateType)
 	delete(s.cache, key)

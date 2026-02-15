@@ -16,6 +16,7 @@ type SendGridService struct {
 	apiKey     string
 	fromEmail  string
 	fromName   string
+	replyTo    string
 	baseURL    string
 	httpClient *http.Client
 	logger     *slog.Logger
@@ -26,6 +27,7 @@ type SendGridConfig struct {
 	APIKey    string
 	FromEmail string
 	FromName  string
+	ReplyTo   string
 	BaseURL   string
 }
 
@@ -35,6 +37,7 @@ func NewSendGridService(cfg *SendGridConfig) *SendGridService {
 		apiKey:    cfg.APIKey,
 		fromEmail: cfg.FromEmail,
 		fromName:  cfg.FromName,
+		replyTo:   cfg.ReplyTo,
 		baseURL:   cfg.BaseURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -47,6 +50,7 @@ func NewSendGridService(cfg *SendGridConfig) *SendGridService {
 type sendGridRequest struct {
 	Personalizations []sendGridPersonalization `json:"personalizations"`
 	From             sendGridEmail             `json:"from"`
+	ReplyTo          *sendGridEmail            `json:"reply_to,omitempty"`
 	Subject          string                    `json:"subject"`
 	Content          []sendGridContent         `json:"content"`
 }
@@ -79,6 +83,11 @@ func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) (str
 		},
 		Subject: subject,
 		Content: []sendGridContent{},
+	}
+
+	// Add Reply-To if configured
+	if s.replyTo != "" {
+		req.ReplyTo = &sendGridEmail{Email: s.replyTo}
 	}
 
 	// Add text content first (fallback), then HTML
