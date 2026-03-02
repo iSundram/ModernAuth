@@ -16,6 +16,10 @@ import {
   UserCheck,
   BarChart3,
   TrendingUp,
+  AppWindow,
+  UsersRound,
+  Server,
+  MailWarning,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSidebar } from '../../context/SidebarContext';
@@ -24,9 +28,13 @@ const navItems = [
   { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
   { path: '/admin/users', icon: Users, label: 'Users' },
+  { path: '/admin/groups', icon: UsersRound, label: 'Groups' },
   { path: '/admin/roles', icon: Shield, label: 'Roles' },
   { path: '/admin/tenants', icon: Building2, label: 'Tenants' },
+  { path: '/admin/apps', icon: AppWindow, label: 'Apps' },
+  { path: '/admin/branding', icon: Palette, label: 'Branding' },
   { path: '/admin/oauth', icon: Globe, label: 'OAuth' },
+  { path: '/admin/scim', icon: Server, label: 'SCIM' },
   { path: '/admin/security', icon: Lock, label: 'Security' },
   { path: '/admin/audit', icon: History, label: 'Audit Logs' },
   { path: '/admin/impersonation', icon: UserCheck, label: 'Impersonation' },
@@ -34,6 +42,7 @@ const navItems = [
   { path: '/admin/email-templates', icon: FileText, label: 'Email Templates' },
   { path: '/admin/email-branding', icon: Palette, label: 'Email Branding' },
   { path: '/admin/email-analytics', icon: TrendingUp, label: 'Email Analytics' },
+  { path: '/admin/email-deliverability', icon: MailWarning, label: 'Deliverability' },
 ];
 
 const bottomNavItems = [

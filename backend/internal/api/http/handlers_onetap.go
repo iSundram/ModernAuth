@@ -2,18 +2,49 @@
 package http
 
 import (
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/iSundram/ModernAuth/internal/oauth"
 	"github.com/iSundram/ModernAuth/internal/storage"
 	"github.com/iSundram/ModernAuth/internal/utils"
 )
+
+// Google JWKS endpoint for public key verification
+const googleJWKSURL = "https://www.googleapis.com/oauth2/v3/certs"
+
+// googleJWKS caches Google's public keys
+var (
+	googleJWKSCache     *googleJWKSResponse
+	googleJWKSCacheMu   sync.RWMutex
+	googleJWKSCacheTime time.Time
+	googleJWKSCacheTTL  = 1 * time.Hour
+)
+
+// googleJWKSResponse represents Google's JWKS response
+type googleJWKSResponse struct {
+	Keys []googleJWK `json:"keys"`
+}
+
+// googleJWK represents a single key in Google's JWKS
+type googleJWK struct {
+	Kid string `json:"kid"` // Key ID
+	Kty string `json:"kty"` // Key type (RSA)
+	Alg string `json:"alg"` // Algorithm (RS256)
+	Use string `json:"use"` // Key use (sig)
+	N   string `json:"n"`   // RSA modulus
+	E   string `json:"e"`   // RSA exponent
+}
 
 // GoogleOneTapLogin handles Google One Tap sign-in.
 // It receives a Google JWT credential, verifies it, and finds or creates the user.
@@ -33,8 +64,18 @@ func (h *Handler) GoogleOneTapLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode and verify the Google JWT credential
-	claims, err := decodeGoogleJWT(req.Credential)
+	// Get Google client ID for verification
+	var expectedClientID string
+	if h.oauthHandler != nil && h.oauthHandler.oauthService != nil {
+		expectedClientID = h.oauthHandler.oauthService.GetGoogleClientID()
+	}
+	if expectedClientID == "" {
+		h.writeError(w, http.StatusServiceUnavailable, "Google OAuth not configured", nil)
+		return
+	}
+
+	// Verify and decode the Google JWT credential with signature verification
+	claims, err := verifyGoogleJWT(req.Credential, expectedClientID)
 	if err != nil {
 		h.writeError(w, http.StatusUnauthorized, "Invalid Google credential", err)
 		return
@@ -102,7 +143,7 @@ func (h *Handler) GoogleOneTapLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate tokens
-	tokenPair, err := h.tokenService.GenerateTokenPair(user.ID, session.ID, nil)
+	tokenPair, err := h.tokenService.GenerateTokenPair(user.ID, session.ID, user.TenantID, nil)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to generate tokens", err)
 		return
@@ -165,51 +206,185 @@ type googleJWTClaims struct {
 	Iat           int64  `json:"iat"`
 }
 
-// decodeGoogleJWT decodes a Google ID token JWT and extracts claims.
-//
-// SECURITY TODO: This function only decodes the JWT payload without verifying
-// the cryptographic signature. In production, you MUST verify the JWT signature
-// against Google's public keys from https://www.googleapis.com/oauth2/v3/certs
-//
-// To implement proper verification:
-// 1. Fetch Google's public keys from https://www.googleapis.com/oauth2/v3/certs (cache them)
-// 2. Parse the JWT header to get the "kid" (key ID)
-// 3. Find the matching public key
-// 4. Verify the signature using the public key
-// 5. Verify the "aud" claim matches your Google Client ID
-// 6. Verify the "iss" claim is accounts.google.com or https://accounts.google.com
-//
-// Recommended: Use a library like github.com/golang-jwt/jwt/v5 with google.golang.org/api/idtoken
-// for proper verification: idtoken.Validate(ctx, credential, clientID)
-//
-// Current mitigation: We verify the issuer claim as a basic check, but this does NOT
-// prevent token forgery. An attacker could craft a fake JWT with a valid-looking payload.
-func decodeGoogleJWT(credential string) (*googleJWTClaims, error) {
+// fetchGoogleJWKS fetches Google's public keys from their JWKS endpoint.
+// Keys are cached for 1 hour to avoid excessive requests.
+func fetchGoogleJWKS() (*googleJWKSResponse, error) {
+	googleJWKSCacheMu.RLock()
+	if googleJWKSCache != nil && time.Since(googleJWKSCacheTime) < googleJWKSCacheTTL {
+		cache := googleJWKSCache
+		googleJWKSCacheMu.RUnlock()
+		return cache, nil
+	}
+	googleJWKSCacheMu.RUnlock()
+
+	// Fetch fresh keys
+	googleJWKSCacheMu.Lock()
+	defer googleJWKSCacheMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if googleJWKSCache != nil && time.Since(googleJWKSCacheTime) < googleJWKSCacheTTL {
+		return googleJWKSCache, nil
+	}
+
+	resp, err := http.Get(googleJWKSURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Google JWKS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Google JWKS returned status %d", resp.StatusCode)
+	}
+
+	var jwks googleJWKSResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+		return nil, fmt.Errorf("failed to decode Google JWKS: %w", err)
+	}
+
+	googleJWKSCache = &jwks
+	googleJWKSCacheTime = time.Now()
+	return &jwks, nil
+}
+
+// getGooglePublicKey retrieves the RSA public key for the given key ID.
+func getGooglePublicKey(kid string) (*rsa.PublicKey, error) {
+	jwks, err := fetchGoogleJWKS()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, key := range jwks.Keys {
+		if key.Kid == kid && key.Kty == "RSA" {
+			// Decode modulus
+			nBytes, err := base64.RawURLEncoding.DecodeString(key.N)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode modulus: %w", err)
+			}
+			n := new(big.Int).SetBytes(nBytes)
+
+			// Decode exponent
+			eBytes, err := base64.RawURLEncoding.DecodeString(key.E)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode exponent: %w", err)
+			}
+			e := int(new(big.Int).SetBytes(eBytes).Int64())
+
+			return &rsa.PublicKey{N: n, E: e}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("key with kid %s not found in Google JWKS", kid)
+}
+
+// verifyGoogleJWT verifies a Google ID token JWT with full cryptographic verification.
+// It fetches Google's public keys and verifies the signature, issuer, audience, and expiration.
+func verifyGoogleJWT(credential, expectedClientID string) (*googleJWTClaims, error) {
+	// Parse the JWT without verification first to get the header
 	parts := strings.Split(credential, ".")
 	if len(parts) != 3 {
 		return nil, ErrInvalidGoogleCredential
 	}
 
-	// Decode the payload (second part)
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	// Decode header to get kid
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return nil, ErrInvalidGoogleCredential
 	}
 
-	var claims googleJWTClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
+	var header struct {
+		Kid string `json:"kid"`
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
 		return nil, ErrInvalidGoogleCredential
 	}
 
-	// Verify issuer - basic check but NOT sufficient without signature verification
+	if header.Alg != "RS256" {
+		return nil, fmt.Errorf("unsupported algorithm: %s", header.Alg)
+	}
+
+	// Get the public key for this kid
+	publicKey, err := getGooglePublicKey(header.Kid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Google public key: %w", err)
+	}
+
+	// Parse and verify the JWT with the public key
+	token, err := jwt.Parse(credential, func(token *jwt.Token) (interface{}, error) {
+		// Validate the signing method
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return publicKey, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("JWT verification failed: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, ErrInvalidGoogleCredential
+	}
+
+	// Extract claims
+	mapClaims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, ErrInvalidGoogleCredential
+	}
+
+	claims := &googleJWTClaims{}
+
+	// Extract standard claims
+	if sub, ok := mapClaims["sub"].(string); ok {
+		claims.Sub = sub
+	}
+	if email, ok := mapClaims["email"].(string); ok {
+		claims.Email = email
+	}
+	if emailVerified, ok := mapClaims["email_verified"].(bool); ok {
+		claims.EmailVerified = emailVerified
+	}
+	if name, ok := mapClaims["name"].(string); ok {
+		claims.Name = name
+	}
+	if givenName, ok := mapClaims["given_name"].(string); ok {
+		claims.GivenName = givenName
+	}
+	if familyName, ok := mapClaims["family_name"].(string); ok {
+		claims.FamilyName = familyName
+	}
+	if picture, ok := mapClaims["picture"].(string); ok {
+		claims.Picture = picture
+	}
+	if iss, ok := mapClaims["iss"].(string); ok {
+		claims.Iss = iss
+	}
+	if aud, ok := mapClaims["aud"].(string); ok {
+		claims.Aud = aud
+	}
+	if exp, ok := mapClaims["exp"].(float64); ok {
+		claims.Exp = int64(exp)
+	}
+	if iat, ok := mapClaims["iat"].(float64); ok {
+		claims.Iat = int64(iat)
+	}
+
+	// Verify issuer
 	if claims.Iss != "accounts.google.com" && claims.Iss != "https://accounts.google.com" {
-		return nil, ErrInvalidGoogleCredential
+		return nil, fmt.Errorf("invalid issuer: %s", claims.Iss)
 	}
 
-	// SECURITY WARNING: Without signature verification, an attacker could forge this token.
-	// The checks above only validate the token structure and issuer claim, not authenticity.
+	// Verify audience matches our client ID
+	if claims.Aud != expectedClientID {
+		return nil, fmt.Errorf("invalid audience: expected %s, got %s", expectedClientID, claims.Aud)
+	}
 
-	return &claims, nil
+	// Verify expiration
+	if claims.Exp < time.Now().Unix() {
+		return nil, fmt.Errorf("token expired")
+	}
+
+	return claims, nil
 }
 
 // ErrInvalidGoogleCredential indicates the Google credential is invalid.

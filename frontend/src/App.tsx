@@ -15,7 +15,7 @@ const queryClient = new QueryClient({
   },
 });
 
-import { AdminLayout, UserLayout } from './components/layout';
+import { AdminLayout, UserLayout, OrganizationLayout } from './components/layout';
 import {
   EmailLoginPage,
   PasswordLoginPage,
@@ -23,6 +23,7 @@ import {
   MagicLinkVerifyPage,
   RegisterPage,
   DashboardPage,
+  GroupsPage,
   AdminDashboardPage,
   AdminAuditPage,
   AdminSecurityPage,
@@ -30,6 +31,8 @@ import {
   AdminUsersPage,
   AdminRolesPage,
   AdminOAuthPage,
+  AdminScimPage,
+  AdminEmailDeliverabilityPage,
   ForgotPasswordPage,
   ResetPasswordPage,
   VerifyEmailPage,
@@ -41,6 +44,13 @@ import {
   AdminEmailTemplatesPage,
   AdminEmailBrandingPage,
   AdminEmailAnalyticsPage,
+  AppsPage,
+  BrandingPage,
+  SessionsPage,
+  OrgDashboardPage,
+  OrgMembersPage,
+  OrgRolesPage,
+  OrgSettingsPage,
 } from './pages';
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage';
 import { TenantDetailPage } from './pages/admin/TenantDetailPage';
@@ -96,27 +106,31 @@ function RoleProtectedRoute({
   }
 
   if (!user || !allowedRoles.includes(user.role || 'user')) {
-    const dashboardRoute = user?.role === 'admin' ? '/admin' : '/user';
+    const dashboardRoute = getDashboardRoute(user);
     return <Navigate to={dashboardRoute} replace />;
   }
 
   return <>{children}</>;
 }
 
-function getDashboardRoute(role?: UserRole): string {
-  switch (role) {
-    case 'admin':
-      return '/admin';
-    case 'user':
-    default:
-      return '/user';
+function getDashboardRoute(user?: User | null): string {
+  if (!user) return '/login';
+  
+  if (user.role === 'admin') {
+    return '/admin';
   }
+  
+  if (user.is_tenant_admin) {
+    return '/org';
+  }
+  
+  return '/user';
 }
 
 // 404 Not Found Page
 function NotFoundPage() {
   const { user } = useAuth();
-  const dashboardRoute = getDashboardRoute(user?.role);
+  const dashboardRoute = getDashboardRoute(user);
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
@@ -184,9 +198,32 @@ function AppRoutes() {
         <Route path="invitations" element={<InvitationsPage />} />
         <Route path="tenants" element={<AdminTenantsPage />} />
         <Route path="tenants/:id" element={<TenantDetailPage />} />
+        <Route path="apps" element={<AppsPage />} />
+        <Route path="branding" element={<BrandingPage />} />
         <Route path="email-templates" element={<AdminEmailTemplatesPage />} />
         <Route path="email-branding" element={<AdminEmailBrandingPage />} />
         <Route path="email-analytics" element={<AdminEmailAnalyticsPage />} />
+        <Route path="email-deliverability" element={<AdminEmailDeliverabilityPage />} />
+        <Route path="scim" element={<AdminScimPage />} />
+        <Route path="groups" element={<GroupsPage />} />
+      </Route>
+
+      <Route
+        path="/org/*"
+        element={
+          <ProtectedRoute>
+            <RoleProtectedRoute allowedRoles={['admin', 'tenant_admin']}>
+              <OrganizationLayout />
+            </RoleProtectedRoute>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<OrgDashboardPage />} />
+        <Route path="members" element={<OrgMembersPage />} />
+        <Route path="roles" element={<OrgRolesPage />} />
+        <Route path="settings" element={<OrgSettingsPage />} />
+        {/* Placeholder for other org features */}
+        <Route path="*" element={<Navigate to="/org" replace />} />
       </Route>
 
       <Route
@@ -201,6 +238,7 @@ function AppRoutes() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="security" element={<UserSecurityPage />} />
+        <Route path="sessions" element={<SessionsPage />} />
         <Route path="settings" element={<UserSettingsPage />} />
         <Route path="connected-accounts" element={<UserConnectedAccountsPage />} />
         <Route path="audit" element={<UserAuditPage />} />
@@ -213,7 +251,7 @@ function AppRoutes() {
         path="/"
         element={
           <ProtectedRoute>
-            <Navigate to={getDashboardRoute(user?.role)} replace />
+            <Navigate to={getDashboardRoute(user)} replace />
           </ProtectedRoute>
         }
       />

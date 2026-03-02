@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   CheckCircle, 
   Mail, 
@@ -11,7 +12,7 @@ import {
   Globe,
   Palette
 } from 'lucide-react';
-import { Button, Modal } from '../ui';
+import { Button, Modal, useToast } from '../ui';
 import { useAuth } from '../../hooks/useAuth';
 import { authService, tenantService } from '../../api/services';
 import { useTenant } from '../../hooks/useTenant';
@@ -34,6 +35,8 @@ interface OnboardingWizardProps {
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const { user } = useAuth();
   const { tenant } = useTenant();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<{
     totp_enabled: boolean;
@@ -143,9 +146,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       action: async () => {
         try {
           await authService.sendVerification();
-          alert('Verification email sent! Please check your inbox.');
+          showToast({ title: 'Verification email sent! Please check your inbox.', type: 'success' });
         } catch {
-          alert('Failed to send verification email. Please try again.');
+          showToast({ title: 'Failed to send verification email. Please try again.', type: 'error' });
         }
       },
       actionLabel: 'Send Verification Email',
@@ -157,7 +160,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       icon: <Shield size={24} />,
       completed: mfaStatus?.totp_enabled || mfaStatus?.email_enabled || false,
       action: () => {
-        window.location.href = '/user/security';
+        navigate('/user/security');
       },
       actionLabel: 'Set Up MFA',
     },
@@ -168,7 +171,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       icon: <Fingerprint size={24} />,
       completed: mfaStatus?.webauthn_enabled || false,
       action: () => {
-        window.location.href = '/user/security';
+        navigate('/user/security');
       },
       actionLabel: 'Add Passkey',
       optional: true,
@@ -183,7 +186,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           icon: <Globe size={24} />,
           completed: tenantStatus?.is_domain_verified || false,
           action: () => {
-              window.location.href = '/admin/settings';
+              navigate('/admin/settings');
           },
           actionLabel: 'Verify Domain',
       },
@@ -194,7 +197,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           icon: <Users size={24} />,
           completed: tenantStatus?.has_users || false,
           action: () => {
-              window.location.href = '/admin/users';
+              navigate('/admin/users');
           },
           actionLabel: 'Invite Users',
       },
@@ -205,7 +208,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           icon: <Palette size={24} />,
           completed: tenantStatus?.has_feature_flags || false, // Using this as proxy for now
           action: () => {
-              window.location.href = '/admin/email-branding';
+              navigate('/admin/email-branding');
           },
           actionLabel: 'Setup Branding',
       }

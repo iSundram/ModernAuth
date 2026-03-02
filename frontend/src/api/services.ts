@@ -19,7 +19,16 @@ import type {
   EmailABTest, EmailABTestResult, EmailBrandingAdvanced,
   MagicLinkVerifyResponse, ImpersonationStatus, ImpersonationSession, ImpersonationResult,
   UserBulkImportResult, UserBulkImportRequest,
-  UpdateProfileRequest, UserPreferences, UpdatePreferencesRequest, DataExportResponse
+  UpdateProfileRequest, UserPreferences, UpdatePreferencesRequest, DataExportResponse,
+  // Apps types
+  App, CreateAppRequest, CreateAppResponse, UpdateAppRequest, AppSecret, CreateSecretRequest, CreateSecretResponse,
+  AppScope, UserConsent, AppListResponse, OAuthTokenResponse,
+  // Branding types
+  TenantBranding, UpdateBrandingRequest, BrandingAsset, CreateAssetRequest,
+  BrandingTheme, BrandingPage, UpdatePageRequest, CustomDomain, CreateDomainRequest, CreateDomainResponse,
+  BrandingDarkMode, UpdateDarkModeRequest, ApplyThemeRequest,
+  // Policy types
+  PasswordPolicy, TenantRateLimits,
 } from '../types';
 import type { 
   PublicKeyCredentialCreationOptionsJSON, 
@@ -37,13 +46,13 @@ export const authService = {
   login: (credentials: LoginRequest) =>
     apiClient.post<LoginResponse | LoginMfaRequiredResponse>('/v1/auth/login', credentials),
 
-  checkEmail: (email: string) =>
+  checkEmail: (email: string, tenant?: string) =>
     apiClient.post<{ 
       exists: boolean; 
       mfa_required: boolean; 
       preferred_method?: string; 
       methods?: string[] 
-    }>('/v1/auth/login/check', { email }),
+    }>('/v1/auth/login/check', { email, tenant }),
 
   loginMfa: (data: LoginMFARequest) =>
     apiClient.post<LoginResponse>('/v1/auth/login/mfa', data),
@@ -533,6 +542,48 @@ export const tenantService = {
 
   getOnboardingStatus: (id: string) =>
     apiClient.get<TenantOnboardingStatusResponse>(`/v1/tenants/${id}/onboarding-status`),
+
+  // Password Policy
+  getPasswordPolicy: (id: string) =>
+    apiClient.get<PasswordPolicy>(`/v1/tenants/${id}/password-policy`),
+
+  updatePasswordPolicy: (id: string, policy: Partial<PasswordPolicy>) =>
+    apiClient.put<PasswordPolicy>(`/v1/tenants/${id}/password-policy`, policy),
+
+  // Rate Limits
+  getRateLimits: (id: string) =>
+    apiClient.get<TenantRateLimits>(`/v1/tenants/${id}/rate-limits`),
+
+  updateRateLimits: (id: string, limits: Partial<TenantRateLimits>) =>
+    apiClient.put<TenantRateLimits>(`/v1/tenants/${id}/rate-limits`, limits),
+
+  // Tenant Roles (RBAC)
+  listRoles: (tenantId: string) =>
+    apiClient.get<Role[]>(`/v1/tenants/${tenantId}/roles`),
+
+  createRole: (tenantId: string, data: { name: string; description?: string }) =>
+    apiClient.post<Role>(`/v1/tenants/${tenantId}/roles`, data),
+
+  updateRole: (tenantId: string, roleId: string, data: { description?: string }) =>
+    apiClient.put<Role>(`/v1/tenants/${tenantId}/roles/${roleId}`, data),
+
+  deleteRole: (tenantId: string, roleId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/roles/${roleId}`),
+
+  getRolePermissions: (tenantId: string, roleId: string) =>
+    apiClient.get<Permission[]>(`/v1/tenants/${tenantId}/roles/${roleId}/permissions`),
+
+  assignPermissionToRole: (tenantId: string, roleId: string, permissionId: string) =>
+    apiClient.post<void>(`/v1/tenants/${tenantId}/roles/${roleId}/permissions`, { permission_id: permissionId }),
+
+  removePermissionFromRole: (tenantId: string, roleId: string, permissionId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/roles/${roleId}/permissions/${permissionId}`),
+
+  assignUserRole: (tenantId: string, userId: string, roleId: string) =>
+    apiClient.post<void>(`/v1/tenants/${tenantId}/users/${userId}/roles`, { role_id: roleId }),
+
+  removeUserRole: (tenantId: string, userId: string, roleId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/users/${userId}/roles/${roleId}`),
 };
 
 // ============================================================================
@@ -887,4 +938,329 @@ export const oauthService = {
   getAuthorizationUrl: async (_provider: string): Promise<{ authorization_url: string; state: string }> => {
     throw new Error('OAuth account linking is not yet available.');
   },
+};
+
+// ============================================================================
+// Apps (OAuth2 Applications) Service
+// ============================================================================
+
+export const appsService = {
+  // App CRUD
+  list: (params?: { tenant_id?: string; status?: string; type?: string; search?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.tenant_id) query.set('tenant_id', params.tenant_id);
+    if (params?.status) query.set('status', params.status);
+    if (params?.type) query.set('type', params.type);
+    if (params?.search) query.set('search', params.search);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    const queryString = query.toString();
+    return apiClient.get<AppListResponse>(`/v1/apps${queryString ? `?${queryString}` : ''}`);
+  },
+
+  get: (id: string) =>
+    apiClient.get<App>(`/v1/apps/${id}`),
+
+  create: (data: CreateAppRequest) =>
+    apiClient.post<CreateAppResponse>('/v1/apps', data),
+
+  update: (id: string, data: UpdateAppRequest) =>
+    apiClient.put<App>(`/v1/apps/${id}`, data),
+
+  delete: (id: string) =>
+    apiClient.delete<void>(`/v1/apps/${id}`),
+
+  suspend: (id: string) =>
+    apiClient.post<{ message: string }>(`/v1/apps/${id}/suspend`),
+
+  activate: (id: string) =>
+    apiClient.post<{ message: string }>(`/v1/apps/${id}/activate`),
+
+  // Secrets
+  listSecrets: (appId: string) =>
+    apiClient.get<{ secrets: AppSecret[] }>(`/v1/apps/${appId}/secrets`),
+
+  createSecret: (appId: string, data: CreateSecretRequest) =>
+    apiClient.post<CreateSecretResponse>(`/v1/apps/${appId}/secrets`, data),
+
+  revokeSecret: (appId: string, secretId: string) =>
+    apiClient.delete<void>(`/v1/apps/${appId}/secrets/${secretId}`),
+
+  // Scopes
+  listScopes: (appId: string) =>
+    apiClient.get<{ scopes: AppScope[] }>(`/v1/apps/${appId}/scopes`),
+
+  // Consents
+  listConsents: (appId: string) =>
+    apiClient.get<{ consents: UserConsent[] }>(`/v1/apps/${appId}/consents`),
+
+  revokeConsent: (appId: string, userId: string) =>
+    apiClient.delete<void>(`/v1/apps/${appId}/consents/${userId}`),
+
+  // OAuth2 Token Endpoint
+  token: (data: {
+    grant_type: string;
+    code?: string;
+    redirect_uri?: string;
+    code_verifier?: string;
+    refresh_token?: string;
+    scopes?: string[];
+    client_id: string;
+    client_secret?: string;
+  }) => apiClient.post<OAuthTokenResponse>('/v1/oauth2/token', data),
+
+  // Token Revocation
+  revokeToken: (token: string) =>
+    apiClient.post<void>('/v1/oauth2/revoke', { token }),
+
+  // User Info
+  userInfo: () =>
+    apiClient.get<{ user_id: string; tenant_id?: string; scopes: string[] }>('/v1/oauth2/userinfo'),
+};
+
+// ============================================================================
+// Branding Service
+// ============================================================================
+
+export const brandingService = {
+  // Tenant Branding
+  get: (tenantId: string) =>
+    apiClient.get<TenantBranding>(`/v1/tenants/${tenantId}/branding`),
+
+  update: (tenantId: string, data: UpdateBrandingRequest) =>
+    apiClient.put<TenantBranding>(`/v1/tenants/${tenantId}/branding`, data),
+
+  delete: (tenantId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/branding`),
+
+  // Assets
+  listAssets: (tenantId: string, type?: string, activeOnly?: boolean) => {
+    const query = new URLSearchParams();
+    if (type) query.set('type', type);
+    if (activeOnly) query.set('active', 'true');
+    const queryString = query.toString();
+    return apiClient.get<{ assets: BrandingAsset[] }>(`/v1/tenants/${tenantId}/branding/assets${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getAsset: (tenantId: string, assetId: string) =>
+    apiClient.get<BrandingAsset>(`/v1/tenants/${tenantId}/branding/assets/${assetId}`),
+
+  createAsset: (tenantId: string, data: CreateAssetRequest) =>
+    apiClient.post<BrandingAsset>(`/v1/tenants/${tenantId}/branding/assets`, data),
+
+  deleteAsset: (tenantId: string, assetId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/branding/assets/${assetId}`),
+
+  // Pages
+  listPages: (tenantId: string) =>
+    apiClient.get<{ pages: BrandingPage[] }>(`/v1/tenants/${tenantId}/branding/pages`),
+
+  getPage: (tenantId: string, pageType: string) =>
+    apiClient.get<BrandingPage>(`/v1/tenants/${tenantId}/branding/pages/${pageType}`),
+
+  updatePage: (tenantId: string, pageType: string, data: UpdatePageRequest) =>
+    apiClient.put<BrandingPage>(`/v1/tenants/${tenantId}/branding/pages/${pageType}`, data),
+
+  deletePage: (tenantId: string, pageType: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/branding/pages/${pageType}`),
+
+  // Dark Mode
+  getDarkMode: (tenantId: string) =>
+    apiClient.get<BrandingDarkMode>(`/v1/tenants/${tenantId}/branding/dark-mode`),
+
+  updateDarkMode: (tenantId: string, data: UpdateDarkModeRequest) =>
+    apiClient.put<BrandingDarkMode>(`/v1/tenants/${tenantId}/branding/dark-mode`, data),
+
+  // Custom Domains
+  listDomains: (tenantId: string) =>
+    apiClient.get<{ domains: CustomDomain[] }>(`/v1/tenants/${tenantId}/branding/domains`),
+
+  getDomain: (tenantId: string, domainId: string) =>
+    apiClient.get<CustomDomain>(`/v1/tenants/${tenantId}/branding/domains/${domainId}`),
+
+  createDomain: (tenantId: string, data: CreateDomainRequest) =>
+    apiClient.post<CreateDomainResponse>(`/v1/tenants/${tenantId}/branding/domains`, data),
+
+  deleteDomain: (tenantId: string, domainId: string) =>
+    apiClient.delete<void>(`/v1/tenants/${tenantId}/branding/domains/${domainId}`),
+
+  verifyDomain: (tenantId: string, domainId: string) =>
+    apiClient.post<CustomDomain>(`/v1/tenants/${tenantId}/branding/domains/${domainId}/verify`),
+
+  setPrimaryDomain: (tenantId: string, domainId: string) =>
+    apiClient.post<{ message: string }>(`/v1/tenants/${tenantId}/branding/domains/${domainId}/primary`),
+
+  // Themes
+  listThemes: (category?: string, activeOnly?: boolean) => {
+    const query = new URLSearchParams();
+    if (category) query.set('category', category);
+    if (activeOnly !== undefined) query.set('active', activeOnly ? 'true' : 'false');
+    const queryString = query.toString();
+    return apiClient.get<{ themes: BrandingTheme[] }>(`/v1/themes${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getTheme: (slug: string) =>
+    apiClient.get<BrandingTheme>(`/v1/themes/${slug}`),
+
+  applyTheme: (data: ApplyThemeRequest) =>
+    apiClient.post<TenantBranding>('/v1/themes/apply', data),
+};
+
+// ============================================================================
+// Groups Service
+// ============================================================================
+
+export interface Group {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  member_count?: number;
+}
+
+export interface GroupMember {
+  user_id: string;
+  group_id: string;
+  added_at: string;
+  user?: User;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateGroupRequest {
+  name?: string;
+  description?: string;
+}
+
+export const groupService = {
+  list: () =>
+    apiClient.get<{ groups: Group[] }>('/v1/groups'),
+
+  get: (id: string) =>
+    apiClient.get<Group>(`/v1/groups/${id}`),
+
+  create: (data: CreateGroupRequest) =>
+    apiClient.post<Group>('/v1/groups', data),
+
+  update: (id: string, data: UpdateGroupRequest) =>
+    apiClient.put<Group>(`/v1/groups/${id}`, data),
+
+  delete: (id: string) =>
+    apiClient.delete<void>(`/v1/groups/${id}`),
+
+  listMembers: (groupId: string) =>
+    apiClient.get<{ members: GroupMember[] }>(`/v1/groups/${groupId}/members`),
+
+  addMember: (groupId: string, userId: string) =>
+    apiClient.post<void>(`/v1/groups/${groupId}/members`, { user_id: userId }),
+
+  removeMember: (groupId: string, userId: string) =>
+    apiClient.delete<void>(`/v1/groups/${groupId}/members/${userId}`),
+};
+
+// ============================================================================
+// SCIM Admin Service
+// ============================================================================
+
+export interface ScimProvider {
+  id: string;
+  tenant_id: string;
+  name: string;
+  type: 'okta' | 'azure_ad' | 'onelogin' | 'generic';
+  enabled: boolean;
+  base_url?: string;
+  bearer_token?: string;
+  created_at: string;
+  updated_at: string;
+  last_sync_at?: string;
+  sync_status?: 'idle' | 'syncing' | 'error';
+  sync_error?: string;
+}
+
+export interface CreateScimProviderRequest {
+  name: string;
+  type: 'okta' | 'azure_ad' | 'onelogin' | 'generic';
+  enabled?: boolean;
+}
+
+export interface UpdateScimProviderRequest {
+  name?: string;
+  enabled?: boolean;
+}
+
+export interface ScimSyncLog {
+  id: string;
+  provider_id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  status: 'success' | 'error';
+  error_message?: string;
+  created_at: string;
+}
+
+export const scimAdminService = {
+  listProviders: () =>
+    apiClient.get<{ providers: ScimProvider[] }>('/v1/admin/scim/providers'),
+
+  getProvider: (id: string) =>
+    apiClient.get<ScimProvider>(`/v1/admin/scim/providers/${id}`),
+
+  createProvider: (data: CreateScimProviderRequest) =>
+    apiClient.post<ScimProvider>('/v1/admin/scim/providers', data),
+
+  updateProvider: (id: string, data: UpdateScimProviderRequest) =>
+    apiClient.put<ScimProvider>(`/v1/admin/scim/providers/${id}`, data),
+
+  deleteProvider: (id: string) =>
+    apiClient.delete<void>(`/v1/admin/scim/providers/${id}`),
+
+  regenerateToken: (id: string) =>
+    apiClient.post<{ token: string }>(`/v1/admin/scim/providers/${id}/regenerate-token`),
+
+  getSyncLogs: (providerId: string, params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.offset) query.set('offset', params.offset.toString());
+    const queryString = query.toString();
+    return apiClient.get<{ logs: ScimSyncLog[] }>(`/v1/admin/scim/providers/${providerId}/logs${queryString ? `?${queryString}` : ''}`);
+  },
+
+  triggerSync: (providerId: string) =>
+    apiClient.post<void>(`/v1/admin/scim/providers/${providerId}/sync`),
+};
+
+// ============================================================================
+// Email Deliverability Service
+// ============================================================================
+
+export const emailDeliverabilityService = {
+  getBounces: (params?: { limit?: number; offset?: number; email?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.offset) query.set('offset', params.offset.toString());
+    if (params?.email) query.set('email', params.email);
+    const queryString = query.toString();
+    return apiClient.get<{ bounces: EmailBounce[]; total: number }>(`/v1/admin/email-bounces${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getSuppressions: (params?: { limit?: number; offset?: number; email?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.offset) query.set('offset', params.offset.toString());
+    if (params?.email) query.set('email', params.email);
+    const queryString = query.toString();
+    return apiClient.get<{ suppressions: EmailSuppression[]; total: number }>(`/v1/admin/email-suppressions${queryString ? `?${queryString}` : ''}`);
+  },
+
+  addSuppression: (email: string, reason?: string) =>
+    apiClient.post<EmailSuppression>('/v1/admin/email-suppressions', { email, reason }),
+
+  removeSuppression: (email: string) =>
+    apiClient.delete<void>(`/v1/admin/email-suppressions/${encodeURIComponent(email)}`),
 };

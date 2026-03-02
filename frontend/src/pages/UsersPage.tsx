@@ -13,7 +13,7 @@ import {
   Ban,
   AlertTriangle,
 } from 'lucide-react';
-import { Button, Input, Card, CardContent, CardHeader, Modal } from '../components/ui';
+import { Button, Input, Card, CardContent, CardHeader, Modal, useToast } from '../components/ui';
 import type { User, UserRole, UserStatus } from '../types';
 import { userService, adminService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
@@ -73,6 +73,7 @@ const RoleBadge = ({ role }: { role?: UserRole }) => {
 
 export function UsersPage() {
   const { user: currentUser } = useAuth();
+  const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'terminated'>('all');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
@@ -89,7 +90,10 @@ export function UsersPage() {
     setIsLoading(true);
     userService.list()
       .then(setUsers)
-      .catch(console.error)
+      .catch((error) => {
+        console.error(error);
+        showToast({ title: 'Failed to load users', type: 'error' });
+      })
       .finally(() => setIsLoading(false));
   };
 
@@ -129,8 +133,7 @@ export function UsersPage() {
           }
         } catch (roleError) {
           console.error('Failed to assign role:', roleError);
-          // Don't fail the whole operation if just role assignment fails, but alert user
-          alert('User created but failed to assign role. Please assign manually.');
+          showToast({ title: 'User created but failed to assign role. Please assign manually.', type: 'warning' });
         }
       }
 
@@ -138,7 +141,7 @@ export function UsersPage() {
       loadUsers();
     } catch (error: unknown) {
       console.error('Failed to create user:', error);
-      alert(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast({ title: `Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
     }
   };
 
@@ -150,7 +153,7 @@ export function UsersPage() {
       loadUsers();
     } catch (error) {
       console.error('Failed to update user:', error);
-      alert('Failed to update user');
+      showToast({ title: 'Failed to update user', type: 'error' });
     }
   };
 
@@ -162,7 +165,7 @@ export function UsersPage() {
       loadUsers();
     } catch (error) {
       console.error('Failed to delete user:', error);
-      alert('Failed to delete user');
+      showToast({ title: 'Failed to delete user', type: 'error' });
     }
   };
 
@@ -174,7 +177,7 @@ export function UsersPage() {
       loadUsers();
     } catch (error) {
       console.error('Failed to suspend user:', error);
-      alert('Failed to suspend user');
+      showToast({ title: 'Failed to suspend user', type: 'error' });
     }
   };
 
@@ -186,7 +189,7 @@ export function UsersPage() {
       loadUsers();
     } catch (error) {
       console.error('Failed to terminate user:', error);
-      alert('Failed to terminate user');
+      showToast({ title: 'Failed to terminate user', type: 'error' });
     }
   };
 
