@@ -25,6 +25,7 @@ type EmailTemplateHandler struct {
 	storage         storage.EmailTemplateStorage
 	templateService *email.TemplateService
 	emailSender     email.EmailSender
+	baseURL         string
 }
 
 // NewEmailTemplateHandler creates a new email template handler.
@@ -38,6 +39,19 @@ func NewEmailTemplateHandler(store storage.EmailTemplateStorage, templateService
 // SetEmailSender sets the email sender for test emails.
 func (h *EmailTemplateHandler) SetEmailSender(sender email.EmailSender) {
 	h.emailSender = sender
+}
+
+// SetBaseURL sets the base URL for preview links.
+func (h *EmailTemplateHandler) SetBaseURL(url string) {
+	h.baseURL = url
+}
+
+// getPreviewBaseURL returns the base URL for template previews.
+func (h *EmailTemplateHandler) getPreviewBaseURL() string {
+	if h.baseURL != "" {
+		return h.baseURL
+	}
+	return "https://example.com" // Fallback for when not configured
 }
 
 // EmailTemplateRequest represents a request to create/update a template.
@@ -321,14 +335,17 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 	// Create template variables
 	vars := email.NewTemplateVars(sampleUser, branding, advanced)
 
+	// Get configured base URL for preview links
+	previewBaseURL := h.getPreviewBaseURL()
+
 	// Add sample context variables based on type
 	switch email.TemplateType(templateType) {
 	case email.TemplateVerification:
-		vars.WithVerification("sample-token-123", "https://example.com/verify?token=sample-token-123")
+		vars.WithVerification("sample-token-123", previewBaseURL+"/verify?token=sample-token-123")
 	case email.TemplatePasswordReset:
-		vars.WithPasswordReset("sample-token-456", "https://example.com/reset?token=sample-token-456")
+		vars.WithPasswordReset("sample-token-456", previewBaseURL+"/reset?token=sample-token-456")
 	case email.TemplateWelcome:
-		vars.WithBaseURL("https://example.com")
+		vars.WithBaseURL(previewBaseURL)
 	case email.TemplateLoginAlert:
 		vars.WithDevice(&email.DeviceInfo{
 			DeviceName: "MacBook Pro",
@@ -342,7 +359,7 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 		vars.WithInvitation(&email.InvitationEmail{
 			InviterName: "Jane Smith",
 			TenantName:  "Acme Corp",
-			InviteURL:   "https://example.com/invite?token=sample-invite",
+			InviteURL:   previewBaseURL + "/invite?token=sample-invite",
 			Message:     "Welcome to the team!",
 			ExpiresAt:   "January 31, 2026",
 		})
@@ -353,21 +370,21 @@ func (h *EmailTemplateHandler) PreviewTemplate(w http.ResponseWriter, r *http.Re
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Logged out from all devices")
 	case email.TemplateAccountDeactivated:
-		vars.WithAccountDeactivation("Violation of terms", "https://example.com/reactivate")
+		vars.WithAccountDeactivation("Violation of terms", previewBaseURL+"/reactivate")
 	case email.TemplateEmailChanged:
 		vars.WithEmailChange("old@example.com", "new@example.com")
 	case email.TemplatePasswordExpiry:
-		vars.WithPasswordExpiry("7", "February 19, 2026", "https://example.com/change-password")
+		vars.WithPasswordExpiry("7", "February 19, 2026", previewBaseURL+"/change-password")
 	case email.TemplateSecurityAlert:
-		vars.WithSecurityAlert("Suspicious Activity Detected", "We noticed a login from an unusual location.", "Location: North Pole, IP: 1.2.3.4", "https://example.com/secure", "Secure Account")
+		vars.WithSecurityAlert("Suspicious Activity Detected", "We noticed a login from an unusual location.", "Location: North Pole, IP: 1.2.3.4", previewBaseURL+"/secure", "Secure Account")
 	case email.TemplateRateLimitWarning:
-		vars.WithRateLimitWarning("API Requests", "950", "1000", "past 24 hours", "https://example.com/upgrade")
+		vars.WithRateLimitWarning("API Requests", "950", "1000", "past 24 hours", previewBaseURL+"/upgrade")
 	case email.TemplateMFACode:
 		vars.WithMFACode("123456")
 	case email.TemplateLowBackupCodes:
 		vars.WithRemainingCodes(2)
 	case email.TemplateMagicLink:
-		vars.WithMagicLink("https://example.com/magic-login?token=abc")
+		vars.WithMagicLink(previewBaseURL + "/magic-login?token=abc")
 	}
 
 	// Render template
@@ -589,14 +606,17 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 	// Create template variables
 	vars := email.NewTemplateVars(sampleUser, branding, advanced)
 
+	// Get configured base URL for test email links
+	testBaseURL := h.getPreviewBaseURL()
+
 	// Add sample context variables based on type
 	switch email.TemplateType(templateType) {
 	case email.TemplateVerification:
-		vars.WithVerification("test-token-123", "https://example.com/verify?token=test-token-123")
+		vars.WithVerification("test-token-123", testBaseURL+"/verify?token=test-token-123")
 	case email.TemplatePasswordReset:
-		vars.WithPasswordReset("test-token-456", "https://example.com/reset?token=test-token-456")
+		vars.WithPasswordReset("test-token-456", testBaseURL+"/reset?token=test-token-456")
 	case email.TemplateWelcome:
-		vars.WithBaseURL("https://example.com")
+		vars.WithBaseURL(testBaseURL)
 	case email.TemplateLoginAlert:
 		vars.WithDevice(&email.DeviceInfo{
 			DeviceName: "MacBook Pro",
@@ -610,7 +630,7 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 		vars.WithInvitation(&email.InvitationEmail{
 			InviterName: "Test Admin",
 			TenantName:  "Test Organization",
-			InviteURL:   "https://example.com/invite?token=test-invite",
+			InviteURL:   testBaseURL + "/invite?token=test-invite",
 			Message:     "This is a test invitation email.",
 			ExpiresAt:   time.Now().AddDate(0, 0, 7).Format("January 2, 2006"),
 		})
@@ -621,21 +641,21 @@ func (h *EmailTemplateHandler) SendTestEmail(w http.ResponseWriter, r *http.Requ
 	case email.TemplateSessionRevoked:
 		vars.WithReason("Test session revocation")
 	case email.TemplateAccountDeactivated:
-		vars.WithAccountDeactivation("Test deactivation reason", "https://example.com/reactivate")
+		vars.WithAccountDeactivation("Test deactivation reason", testBaseURL+"/reactivate")
 	case email.TemplateEmailChanged:
 		vars.WithEmailChange("old-test@example.com", "new-test@example.com")
 	case email.TemplatePasswordExpiry:
-		vars.WithPasswordExpiry("5", "February 17, 2026", "https://example.com/change-password")
+		vars.WithPasswordExpiry("5", "February 17, 2026", testBaseURL+"/change-password")
 	case email.TemplateSecurityAlert:
-		vars.WithSecurityAlert("Test Security Alert", "This is a test security alert message.", "Details: Test details, IP: 127.0.0.1", "https://example.com/action", "Take Action")
+		vars.WithSecurityAlert("Test Security Alert", "This is a test security alert message.", "Details: Test details, IP: 127.0.0.1", testBaseURL+"/action", "Take Action")
 	case email.TemplateRateLimitWarning:
-		vars.WithRateLimitWarning("Test Actions", "90", "100", "past hour", "https://example.com/upgrade")
+		vars.WithRateLimitWarning("Test Actions", "90", "100", "past hour", testBaseURL+"/upgrade")
 	case email.TemplateMFACode:
 		vars.WithMFACode("999999")
 	case email.TemplateLowBackupCodes:
 		vars.WithRemainingCodes(1)
 	case email.TemplateMagicLink:
-		vars.WithMagicLink("https://example.com/magic-login?token=test-token")
+		vars.WithMagicLink(testBaseURL + "/magic-login?token=test-token")
 	}
 
 	// Render template

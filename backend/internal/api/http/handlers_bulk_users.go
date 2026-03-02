@@ -326,8 +326,14 @@ func (h *Handler) processUserImport(r *http.Request, req BulkUserImportRequest) 
 		result.SuccessCount++
 		result.CreatedUsers = append(result.CreatedUsers, user.ID.String())
 
-		// TODO: Assign roles if specified
-		// TODO: Send welcome email if requested
+		// Send welcome email if requested and email service is available
+		if req.SendWelcome && h.emailService != nil {
+			go func(u *storage.User) {
+				if err := h.emailService.SendWelcomeEmail(r.Context(), u); err != nil {
+					h.logger.Error("Failed to send welcome email for bulk import user", "error", err, "user_id", u.ID.String())
+				}
+			}(user)
+		}
 	}
 
 	return result

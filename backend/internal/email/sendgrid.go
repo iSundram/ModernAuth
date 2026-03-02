@@ -71,6 +71,11 @@ type sendGridContent struct {
 
 // SendEmail sends an email using SendGrid API v3.
 func (s *SendGridService) SendEmail(to, subject, htmlBody, textBody string) (string, error) {
+	// Validate API key is configured
+	if s.apiKey == "" {
+		return "", fmt.Errorf("SendGrid API key not configured")
+	}
+
 	req := sendGridRequest{
 		Personalizations: []sendGridPersonalization{
 			{

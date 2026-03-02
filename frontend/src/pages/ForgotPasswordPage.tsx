@@ -5,6 +5,7 @@ import { Button, Input, LoadingBar } from '../components/ui';
 import { authService } from '../api/services';
 import { useToast } from '../components/ui/Toast';
 import { AuthFooter } from '../components/layout';
+import { validateEmail, normalizeEmail } from '../utils/validation';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -14,11 +15,17 @@ export function ForgotPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    
+    // Validate email format
+    const emailError = validateEmail(email);
+    if (emailError) {
+      showToast({ title: 'Error', message: emailError, type: 'error' });
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await authService.forgotPassword(email);
+      await authService.forgotPassword(normalizeEmail(email));
       setIsSubmitted(true);
       showToast({ 
         title: 'Request Sent', 

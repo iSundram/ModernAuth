@@ -6,6 +6,7 @@ import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { AuthFooter } from '../components/layout';
+import { isValidEmail, normalizeEmail } from '../utils/validation';
 
 export function EmailLoginPage() {
   const [email, setEmail] = useState('');
@@ -27,28 +28,32 @@ export function EmailLoginPage() {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
-    if (!emailRegex.test(email)) {
+    // Validate email format
+    if (!isValidEmail(email)) {
       showToast({ title: 'Error', message: 'Please enter a valid email address', type: 'error' });
       return;
     }
 
     setIsLoading(true);
 
+    // Normalize email before processing
+    const normalizedEmail = normalizeEmail(email);
+
     try {
-      const result = await authService.checkEmail(email);
+      const result = await authService.checkEmail(normalizedEmail);
       
-      // Store email for next step
-      sessionStorage.setItem('loginEmail', email);
+      // Store normalized email for next step
+      sessionStorage.setItem('loginEmail', normalizedEmail);
 
       if (!result.exists) {
+        // Clear sessionStorage when redirecting to register
+        sessionStorage.removeItem('loginEmail');
         showToast({ 
           title: 'Account not found', 
           message: 'Would you like to create an account?', 
           type: 'info' 
         });
-        navigate('/register', { state: { email } });
+        navigate('/register', { state: { email: normalizedEmail } });
         return;
       }
 
@@ -66,6 +71,8 @@ export function EmailLoginPage() {
       // Navigate to password page
       navigate('/login/password');
     } catch (err) {
+      // Clear sessionStorage on error
+      sessionStorage.removeItem('loginEmail');
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {

@@ -7,6 +7,7 @@ import { authService } from '../api/services';
 import { useAuth } from '../hooks/useAuth';
 import { PasswordStrength, CaptchaWidget } from '../components/security';
 import { AuthFooter } from '../components/layout';
+import { validateEmail, normalizeEmail } from '../utils/validation';
 
 export function RegisterPage() {
   const { settings } = useAuth();
@@ -48,6 +49,13 @@ export function RegisterPage() {
       return;
     }
 
+    // Validate email format
+    const emailError = validateEmail(formData.email);
+    if (emailError) {
+      showToast({ title: 'Error', message: emailError, type: 'error' });
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       showToast({ title: 'Error', message: 'Passwords do not match', type: 'error' });
       return;
@@ -62,7 +70,7 @@ export function RegisterPage() {
 
     try {
       await authService.register({
-        email: formData.email,
+        email: normalizeEmail(formData.email),
         username: formData.username,
         password: formData.password,
         captcha_token: captchaToken,

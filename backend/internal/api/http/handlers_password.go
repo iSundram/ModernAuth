@@ -39,21 +39,27 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		"message": "If an account exists with that email, a password reset link has been sent",
 	}
 
-	// Send email if token was generated and email service is configured
-	if result != nil && h.emailService != nil {
-		user, err := h.storage.GetUserByEmail(r.Context(), req.Email)
-		if err == nil && user != nil {
-			// Build reset URL
-			resetURL := h.getBaseURL(r) + "/reset-password?token=" + result.Token
+	// Send email if token was generated
+	if result != nil {
+		// Check if email service is configured
+		if h.emailService == nil {
+			h.logger.Error("Password reset requested but email service is not configured", "email", req.Email)
+			// Still return success to prevent enumeration, but log the configuration issue
+		} else {
+			user, err := h.storage.GetUserByEmail(r.Context(), req.Email)
+			if err == nil && user != nil {
+				// Build reset URL
+				resetURL := h.getBaseURL(r) + "/reset-password?token=" + result.Token
 
-			// Queue email (async with retry via email queue)
-			if err := h.emailService.SendPasswordResetEmail(r.Context(), user, result.Token, resetURL); err != nil {
-				// Handle rate limit error - still return generic message to prevent enumeration
-				if errors.Is(err, email.ErrRateLimitExceeded) {
-					h.logger.Warn("Password reset rate limit exceeded", "email", req.Email)
-					// Don't expose rate limit to prevent enumeration
-				} else {
-					h.logger.Error("Failed to queue password reset email", "error", err, "email", req.Email)
+				// Queue email (async with retry via email queue)
+				if err := h.emailService.SendPasswordResetEmail(r.Context(), user, result.Token, resetURL); err != nil {
+					// Handle rate limit error - still return generic message to prevent enumeration
+					if errors.Is(err, email.ErrRateLimitExceeded) {
+						h.logger.Warn("Password reset rate limit exceeded", "email", req.Email)
+						// Don't expose rate limit to prevent enumeration
+					} else {
+						h.logger.Error("Failed to queue password reset email", "error", err, "email", req.Email)
+					}
 				}
 			}
 		}
@@ -145,16 +151,18 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send password changed notification email
-	go func() {
-		user, err := h.storage.GetUserByID(context.Background(), userID)
-		if err != nil || user == nil {
-			h.logger.Error("Failed to get user for password changed email", "error", err, "user_id", userID)
-			return
-		}
-		if err := h.emailService.SendPasswordChangedEmail(context.Background(), user); err != nil {
-			h.logger.Error("Failed to send password changed email", "error", err, "user_id", userID)
-		}
-	}()
+	if h.emailService != nil {
+		go func() {
+			user, err := h.storage.GetUserByID(context.Background(), userID)
+			if err != nil || user == nil {
+				h.logger.Error("Failed to get user for password changed email", "error", err, "user_id", userID)
+				return
+			}
+			if err := h.emailService.SendPasswordChangedEmail(context.Background(), user); err != nil {
+				h.logger.Error("Failed to send password changed email", "error", err, "user_id", userID)
+			}
+		}()
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }

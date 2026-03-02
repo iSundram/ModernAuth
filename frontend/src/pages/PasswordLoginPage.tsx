@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { Button, Input, LoadingBar } from '../components/ui';
-import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Clock, Smartphone } from 'lucide-react';
+import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck, Mail, Fingerprint, Key, Clock, Smartphone, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { authService } from '../api/services';
 import { AuthFooter } from '../components/layout';
+
+const EMAIL_MFA_COOLDOWN_SECONDS = 60;
+const SMS_MFA_COOLDOWN_SECONDS = 60;
 
 export function PasswordLoginPage() {
   const [password, setPassword] = useState('');
@@ -24,6 +27,25 @@ export function PasswordLoginPage() {
   const [smsMfaSent, setSmsMfaSent] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
   const [totpCountdown, setTotpCountdown] = useState(30);
+  const [emailCooldown, setEmailCooldown] = useState(0);
+  const [smsCooldown, setSmsCooldown] = useState(0);
+
+  // Email/SMS resend cooldown timer
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setEmailCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailCooldown]);
+
+  useEffect(() => {
+    if (smsCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setSmsCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [smsCooldown]);
 
   // TOTP countdown timer - 30 second window
   useEffect(() => {
@@ -151,13 +173,22 @@ export function PasswordLoginPage() {
   };
 
   const handleSendEmailCode = async () => {
+    if (emailCooldown > 0) {
+      showToast({ title: 'Please wait', message: `You can resend in ${emailCooldown} seconds`, type: 'info' });
+      return;
+    }
     setIsLoading(true);
     try {
       await authService.sendEmailMfaCode(mfaUserId);
       setEmailMfaSent(true);
+      setEmailCooldown(EMAIL_MFA_COOLDOWN_SECONDS);
       showToast({ title: 'Code Sent', message: 'Check your email for the verification code', type: 'success' });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send email code';
+      // Check for rate limit
+      if (errorMessage.toLowerCase().includes('rate limit') || errorMessage.includes('429')) {
+        setEmailCooldown(EMAIL_MFA_COOLDOWN_SECONDS);
+      }
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -165,13 +196,22 @@ export function PasswordLoginPage() {
   };
 
   const handleSendSmsCode = async () => {
+    if (smsCooldown > 0) {
+      showToast({ title: 'Please wait', message: `You can resend in ${smsCooldown} seconds`, type: 'info' });
+      return;
+    }
     setIsLoading(true);
     try {
       await authService.sendSmsMfaCode(mfaUserId);
       setSmsMfaSent(true);
+      setSmsCooldown(SMS_MFA_COOLDOWN_SECONDS);
       showToast({ title: 'Code Sent', message: 'Check your phone for the verification code', type: 'success' });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send SMS code';
+      // Check for rate limit
+      if (errorMessage.toLowerCase().includes('rate limit') || errorMessage.includes('429')) {
+        setSmsCooldown(SMS_MFA_COOLDOWN_SECONDS);
+      }
       showToast({ title: 'Error', message: errorMessage, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -376,6 +416,32 @@ export function PasswordLoginPage() {
                               <Clock size={14} />
                               <span>Code expires in {totpCountdown}s</span>
                             </div>
+                          )}
+
+                          {/* Resend button for email MFA */}
+                          {mfaMethod === 'email' && emailMfaSent && (
+                            <button
+                              type="button"
+                              onClick={handleSendEmailCode}
+                              disabled={emailCooldown > 0 || isLoading}
+                              className="flex items-center justify-center gap-2 text-sm text-[var(--color-info)] hover:text-[var(--color-info-dark)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors w-full"
+                            >
+                              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                              {emailCooldown > 0 ? `Resend code in ${emailCooldown}s` : "Didn't receive it? Resend code"}
+                            </button>
+                          )}
+
+                          {/* Resend button for SMS MFA */}
+                          {mfaMethod === 'sms' && smsMfaSent && (
+                            <button
+                              type="button"
+                              onClick={handleSendSmsCode}
+                              disabled={smsCooldown > 0 || isLoading}
+                              className="flex items-center justify-center gap-2 text-sm text-[var(--color-info)] hover:text-[var(--color-info-dark)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors w-full"
+                            >
+                              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                              {smsCooldown > 0 ? `Resend code in ${smsCooldown}s` : "Didn't receive it? Resend code"}
+                            </button>
                           )}
                         </div>
 

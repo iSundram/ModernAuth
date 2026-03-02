@@ -14,9 +14,11 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	httpapi "github.com/iSundram/ModernAuth/internal/api/http"
+	"github.com/iSundram/ModernAuth/internal/apps"
 	"github.com/iSundram/ModernAuth/internal/apikey"
 	"github.com/iSundram/ModernAuth/internal/audit"
 	"github.com/iSundram/ModernAuth/internal/auth"
+	"github.com/iSundram/ModernAuth/internal/branding"
 	"github.com/iSundram/ModernAuth/internal/captcha"
 	"github.com/iSundram/ModernAuth/internal/config"
 	"github.com/iSundram/ModernAuth/internal/device"
@@ -25,6 +27,7 @@ import (
 	"github.com/iSundram/ModernAuth/internal/hibp"
 	"github.com/iSundram/ModernAuth/internal/invitation"
 	"github.com/iSundram/ModernAuth/internal/oauth"
+	"github.com/iSundram/ModernAuth/internal/scim"
 	"github.com/iSundram/ModernAuth/internal/sms"
 	"github.com/iSundram/ModernAuth/internal/storage/pg"
 	"github.com/iSundram/ModernAuth/internal/tenant"
@@ -356,6 +359,7 @@ func main() {
 	webhookHandler := httpapi.NewWebhookHandler(webhookService)
 	invitationHandler := httpapi.NewInvitationHandler(invitationService)
 	emailTemplateHandler := httpapi.NewEmailTemplateHandler(storage, templateService)
+	emailTemplateHandler.SetBaseURL(cfg.App.BaseURL)
 	if emailSender != nil {
 		emailTemplateHandler.SetEmailSender(emailSender)
 	}
@@ -477,6 +481,27 @@ func main() {
 	analyticsService := httpapi.NewAnalyticsService(storage, rdb)
 	analyticsHandler := httpapi.NewAnalyticsHandler(analyticsService)
 	handler.SetAnalyticsHandler(analyticsHandler)
+
+	// Initialize SCIM service and handler
+	scimService := scim.NewService(storage, &scim.Config{
+		BaseURL:           cfg.App.BaseURL,
+		MaxBulkOperations: 100,
+	})
+	scimHandler := httpapi.NewSCIMHandler(scimService, cfg.App.BaseURL)
+	handler.SetSCIMHandler(scimHandler)
+	slog.Info("SCIM 2.0 provisioning service initialized")
+
+	// Initialize Apps (OAuth2 Applications) service and handler
+	appsService := apps.NewService(storage)
+	appsHandler := httpapi.NewAppHandler(appsService)
+	handler.SetAppHandler(appsHandler)
+	slog.Info("OAuth2 Applications service initialized")
+
+	// Initialize Branding service and handler
+	brandingService := branding.NewService(storage)
+	brandingHandler := httpapi.NewBrandingHandler(brandingService)
+	handler.SetBrandingHandler(brandingHandler)
+	slog.Info("Tenant Branding service initialized")
 
 	router := handler.Router()
 
