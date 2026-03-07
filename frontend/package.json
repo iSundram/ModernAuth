@@ -17,7 +17,7 @@
     "papaparse": "^5.5.3",
     "prismjs": "^1.30.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.4",
     "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.11.0",
     "react-simple-code-editor": "^0.14.1"
